@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+.pip/
+
+# Build outputs
+dist/
+build/
+.aws-sam/
+.serverless/
+*.zip
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+pip-log.txt
+
+# Testing / Coverage
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# AWS CDK / SAM
+cdk.out/
+samconfig.toml
+
+# Mockup versions (backups internos)
+Product-Definition/mockups/.versions/
+
+# Skills - entornos virtuales generados por install-skills
+.kiro/skills/*/.venv/
+.kiro/skills/*/__pycache__/
+
+# IA-DLC docs generados (opcional, descomentar si no se desean versionar)
+# aidlc-docs/
