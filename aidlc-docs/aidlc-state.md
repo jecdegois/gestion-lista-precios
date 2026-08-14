@@ -4,7 +4,7 @@
 - **Proyecto:** MV26020 - Automatización de Listas de Precio
 - **Tipo de Proyecto:** Brownfield de mejora y homologación de procesos Softland existentes en Costa Rica, Venezuela y Colombia
 - **Fecha de Inicio:** 2026-08-13T00:00:00Z
-- **Etapa Actual:** INCEPCIÓN - Historias de Usuario (Revisión requerida)
+- **Etapa Actual:** INCEPCIÓN - Planificación del Flujo
 
 ## Estado del Workspace
 - **Código Existente:** No
@@ -28,7 +28,7 @@
 - [x] Detección del Workspace
 - [ ] Ingeniería Inversa (no aplicable: no existe código en el workspace)
 - [x] Análisis de Requerimientos
-- [ ] Historias de Usuario
-- [ ] Planificación del Flujo
+- [x] Historias de Usuario
+- [ ] Planificación del Flujo (en curso)
 - [ ] Diseño de Aplicación
 - [ ] Generación de Unidades de Trabajo
