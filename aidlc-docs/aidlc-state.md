@@ -2,13 +2,13 @@
 
 ## Información del Proyecto
 - **Proyecto:** MV26020 - Automatización de Listas de Precio
-- **Tipo de Proyecto:** Greenfield con integración a sistemas existentes
+- **Tipo de Proyecto:** Brownfield de mejora y homologación de procesos Softland existentes en Costa Rica, Venezuela y Colombia
 - **Fecha de Inicio:** 2026-08-13T00:00:00Z
-- **Etapa Actual:** INCEPCIÓN - Análisis de Requerimientos
+- **Etapa Actual:** INCEPCIÓN - Historias de Usuario (Revisión requerida)
 
 ## Estado del Workspace
 - **Código Existente:** No
-- **Ingeniería Inversa Requerida:** No para el workspace; el proceso Softland existente se documenta mediante los insumos funcionales disponibles.
+- **Ingeniería Inversa Requerida:** Sí, sobre los objetos legacy de Softland cuando se entreguen los scripts del Job, SP maestro y SPs por compañía. El workspace no contiene código legacy ejecutable.
 - **Raíz del Workspace:** `c:\Users\ysalas\MV26020-Calculo-de-listas-de-precio`
 - **Fuente principal del MVP:** `docs/Especificacion_Automatizacion_Listas_de_Precio.md`
 
@@ -19,15 +19,15 @@
 ## Configuración de Extensiones
 | Extensión | Habilitada | Decidida en |
 |---|---|---|
-| Security Baseline | Pendiente | Análisis de Requerimientos |
-| Resiliency Baseline | Pendiente | Análisis de Requerimientos |
-| Property-Based Testing | Pendiente | Análisis de Requerimientos |
+| Security Baseline | Sí | Análisis de Requerimientos |
+| Resiliency Baseline | Sí | Análisis de Requerimientos |
+| Property-Based Testing | Sí | Análisis de Requerimientos |
 
 ## Progreso de Etapas
 ### Fase de Incepción
 - [x] Detección del Workspace
 - [ ] Ingeniería Inversa (no aplicable: no existe código en el workspace)
-- [ ] Análisis de Requerimientos
+- [x] Análisis de Requerimientos
 - [ ] Historias de Usuario
 - [ ] Planificación del Flujo
 - [ ] Diseño de Aplicación
