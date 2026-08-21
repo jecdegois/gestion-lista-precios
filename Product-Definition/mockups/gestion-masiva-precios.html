@@ -1602,12 +1602,12 @@ function BandejaAprobacion({ solicitudes, currentUser, readOnly, onAbrir }) {
                   <td className="px-4 py-3 text-right">
                     {puedeRevisar && (
                       <button className="btn btn-outline" onClick={function () { onAbrir(s.id); }}>
-                        <Icon name="eye" className="w-3.5 h-3.5" /> Revisar / Simular
+                        <Icon name="eye" className="w-3.5 h-3.5" /> Revisar simulación
                       </button>
                     )}
                     {!puedeRevisar && s.estado === "PENDIENTE" && esPropia && (
                       <button className="btn btn-outline" disabled title="No puede aprobar su propia solicitud">
-                        <Icon name="ban" className="w-3.5 h-3.5" /> Revisar / Simular
+                        <Icon name="ban" className="w-3.5 h-3.5" /> Revisar simulación
                       </button>
                     )}
                     {puedeVer && (
@@ -1643,6 +1643,10 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
   if (!solicitud) return null;
 
   const filas = solicitud.filas && solicitud.filas.length > 0 ? solicitud.filas : filasEjemploExcel(PROCESOS[solicitud.proceso].modo);
+  const parametros = solicitud.parametros || {};
+  const esActualizacionListaBase = solicitud.proceso === "MAYOREOD_MASIVO";
+  const grupoArticulo = esActualizacionListaBase ? GRUPOS_ARTICULOS[parametros.grupoArticulos] : null;
+  const puedeDecidir = currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
   const filasConHallazgo = filas.filter(function (f) { return !f.validacion.valido; });
 
   function handleOverlayClick(ev) {
@@ -1652,6 +1656,7 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
   }
 
   function iniciarEjecucion() {
+    if (!puedeDecidir) return;
     const id = nuevoIdProcesoSP();
     setIdProcesoSP(id);
     setFase("monitoreo");
@@ -1718,24 +1723,50 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
                 <div className="card p-3"><p className="text-[11px] text-zinc-400">Ejecución</p><p className="text-sm font-semibold">{PROCESOS[solicitud.proceso].ejecucion}</p></div>
               </div>
 
+              {esActualizacionListaBase && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                  <p className="text-xs font-semibold text-red-800 mb-3">Parámetros confirmados para la Lista Base</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="card p-3"><p className="text-[11px] text-zinc-400">Lista Base</p><p className="text-sm font-semibold">{LISTA_BASE_OBJETIVO.nombre} / {parametros.listaBase || LISTA_BASE_OBJETIVO.codigo}</p></div>
+                    <div className="card p-3"><p className="text-[11px] text-zinc-400">Nivel de precio</p><p className="text-sm font-semibold">{parametros.nivelPrecio || LISTA_BASE_OBJETIVO.nivelPrecio}</p></div>
+                    <div className="card p-3"><p className="text-[11px] text-zinc-400">Versión</p><p className="text-sm font-semibold">{parametros.version || LISTA_BASE_OBJETIVO.versionEstado}</p></div>
+                    <div className="card p-3"><p className="text-[11px] text-zinc-400">Grupo de artículos</p><p className="text-sm font-semibold">{grupoArticulo ? grupoArticulo.label : "No especificado"}</p></div>
+                    <div className="card p-3"><p className="text-[11px] text-zinc-400">Factor aplicado</p><p className="text-sm font-semibold mono">{parametros.factor || "—"}</p></div>
+                    <div className="card p-3"><p className="text-[11px] text-zinc-400">Registros impactados</p><p className="text-sm font-semibold">{filas.length}</p></div>
+                  </div>
+                </div>
+              )}
+
               <TablaPrevisualizacion filas={filas} compacta={false} />
 
-              <div className="border-t border-zinc-100 pt-4">
-                <label className="block text-xs font-medium mb-1.5">Motivo de rechazo <span className="text-red-600">*</span></label>
-                <textarea rows={2} value={motivo} onChange={function (e) { setMotivo(e.target.value); }}
-                  placeholder="Obligatorio si la decisión es rechazar la solicitud..."
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10" />
-              </div>
+              {puedeDecidir ? (
+                <div className="border-t border-zinc-100 pt-4">
+                  <label className="block text-xs font-medium mb-1.5">Motivo de rechazo <span className="text-red-600">*</span></label>
+                  <textarea rows={2} value={motivo} onChange={function (e) { setMotivo(e.target.value); }}
+                    placeholder="Obligatorio si la decisión es rechazar la solicitud..."
+                    className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10" />
+                </div>
+              ) : (
+                <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-3 text-xs text-zinc-600">
+                  Esta solicitud se muestra en modo consulta. No hay decisiones disponibles para su estado actual.
+                </div>
+              )}
             </div>
 
             <div className="p-6 border-t border-zinc-100 flex items-center justify-end gap-2">
-              <button className="btn btn-outline text-red-600" disabled={motivo.trim().length === 0}
-                onClick={function () { onRechazar(solicitud.id, motivo.trim()); onClose(); }}>
-                Rechazar
-              </button>
-              <button className="btn btn-destructive" onClick={iniciarEjecucion}>
-                Aprobar e Iniciar Procesamiento
-              </button>
+              {puedeDecidir ? (
+                <React.Fragment>
+                  <button className="btn btn-outline text-red-600" disabled={motivo.trim().length === 0}
+                    onClick={function () { onRechazar(solicitud.id, motivo.trim()); onClose(); }}>
+                    Rechazar
+                  </button>
+                  <button className="btn btn-destructive" onClick={iniciarEjecucion}>
+                    Aprobar e Iniciar Procesamiento
+                  </button>
+                </React.Fragment>
+              ) : (
+                <button className="btn btn-default" onClick={onClose}>Cerrar</button>
+              )}
             </div>
           </React.Fragment>
         )}
@@ -1749,7 +1780,7 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
               </div>
             </div>
             <div className="p-6">
-              <p className="text-sm text-zinc-500 mb-4">Procesando la actualización en Softland (microservicio en EC2)… esto puede tardar unos minutos.</p>
+              <p className="text-sm text-zinc-500 mb-4">Procesando la actualización autorizada… esto puede tardar unos minutos.</p>
               <div className="progress-track mb-2">
                 <div className="progress-fill" style={{ width: progreso + "%" }}></div>
               </div>
@@ -1901,7 +1932,7 @@ function seedSolicitudes() {
 
   return [
     { id: "SOL-10449", proceso: "FACTOR_PRECIO", modalidad: "manual", compania: "Costa Rica", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@empresa.com", parametros: { factor: "1.10" }, filas: filasAprobadas, archivoNombre: null, archivoS3Key: null, fechaEnvio: "2026-08-13 11:30", estado: "PROCESADO", motivoRechazo: null, idProcesoSP: "#SP-20260813-2210" },
-    { id: "SOL-10448", proceso: "MAYOREOD_MASIVO", modalidad: "manual", compania: "Colombia", solicitanteNombre: "María Rodríguez", solicitanteEmail: "mrodriguez@empresa.com", parametros: { listaBase: LISTA_BASE_OBJETIVO.codigo, nivelPrecio: LISTA_BASE_OBJETIVO.nivelPrecio, version: LISTA_BASE_OBJETIVO.versionEstado, grupoArticulos: "linea_blanca", factor: "1.10", variacionPorcentaje: 10 }, filas: filasMayoreod, archivoNombre: null, archivoS3Key: null, fechaEnvio: "2026-08-13 09:05", estado: "PENDIENTE", motivoRechazo: null, idProcesoSP: null },
+    { id: "SOL-10448", proceso: "MAYOREOD_MASIVO", modalidad: "manual", compania: "Colombia", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@empresa.com", parametros: { listaBase: LISTA_BASE_OBJETIVO.codigo, nivelPrecio: LISTA_BASE_OBJETIVO.nivelPrecio, version: LISTA_BASE_OBJETIVO.versionEstado, grupoArticulos: "linea_blanca", factor: "1.10", variacionPorcentaje: 10 }, filas: filasMayoreod, archivoNombre: null, archivoS3Key: null, fechaEnvio: "2026-08-13 09:05", estado: "PENDIENTE", motivoRechazo: null, idProcesoSP: null },
     { id: "SOL-10447", proceso: "DESCUENTO_LISTA_PRECIO", modalidad: "excel", compania: "Venezuela", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@empresa.com", parametros: { articulos: filasDescuentoMasivo }, filas: filasDescuentoMasivo, archivoNombre: "descuento-articulos-masivo.xlsx", archivoS3Key: "erp-precios-uploads/descuento-articulos-masivo.xlsx", fechaEnvio: "2026-08-12 15:10", estado: "RECHAZADO", motivoRechazo: "El factor genera márgenes por debajo del costo en artículos de alto valor; corregir antes de reenviar.", idProcesoSP: null },
   ];
 }
@@ -1997,7 +2028,14 @@ function App() {
 
   const solicitudModal = solicitudes.find(function (s) { return s.id === modalId; });
 
-  function abrirModal(id) { setModalId(id); }
+  function abrirModal(id) {
+    const solicitud = solicitudes.find(function (item) { return item.id === id; });
+    if (!solicitud || user.rol !== "APROBADOR") return;
+    const esSolicitudPropiaPendiente = solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail === user.email;
+    if (esSolicitudPropiaPendiente) return;
+    setModalId(id);
+    if (solicitud.estado === "PENDIENTE") registrarEvento("SIMULACION_REVISADA", { solicitudId: id });
+  }
 
   const esAprobador = user.rol === "APROBADOR";
   const esOperador = user.rol === "OPERADOR";

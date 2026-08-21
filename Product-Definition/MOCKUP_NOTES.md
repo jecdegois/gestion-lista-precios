@@ -169,3 +169,12 @@ _Sin checkpoints creados aún._ Se creará una copia en `Product-Definition/mock
 - **Base de cálculo:** para cada artículo del grupo, la simulación toma su precio vigente de la Lista Base configurada y calcula `Precio Propuesto = Precio Actual × Factor aplicado`. El grupo determina el universo de artículos; el factor es único para todo ese universo.
 - **Trazabilidad:** el payload conserva el factor multiplicador, el valor ingresado y el grupo; la solicitud semilla representa `10` como factor aplicado `1.10`.
 - **Verificación:** se confirmó el factor visible, la llamada de simulación con grupo/factor y el payload. El mockup respondió `HTTP 200` localmente (104,695 bytes).
+
+## Corrección — Versión 20 (revisión del Aprobador conforme a la EA)
+
+- **Solicitud demostrable para el Aprobador:** la solicitud pendiente `SOL-10448` de Actualización Masiva de Precios pertenece ahora a Juan Pérez (Operador) y continúa dentro de Colombia, ámbito permitido para María Rodríguez (Aprobador). Por ello puede abrirse y revisarse desde la Bandeja sin debilitar la segregación de funciones.
+- **Segregación preservada en interfaz y flujo:** una solicitud pendiente creada por el propio Aprobador sigue identificándose como “Tu solicitud” y no puede abrirse para decidir. El modal también impide decisiones si la solicitud ya no está pendiente o pertenece al aprobador activo.
+- **Evidencia para decidir:** el modal muestra los parámetros inmutables enviados por el Solicitante para la Actualización Masiva de Precios: Lista Base, nivel de precio, versión, grupo de artículos, factor aplicado y registros impactados, además del diff por artículo ya existente.
+- **Trazabilidad de revisión:** abrir una solicitud pendiente registra el evento `SIMULACION_REVISADA` en la Auditoría. La decisión mantiene el flujo Pendiente → En proceso → resultado, o Rechazado con motivo obligatorio.
+- **Mensajería funcional:** el monitor de estado ya no expone detalles de infraestructura; informa únicamente que la actualización autorizada está en proceso.
+- **Validación:** se revisaron los bloques JSX modificados, se confirmó por búsqueda el control de rol + estado pendiente + no autoaprobación, los seis parámetros de revisión y la reasignación de `SOL-10448` a Juan Pérez. El mockup se sirvió localmente y respondió `HTTP 200` (107,669 bytes).

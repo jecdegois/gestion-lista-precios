@@ -165,3 +165,19 @@ Gobernanza de Datos: Confirmación de que ninguna pantalla intente hacer INSERT 
 **Context**: Incepción - Planificación del Flujo, aprobación pendiente
 
 ---
+
+## Corrección del simulador de aprobación
+**Timestamp**: 2026-08-20T00:00:00Z
+**User Input**: "LA VISTA DE GESTION DE APROBACION SIMULADOR DEL USUARIO APROBADOR NO LO HACE CORRIGELO Y APLICA LO QUE ESTA EN LA EA"
+**AI Response**: "Se corrigió el mockup para que María Rodríguez, Aprobador con ámbito Colombia, revise SOL-10448 creada por Juan Pérez. Se preservó el bloqueo de autoaprobación y se agregaron al modal los parámetros persistidos de la Lista Base, nivel, versión, grupo, factor y registros impactados, junto con el diff. La apertura de una solicitud pendiente registra SIMULACION_REVISADA."
+**Context**: Construcción - Corrección de mockup Maker-Checker conforme a RF-19, RF-20, RF-25, RF-32 y RNF-05
+
+---
+
+## Validación de corrección del simulador
+**Timestamp**: 2026-08-20T00:00:00Z
+**User Input**: "LA VISTA DE GESTION DE APROBACION SIMULADOR DEL USUARIO APROBADOR NO LO HACE CORRIGELO Y APLICA LO QUE ESTA EN LA EA"
+**AI Response**: "Se verificó el control de rol Aprobador, estado Pendiente y no autoaprobación; se confirmó que SOL-10448 pertenece a Juan Pérez y que el modal contiene Lista Base, nivel de precio, versión, grupo, factor y registros impactados. El archivo fue servido localmente con respuesta HTTP 200."
+**Context**: Construcción - Validación de mockup Maker-Checker
+
+---
