@@ -1,0 +1,2064 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestión Masiva de Precios — Prototipo Interactivo MV26020</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter','ui-sans-serif','system-ui'], mono: ['JetBrains Mono','ui-monospace'] },
+      }
+    }
+  }
+</script>
+<style>
+  body { font-family: 'Inter', ui-sans-serif, system-ui; background:#f8f9fb; color:#0a0a0a; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace; }
+
+  /* ===================== SISTEMA DE COMBOBOX (CRÍTICO — NO REGRESIÓN) ===================== */
+  .combo-parent, .fp, .fp-r1, .fp-r2 { overflow: visible; }
+  .combo-w { position: relative; }
+  .combo-in {
+    width: 100%; font-size: 13px; padding: 8px 32px 8px 12px; border-radius: 8px;
+    border: 1px solid #e5e7eb; background: #fff; cursor: pointer; outline: none;
+  }
+  .combo-in:disabled { background:#f4f4f5; color:#a1a1aa; cursor:not-allowed; }
+  .combo-in:focus { border-color: #18181b; box-shadow: 0 0 0 2px rgba(24,24,27,0.08); }
+  .combo-w .chev { position:absolute; right:10px; top:50%; transform:translateY(-50%); color:#71717a; pointer-events:none; }
+  .combo-dd {
+    position: fixed; z-index: 9999; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.08);
+    max-height: 240px; overflow-y: auto; padding: 4px;
+  }
+  .combo-opt { padding: 8px 10px; font-size: 13px; border-radius: 6px; cursor: pointer; display:flex; align-items:center; gap:8px; }
+  .combo-opt:hover { background: #f4f4f5; }
+
+  .badge { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:500; padding:3px 9px; border-radius:999px; border:1px solid transparent; white-space:nowrap; }
+  .badge-pendiente { background:#FEF3C7; color:#B45309; border-color:#FDE68A; }
+  .badge-enproceso { background:#E0E7FF; color:#4338CA; border-color:#C7D2FE; }
+  .badge-aprobado { background:#DCFCE7; color:#15803D; border-color:#BBF7D0; }
+  .badge-conerrores { background:#FFEDD5; color:#C2410C; border-color:#FED7AA; }
+  .badge-rechazado { background:#FEE2E2; color:#B91C1C; border-color:#FECACA; }
+  .badge-error { background:#DC2626; color:#fff; border-color:#DC2626; }
+  .badge-outline { background:#fff; color:#3f3f46; border-color:#e4e4e7; }
+  .badge-costo { background:#FEE2E2; color:#B91C1C; border-color:#FECACA; font-weight:600; }
+  .badge-ok { background:#DCFCE7; color:#15803D; border-color:#BBF7D0; }
+  .dot { width:6px; height:6px; border-radius:50%; flex:none; }
+  .dot-pulse { animation: pulse 1.3s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin .7s linear infinite; }
+
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; font-size:13px; font-weight:500; padding:8px 16px; border-radius:8px; transition:all .15s; cursor:pointer; border:1px solid transparent; white-space:nowrap; }
+  .btn:focus-visible { outline:2px solid #18181b; outline-offset:2px; }
+  .btn-default { background:#18181b; color:#fafafa; } .btn-default:hover{background:#27272a;}
+  .btn-secondary { background:#f4f4f5; color:#18181b; } .btn-secondary:hover{background:#e4e4e7;}
+  .btn-outline { background:#fff; color:#18181b; border-color:#e4e4e7; } .btn-outline:hover{background:#f4f4f5;}
+  .btn-ghost { background:transparent; color:#18181b; } .btn-ghost:hover{background:#f4f4f5;}
+  .btn-destructive { background:#dc2626; color:#fff; } .btn-destructive:hover{background:#b91c1c;}
+  .btn[disabled] { opacity:.5; cursor:not-allowed; pointer-events:none; }
+
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; }
+  .tab-trigger { font-size:13px; font-weight:500; padding:8px 14px; border-radius:8px; color:#71717a; cursor:pointer; user-select:none; }
+  .tab-trigger.active { background:#fff; color:#18181b; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .tabs-list { background:#f4f4f5; padding:4px; border-radius:10px; display:inline-flex; gap:2px; flex-wrap:wrap; }
+
+  .subtab { font-size:12.5px; font-weight:500; padding:6px 12px; border-radius:999px; border:1px solid #e4e4e7; color:#52525b; cursor:pointer; }
+  .subtab.active { background:#18181b; color:#fff; border-color:#18181b; }
+
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px; }
+  .modal-box { background:#fff; border-radius:14px; max-width:980px; width:100%; max-height:88vh; overflow-y:auto; box-shadow:0 25px 50px -12px rgba(0,0,0,.25); animation: modalIn .18s ease-out; }
+  @keyframes modalIn { from { opacity:0; transform:translateY(8px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+
+  .nav-link { font-size:13px; font-weight:500; padding:8px 14px; border-radius:8px; color:#71717a; cursor:pointer; user-select:none; }
+  .nav-link.active { background:#18181b; color:#fff; }
+  .nav-link[data-disabled="true"] { opacity:.4; cursor:not-allowed; }
+  .row-alert { background:#FEF2F2; }
+  .toast-wrap { position:fixed; bottom:20px; right:20px; z-index:2000; display:flex; flex-direction:column; gap:8px; width:min(380px, 90vw); }
+  .toast { background:#18181b; color:#fff; font-size:13px; padding:11px 14px; border-radius:10px; box-shadow:0 10px 25px -5px rgba(0,0,0,.3); display:flex; align-items:flex-start; gap:8px; opacity:0; transform:translateY(8px); transition:all .25s; }
+  .toast.show { opacity:1; transform:translateY(0); }
+  .toast.success { background:#15803D; }
+  .toast.error { background:#DC2626; }
+
+  .alert-critical { animation: alertIn .3s ease-out; }
+  @keyframes alertIn { from { opacity:0; transform:scaleY(.85) translateY(-4px); } to { opacity:1; transform:scaleY(1) translateY(0); } }
+
+  .progress-track { width:100%; height:10px; background:#e4e4e7; border-radius:999px; overflow:hidden; }
+  .progress-fill { height:100%; background:linear-gradient(90deg,#4338CA,#6366F1); border-radius:999px; transition: width .25s linear; }
+
+  .dropzone { border:1.5px dashed #d4d4d8; border-radius:12px; padding:22px; text-align:center; background:#fafafa; transition: all .15s; cursor:pointer; }
+  .dropzone:hover { border-color:#a1a1aa; background:#f4f4f5; }
+  .dropzone.drag { border-color:#4338CA; background:#EEF2FF; }
+  .s3-tag { font-size:10.5px; color:#a1a1aa; }
+
+  ::-webkit-scrollbar { width:8px; height:8px; } ::-webkit-scrollbar-thumb { background:#d4d4d8; border-radius:8px; }
+  .avatar { width:28px; height:28px; border-radius:999px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#fff; flex:none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* =========================================================================
+   ICONOS (estilo Lucide, implementados en línea vía SVG)
+   ========================================================================= */
+const ICONS = {
+  check: "M20 6 9 17l-5-5",
+  x: "M18 6 6 18M6 6l12 12",
+  chevronDown: "m6 9 6 6 6-6",
+  alertTriangle: "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0ZM12 9v4M12 17h.01",
+  loader: "M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83",
+  shieldOff: "M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18M4.73 4.73 4 5v7c0 6 8 10 8 10a20.3 20.3 0 0 0 5.62-4.38M1 1l22 22",
+  search: "m21 21-4.34-4.34M18 10.5A7.5 7.5 0 1 1 3 10.5a7.5 7.5 0 0 1 15 0Z",
+  eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z",
+  ban: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM4.9 4.9l14.2 14.2",
+  fileWarning: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6ZM14 2v6h6M12 12v3M12 18h.01",
+  inbox: "M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z",
+  upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",
+  fileSpreadsheet: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6ZM14 2v6h6M8 13h2M8 17h2M14 13h2M14 17h2",
+  download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
+  refreshCw: "M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
+  trash: "M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z",
+  plus: "M12 5v14M5 12h14",
+};
+
+function Icon({ name, className = "w-4 h-4", spin = false }) {
+  const d = ICONS[name];
+  if (!d) return null;
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round"
+      className={className + (spin ? " spin" : "")}>
+      <path d={d} />
+    </svg>
+  );
+}
+
+/* =========================================================================
+   REGISTRO GLOBAL DE CIERRE DE COMBOBOX (patrón anti-regresión)
+   ========================================================================= */
+const comboRegistry = new Set();
+document.addEventListener("click", function (e) {
+  if (e && e.target && e.target.closest && e.target.closest(".combo-w")) return;
+  comboRegistry.forEach(function (fn) { fn(); });
+});
+window.addEventListener("resize", function () { comboRegistry.forEach(function (fn) { fn(); }); });
+window.addEventListener("scroll", function () { comboRegistry.forEach(function (fn) { fn(); }); }, true);
+
+function Combobox({ id, value, onChange, options, placeholder, disabled }) {
+  // Por ahora, solo el selector de artículos admite búsqueda libre. La opción
+  // elegida continúa proviniendo exclusivamente del catálogo mostrado.
+  const searchable = id === "codigo-articulo";
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const triggerRef = useRef(null);
+
+  useEffect(function () {
+    const closeFn = function () { setOpen(false); };
+    comboRegistry.add(closeFn);
+    return function () { comboRegistry.delete(closeFn); };
+  }, []);
+
+  function computePosition() {
+    const el = triggerRef.current;
+    if (!el || !el.getBoundingClientRect) return;
+    const rect = el.getBoundingClientRect();
+    setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+  }
+
+  function handleOpen() {
+    if (disabled) return;
+    const wasOpen = open;
+    comboRegistry.forEach(function (fn) { fn(); });
+    if (!wasOpen) {
+      if (searchable) setQuery("");
+      computePosition();
+      setOpen(true);
+    }
+  }
+
+  function handlePick(ev, opt) {
+    if (ev) ev.stopPropagation();
+    if (opt.disabled) return;
+    if (onChange) onChange(opt);
+    setQuery("");
+    setOpen(false);
+  }
+
+  function normalizar(texto) {
+    return String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  }
+
+  const selected = options.find(function (o) { return o.value === value; });
+  const consulta = normalizar(query.trim());
+  const opcionesVisibles = !searchable || !consulta
+    ? options
+    : options.filter(function (opt) { return normalizar(opt.label).indexOf(consulta) !== -1; });
+  const valorInput = searchable && open ? query : (selected ? selected.label : "");
+
+  return (
+    <div className="combo-w">
+      <input
+        id={id}
+        ref={triggerRef}
+        className="combo-in"
+        readOnly={!searchable}
+        disabled={!!disabled}
+        value={valorInput}
+        placeholder={placeholder || "Seleccionar..."}
+        onFocus={handleOpen}
+        onClick={handleOpen}
+        onChange={function (ev) {
+          if (!searchable) return;
+          setQuery(ev.target.value);
+          if (!open) {
+            computePosition();
+            setOpen(true);
+          }
+        }}
+        onKeyDown={function (ev) {
+          if (ev.key === "Escape") {
+            setQuery("");
+            setOpen(false);
+          }
+        }}
+        style={searchable ? { cursor: "text" } : undefined}
+      />
+      <span className="chev"><Icon name="chevronDown" className="w-3.5 h-3.5" /></span>
+      {open && !disabled && (
+        <div className="combo-dd" style={{ top: pos.top, left: pos.left, width: pos.width }}>
+          {opcionesVisibles.map(function (opt) {
+            return (
+              <div key={opt.value} className={"combo-opt" + (opt.disabled ? " opacity-40 cursor-not-allowed" : "")}
+                title={opt.disabled ? "Fuera de su ámbito autorizado" : undefined}
+                onClick={function (ev) { handlePick(ev, opt); }}>
+                {opt.icon}
+                <span>{opt.label}</span>
+                {opt.disabled && <span className="badge badge-outline ml-auto" style={{ fontSize: 9 }}>Sin acceso</span>}
+              </div>
+            );
+          })}
+          {opcionesVisibles.length === 0 && (
+            <div className="px-3 py-2 text-xs text-zinc-400">No se encontraron artículos por código o nombre.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   DATOS DE SESIÓN SIMULADA (OIDC / SSO — AWS Cognito / Active Directory)
+   ========================================================================= */
+const IDENTITIES = [
+  {
+    email: "jperez@empresa.com", nombre: "Juan Pérez", rol: "OPERADOR", color: "#2563eb",
+    companiasPermitidas: ["Costa Rica", "Colombia"],
+    listasPermitidas: ["mayorista", "detalle", "corporativa"],
+  },
+  {
+    email: "mrodriguez@empresa.com", nombre: "María Rodríguez", rol: "APROBADOR", color: "#7c3aed",
+    companiasPermitidas: ["Colombia", "Venezuela"],
+    listasPermitidas: ["mayorista", "detalle"],
+  },
+  {
+    email: "cgomez@empresa.com", nombre: "Carlos Gómez", rol: "SIN_PERMISO", color: "#71717a",
+    companiasPermitidas: [],
+    listasPermitidas: [],
+  },
+];
+
+function initials(nombre) {
+  return nombre.split(" ").map(function (p) { return p[0]; }).join("").slice(0, 2).toUpperCase();
+}
+
+function IdentitySwitcher({ current, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const triggerRef = useRef(null);
+
+  useEffect(function () {
+    const closeFn = function () { setOpen(false); };
+    comboRegistry.add(closeFn);
+    return function () { comboRegistry.delete(closeFn); };
+  }, []);
+
+  function handleOpen() {
+    const wasOpen = open;
+    comboRegistry.forEach(function (fn) { fn(); });
+    if (!wasOpen) {
+      const el = triggerRef.current;
+      if (el && el.getBoundingClientRect) {
+        const rect = el.getBoundingClientRect();
+        setPos({ top: rect.bottom + 6, left: Math.max(12, rect.right - 300), width: 300 });
+      }
+      setOpen(true);
+    }
+  }
+
+  function pick(ev, identity) {
+    if (ev) ev.stopPropagation();
+    setOpen(false);
+    if (onChange) onChange(identity);
+  }
+
+  return (
+    <div className="combo-w">
+      <button ref={triggerRef} className="btn btn-outline" onFocus={handleOpen} onClick={handleOpen} style={{ paddingLeft: 8 }}>
+        <span className="avatar" style={{ background: current.color }}>{initials(current.nombre)}</span>
+        <span className="text-left">
+          <span className="block text-xs font-semibold leading-none">{current.nombre}</span>
+          <span className="block text-[10px] text-zinc-400 leading-none mt-0.5">{current.rol.replace("_", " ")}</span>
+        </span>
+        <Icon name="chevronDown" className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <div className="combo-dd" style={{ top: pos.top, left: pos.left, width: pos.width }}>
+          <div className="px-2.5 pt-1.5 pb-1 text-[11px] font-medium text-zinc-400 uppercase tracking-wide">Simular sesión SSO (OIDC)</div>
+          {IDENTITIES.map(function (identity) {
+            return (
+              <div key={identity.email} className="combo-opt items-start" onClick={function (ev) { pick(ev, identity); }}>
+                <span className="avatar mt-0.5" style={{ background: identity.color }}>{initials(identity.nombre)}</span>
+                <span>
+                  <span className="block font-medium">{identity.nombre}</span>
+                  <span className="block text-[11px] text-zinc-500">{identity.email}</span>
+                  <span className={"badge mt-1 " + (identity.rol === "OPERADOR" ? "badge-outline" : identity.rol === "APROBADOR" ? "badge-enproceso" : "badge-rechazado")}>
+                    {identity.rol === "SIN_PERMISO" ? "SIN PERMISO (403)" : "Rol: " + identity.rol}
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   CATÁLOGO DE ARTÍCULOS (fuente de verdad para validar filas de Excel)
+   Deliberadamente NO incluye "ART-999" para poder demostrar de forma real
+   la regla "código de artículo no existe en el catálogo activo".
+   ========================================================================= */
+const CATALOGO_ARTICULOS = {
+  "ART-231": { descripcion: "Refrigeradora 14 pies", precioActual: 10000, costoReposicion: 7200 },
+  "ART-455": { descripcion: "Microondas 1.2 CF", precioActual: 4200, costoReposicion: 2900 },
+  "ART-089": { descripcion: "Ventilador de Torre", precioActual: 9800, costoReposicion: 10450 },
+  "ART-120": { descripcion: "Licuadora 600W", precioActual: 3100, costoReposicion: 3300 },
+  "ART-344": { descripcion: "Plancha a Vapor", precioActual: 2500, costoReposicion: 1600 },
+  "ART-104": { descripcion: "Cafetera 12 Tazas", precioActual: 6200, costoReposicion: 4400 },
+};
+
+function fmtMonto(n) {
+  if (typeof n !== "number" || isNaN(n)) return String(n);
+  return "₡" + n.toLocaleString("es-CR", { maximumFractionDigits: 2 });
+}
+
+/* El usuario captura una variación porcentual. El sistema la traduce al
+   multiplicador que usa Softland: 10% → 1.10; -10% → 0.90. */
+function convertirPorcentajeAFactor(valor) {
+  const crudo = String(valor == null ? "" : valor).trim().replace(",", ".");
+  const porcentaje = parseFloat(crudo);
+  const esNumeroValido = crudo !== "" && !isNaN(porcentaje) && /^-?\d+(\.\d+)?$/.test(crudo);
+  const factor = esNumeroValido ? 1 + (porcentaje / 100) : null;
+  const valido = esNumeroValido && factor > 0 && factor <= 2;
+  return {
+    valido: valido,
+    porcentaje: porcentaje,
+    factor: factor,
+    causa: esNumeroValido
+      ? "El factor ingresado debe estar entre -99 y 100 (multiplicador resultante mayor que 0 y menor o igual a 2)."
+      : "Formato de factor inválido / valor no numérico.",
+  };
+}
+
+function textoFactorCalculado(factor) {
+  return factor != null && !isNaN(factor) ? factor.toFixed(2) : "—";
+}
+
+/* =========================================================================
+   MOTOR DE VALIDACIÓN FILA POR FILA (reglas de negocio reales, no simuladas)
+   modo "precio": el Excel trae el precio propuesto final.
+   modo "factor": las filas ya contienen el factor multiplicador derivado
+   de la variación porcentual capturada por el usuario.
+   ========================================================================= */
+function validarFila(row, modo) {
+  const articulo = CATALOGO_ARTICULOS[row.codigo];
+
+  if (!articulo) {
+    return {
+      valido: false,
+      precioActual: null,
+      precioPropuesto: null,
+      margenEst: null,
+      causa: "El código de artículo no existe en el catálogo activo.",
+    };
+  }
+
+  const crudo = String(row.valorPropuestoRaw).trim().replace(",", ".");
+  const numero = parseFloat(crudo);
+  const esNumeroValido = crudo !== "" && !isNaN(numero) && /^-?\d+(\.\d+)?$/.test(crudo);
+
+  if (!esNumeroValido) {
+    return {
+      valido: false,
+      precioActual: articulo.precioActual,
+      precioPropuesto: null,
+      margenEst: null,
+      causa: "Formato de celda inválido / valor no numérico.",
+    };
+  }
+
+  if (modo === "factor") {
+    if (numero <= 0 || numero > 2) {
+      return {
+        valido: false,
+        precioActual: articulo.precioActual,
+        precioPropuesto: Math.round(articulo.precioActual * numero),
+        margenEst: null,
+        causa: "El factor (" + numero + ") está fuera del rango permitido (mayor que 0 y menor o igual a 2).",
+      };
+    }
+  }
+
+  const precioPropuesto = modo === "factor" ? Math.round(articulo.precioActual * numero) : Math.round(numero);
+
+  if (precioPropuesto <= 0) {
+    return {
+      valido: false,
+      precioActual: articulo.precioActual,
+      precioPropuesto: precioPropuesto,
+      margenEst: null,
+      causa: "El precio propuesto resultante debe ser mayor que cero.",
+    };
+  }
+
+  if (precioPropuesto < articulo.costoReposicion) {
+    const margenNegativo = ((precioPropuesto - articulo.costoReposicion) / precioPropuesto) * 100;
+    return {
+      valido: false,
+      precioActual: articulo.precioActual,
+      precioPropuesto: precioPropuesto,
+      margenEst: margenNegativo,
+      causa: "El precio propuesto (" + fmtMonto(precioPropuesto) + ") genera un margen de " + margenNegativo.toFixed(1) + "% por debajo del costo en Softland.",
+    };
+  }
+
+  const margenEst = ((precioPropuesto - articulo.costoReposicion) / precioPropuesto) * 100;
+  return { valido: true, precioActual: articulo.precioActual, precioPropuesto: precioPropuesto, margenEst: margenEst, causa: null };
+}
+
+function construirFilaCompleta(row, modo) {
+  const articulo = CATALOGO_ARTICULOS[row.codigo];
+  const validacion = validarFila(row, modo);
+  return Object.assign({}, row, {
+    descripcion: articulo ? articulo.descripcion : "— Código no encontrado —",
+    validacion: validacion,
+  });
+}
+
+function construirFilaDesdeVariacion(row, modo) {
+  if (modo !== "factor") return construirFilaCompleta(row, modo);
+  const conversion = convertirPorcentajeAFactor(row.variacionPorcentaje);
+  const filaConFactor = Object.assign({}, row, {
+    valorPropuestoRaw: conversion.valido ? textoFactorCalculado(conversion.factor) : "",
+  });
+  const fila = construirFilaCompleta(filaConFactor, modo);
+  if (!conversion.valido && CATALOGO_ARTICULOS[row.codigo]) {
+    return Object.assign({}, fila, {
+      validacion: {
+        valido: false,
+        precioActual: CATALOGO_ARTICULOS[row.codigo].precioActual,
+        precioPropuesto: null,
+        margenEst: null,
+        causa: conversion.causa,
+      },
+    });
+  }
+  return fila;
+}
+
+/* Conjunto de datos de ejemplo determinístico: reproduce exactamente los
+   tres escenarios de error solicitados (costo, catálogo, formato). */
+function filasEjemploExcel(modo) {
+  const base = [
+    { fila: 5, codigo: "ART-231", variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "11000" },
+    { fila: 8, codigo: "ART-455", variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "4620" },
+    { fila: 12, codigo: "ART-089", variacionPorcentaje: modo === "factor" ? "-1" : null, valorPropuestoRaw: modo === "factor" ? "" : "9700" },
+    { fila: 45, codigo: "ART-999", variacionPorcentaje: modo === "factor" ? "5" : null, valorPropuestoRaw: modo === "factor" ? "" : "5000" },
+    { fila: 88, codigo: "ART-104", variacionPorcentaje: modo === "factor" ? "N/D" : null, valorPropuestoRaw: modo === "factor" ? "" : "N/D" },
+    { fila: 91, codigo: "ART-120", variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "3400" },
+    { fila: 102, codigo: "ART-344", variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "2750" },
+  ];
+  return base.map(function (r) { return modo === "factor" ? construirFilaDesdeVariacion(r, modo) : construirFilaCompleta(r, modo); });
+}
+
+/* Parseo de la plantilla oficial XLSX. El proceso de descuento masivo exige
+   Fila | Lista de Precio | Código Artículo | Factor; el usuario ingresa 10
+   para +10% y el sistema persiste el multiplicador 1.10. */
+function codigoListaDesdeArchivo(valor) {
+  const crudo = String(valor == null ? "" : valor).trim().toLowerCase();
+  return Object.keys(NOMBRES_LISTA).find(function (codigo) {
+    return codigo === crudo || NOMBRES_LISTA[codigo].toLowerCase() === crudo;
+  }) || null;
+}
+
+function construirFilaDescuentoMasivo(row) {
+  const fila = construirFilaDesdeVariacion(row, "factor");
+  const listaCodigo = codigoListaDesdeArchivo(row.listaCodigo);
+  if (!listaCodigo) {
+    return Object.assign({}, fila, {
+      listaCodigo: null,
+      lista: "—",
+      validacion: Object.assign({}, fila.validacion, {
+        valido: false,
+        causa: "La lista de precio no existe o no tiene un formato válido en la plantilla.",
+      }),
+    });
+  }
+  return Object.assign({}, fila, { listaCodigo: listaCodigo, lista: NOMBRES_LISTA[listaCodigo] });
+}
+
+function parsearArchivoExcel(file, modo, procesoKey) {
+  return new Promise(function (resolve, reject) {
+    const reader = new FileReader();
+    reader.onerror = function () { reject(new Error("No fue posible leer el archivo.")); };
+    reader.onload = function (e) {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
+        const dataRows = rows.slice(1).filter(function (r) { return r && r.length > 0; });
+        const esDescuentoMasivo = procesoKey === "DESCUENTO_LISTA_PRECIO";
+        const parsed = dataRows.map(function (r, idx) {
+          const filaArchivo = {
+            fila: (typeof r[0] === "number" ? r[0] : idx + 2),
+            listaCodigo: esDescuentoMasivo && r[1] !== undefined ? String(r[1]).trim() : null,
+            codigo: esDescuentoMasivo ? (r[2] !== undefined ? String(r[2]).trim() : "") : (r[1] !== undefined ? String(r[1]).trim() : ""),
+            variacionPorcentaje: esDescuentoMasivo ? (r[3] !== undefined ? r[3] : "") : (r[2] !== undefined ? r[2] : ""),
+            valorPropuestoRaw: esDescuentoMasivo ? (r[3] !== undefined ? r[3] : "") : (r[2] !== undefined ? r[2] : ""),
+          };
+          return esDescuentoMasivo ? construirFilaDescuentoMasivo(filaArchivo) : construirFilaDesdeVariacion(filaArchivo, modo);
+        });
+        resolve(parsed);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/* Plantilla oficial descargable para la carga masiva de descuento por lista y artículo. */
+function descargarPlantillaExcel(procesoKey) {
+  const esDescuentoMasivo = procesoKey === "DESCUENTO_LISTA_PRECIO";
+  const encabezado = esDescuentoMasivo
+    ? ["Fila", "Lista de Precio", "Codigo Articulo", "Factor"]
+    : ["Fila", "Codigo Articulo", "Factor"];
+  const filasEjemplo = esDescuentoMasivo
+    ? [[1, "mayorista", "ART-231", "10"], [2, "detalle", "ART-455", "-5"]]
+    : [[1, "ART-231", "10"], [2, "ART-455", "10"]];
+  const hoja = XLSX.utils.aoa_to_sheet([encabezado].concat(filasEjemplo));
+  hoja["!cols"] = esDescuentoMasivo ? [{ wch: 8 }, { wch: 20 }, { wch: 18 }, { wch: 16 }] : [{ wch: 8 }, { wch: 18 }, { wch: 16 }];
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, "Plantilla");
+  XLSX.writeFile(libro, "plantilla-" + procesoKey.toLowerCase() + ".xlsx");
+}
+
+/* Configuración de la lista base objetivo. En producción debe provenir del
+   backend; cambiarla aquí actualiza el aviso, el payload y la simulación sin
+   modificar la estructura de la pantalla ni la clave técnica del proceso. */
+const LISTA_BASE_OBJETIVO = {
+  codigo: "MAYOREOD",
+  nombre: "Lista Base",
+  nivelPrecio: "MayoreoD",
+  versionEstado: "APROBADA",
+};
+
+/* =========================================================================
+   PROCESOS — nombres amigables de negocio (sin modismos técnicos de BD)
+   ========================================================================= */
+const PROCESOS = {
+  FACTOR_PRECIO: {
+    label: "Gestión Global",
+    desc: "Ajuste global manual por lista de precio mediante un factor.",
+    ejecucion: "Actualización automatizada autorizada",
+    modo: "factor",
+  },
+  MAYOREOD_MASIVO: {
+    label: "Actualización Masiva de Precios",
+    desc: "Actualización crítica de la Lista Base configurada por Grupo de Artículos y versión aprobada.",
+    ejecucion: "Stored Procedure autorizado sobre Lista Base",
+    modo: "factor",
+  },
+  DESCUENTO_LISTA_PRECIO: {
+    label: "Descuento por Artículo",
+    desc: "Configuración manual o masiva de descuentos por lista y artículo autorizado.",
+    ejecucion: "Actualización automatizada autorizada",
+    modo: "factor",
+  },
+};
+
+/* =========================================================================
+   ÁMBITO / SCOPE (RF-02, RF-03): relaciones de referencia para las listas,
+   grupos y artículos. En producción provienen de Softland y se validan otra
+   vez en backend antes de ejecutar cualquier Stored Procedure.
+   ========================================================================= */
+const ARTICULOS_POR_LISTA = {
+  mayorista: ["ART-231", "ART-455", "ART-120", "ART-344"],
+  detalle: ["ART-231", "ART-089", "ART-120", "ART-104"],
+  corporativa: ["ART-231", "ART-455", "ART-344", "ART-104"],
+};
+const NOMBRES_LISTA = {
+  mayorista: "Lista Mayorista",
+  detalle: "Lista Detalle",
+  corporativa: "Lista Corporativa",
+};
+const GRUPOS_ARTICULOS = {
+  linea_blanca: { label: "Línea Blanca", articulos: ["ART-231", "ART-455", "ART-104"] },
+  hogar: { label: "Hogar", articulos: ["ART-089", "ART-120", "ART-344"] },
+};
+const IMPACTO_POR_LISTA = Object.keys(ARTICULOS_POR_LISTA).reduce(function (acumulado, lista) {
+  acumulado[lista] = ARTICULOS_POR_LISTA[lista].length;
+  return acumulado;
+}, {});
+
+function construirFilasMayoreodMasivo(codigoGrupo, factor, variacionPorcentaje) {
+  const grupo = GRUPOS_ARTICULOS[codigoGrupo];
+  const articulos = grupo ? grupo.articulos : [];
+  return articulos.map(function (codigoArticulo, indice) {
+    const fila = construirFilaCompleta({
+      fila: indice + 1,
+      codigo: codigoArticulo,
+      variacionPorcentaje: variacionPorcentaje,
+      valorPropuestoRaw: factor,
+    }, "factor");
+    return Object.assign({}, fila, {
+      lista: LISTA_BASE_OBJETIVO.nombre + " / " + LISTA_BASE_OBJETIVO.nivelPrecio,
+      grupoArticulo: codigoGrupo,
+    });
+  });
+}
+
+function construirFilasGestionGlobal(listaCodigo, factor, variacionPorcentaje) {
+  const codigosArticulo = ARTICULOS_POR_LISTA[listaCodigo] || Object.keys(CATALOGO_ARTICULOS);
+  const nombreLista = NOMBRES_LISTA[listaCodigo] || listaCodigo || "Lista seleccionada";
+  return codigosArticulo.map(function (codigoArticulo, indice) {
+    const fila = construirFilaCompleta({
+      fila: indice + 1,
+      codigo: codigoArticulo,
+      variacionPorcentaje: variacionPorcentaje,
+      valorPropuestoRaw: factor,
+    }, "factor");
+    return Object.assign({}, fila, { lista: nombreLista });
+  });
+}
+
+/* Verifica que la compañía y la lista seleccionadas estén dentro del
+   ámbito autorizado del usuario actual. Se evalúa tanto en la interfaz
+   (deshabilitando opciones fuera de ámbito) como en el envío (defensivo,
+   simulando la validación que aplicaría el backend). */
+function estaEnAmbito(user, compania, listaCodigo) {
+  if (!user) return false;
+  if (compania && user.companiasPermitidas.indexOf(compania) === -1) return false;
+  if (listaCodigo && user.listasPermitidas.indexOf(listaCodigo) === -1) return false;
+  return true;
+}
+
+function nuevoIdSolicitud(seq) { return "SOL-" + (10450 + seq); }
+
+function nuevoIdProcesoSP() {
+  const d = new Date();
+  const yyyy = d.getFullYear(), mm = String(d.getMonth() + 1).padStart(2, "0"), dd = String(d.getDate()).padStart(2, "0");
+  const rand = Math.floor(1000 + Math.random() * 8999);
+  return "#SP-" + yyyy + mm + dd + "-" + rand;
+}
+
+function nombreArchivoS3(prefijo, ext) {
+  const d = new Date();
+  const ts = d.toISOString().replace(/[-:T.]/g, "").slice(0, 14);
+  return prefijo + "-" + ts + "." + ext;
+}
+
+/* =========================================================================
+   GENERACIÓN DE CSV / EXCEL DE DESCARGA (reporte completo y filas fallidas)
+   ========================================================================= */
+function filasADataCsv(filas) {
+  const header = ["Fila", "Codigo_Articulo", "Descripcion", "Factor_Ingresado", "Factor_Aplicado", "Precio_Actual", "Precio_Propuesto", "Resultado", "Causa"];
+  const lines = filas.map(function (f) {
+    const v = f.validacion;
+    return [
+      f.fila, f.codigo, f.descripcion, f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
+      v.precioActual != null ? v.precioActual : "",
+      v.precioPropuesto != null ? v.precioPropuesto : "",
+      v.valido ? "OK" : "ERROR",
+      v.causa ? v.causa.replace(/"/g, "'") : "",
+    ].map(function (val) { return '"' + String(val).replace(/"/g, "'") + '"'; }).join(",");
+  });
+  return [header.join(",")].concat(lines).join("\n");
+}
+
+function descargarTexto(nombre, contenido, mime) {
+  const blob = new Blob([contenido], { type: mime || "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* Exportación real a .xlsx (no CSV) para las filas con error, usando la
+   misma librería SheetJS ya cargada para la lectura de plantillas. */
+function descargarExcelFilas(nombre, filas) {
+  const encabezado = ["Fila", "Codigo_Articulo", "Descripcion", "Factor_Ingresado", "Factor_Aplicado", "Precio_Anterior", "Precio_Nuevo_Procesado", "Estado", "Causa_Error"];
+  const datos = filas.map(function (f) {
+    const v = f.validacion;
+    return [
+      f.fila, f.codigo, f.descripcion, f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
+      v.precioActual != null ? v.precioActual : "",
+      v.precioPropuesto != null ? v.precioPropuesto : "",
+      v.valido ? "Exitoso" : "Error",
+      v.causa || "",
+    ];
+  });
+  const hoja = XLSX.utils.aoa_to_sheet([encabezado].concat(datos));
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, "Filas con error");
+  XLSX.writeFile(libro, nombre);
+}
+
+/* =========================================================================
+   BADGES DE ESTADO
+   ========================================================================= */
+function EstadoBadge({ estado }) {
+  const map = {
+    PENDIENTE: { cls: "badge-pendiente", dot: "#B45309", label: "Pendiente de aprobación", pulse: false },
+    EN_PROCESO: { cls: "badge-enproceso", dot: "#4338CA", label: "En proceso", pulse: true },
+    PROCESADO: { cls: "badge-aprobado", dot: "#15803D", label: "Procesado", pulse: false },
+    PROCESADO_CON_ERRORES: { cls: "badge-conerrores", dot: "#C2410C", label: "Procesado con errores", pulse: false },
+    RECHAZADO: { cls: "badge-rechazado", dot: "#B91C1C", label: "Rechazado", pulse: false },
+    ERROR_EJECUCION: { cls: "badge-error", dot: null, label: "Error de ejecución", pulse: false },
+  };
+  const cfg = map[estado] || { cls: "badge-outline", dot: null, label: estado, pulse: false };
+  return (
+    <span className={"badge " + cfg.cls}>
+      {cfg.dot && <span className={"dot" + (cfg.pulse ? " dot-pulse" : "")} style={{ background: cfg.dot }}></span>}
+      {estado === "ERROR_EJECUCION" && <Icon name="alertTriangle" className="w-3 h-3" />}
+      {cfg.label}
+    </span>
+  );
+}
+
+/* =========================================================================
+   TOASTS
+   ========================================================================= */
+function Toaster({ toasts }) {
+  return (
+    <div className="toast-wrap">
+      {toasts.map(function (t) {
+        return (
+          <div key={t.id} className={"toast show " + (t.variant || "")}>
+            <Icon name={t.variant === "error" ? "x" : "check"} className="w-4 h-4 mt-0.5" />
+            <span>{t.message}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* =========================================================================
+   HEADER
+   ========================================================================= */
+function Header({ user, onChangeUser, onNav, activeNav }) {
+  return (
+    <header className="border-b border-border bg-white sticky top-0 z-40">
+      <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap combo-parent">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-zinc-900 flex items-center justify-center text-white font-bold text-sm">GP</div>
+          <div>
+            <p className="text-sm font-semibold leading-none">Gestión Masiva de Precios</p>
+            <p className="text-[11px] text-zinc-500 leading-none mt-0.5">Integración con Softland · Prototipo interactivo</p>
+          </div>
+        </div>
+
+        {user && user.rol !== "SIN_PERMISO" && (
+          <nav className="flex items-center gap-1 flex-wrap">
+            <span className={"nav-link" + (activeNav === "nueva" ? " active" : "")} onClick={function () { onNav("nueva"); }}>
+              Nueva Solicitud
+            </span>
+            <span className={"nav-link" + (activeNav === "bandeja" ? " active" : "")} onClick={function () { onNav("bandeja"); }}>
+              Bandeja de Aprobación
+            </span>
+            <span className={"nav-link" + (activeNav === "auditoria" ? " active" : "")} onClick={function () { onNav("auditoria"); }}>
+              Auditoría
+            </span>
+          </nav>
+        )}
+
+        <IdentitySwitcher current={user} onChange={onChangeUser} />
+      </div>
+    </header>
+  );
+}
+
+/* =========================================================================
+   VISTA 403 — SIN PERMISO
+   ========================================================================= */
+function Vista403({ user }) {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center px-6">
+      <div className="card p-8 max-w-md w-full text-center">
+        <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4">
+          <Icon name="shieldOff" className="w-7 h-7" />
+        </div>
+        <h1 className="text-xl font-semibold">403 — Acceso Denegado</h1>
+        <p className="text-sm text-zinc-500 mt-2">
+          La cuenta <span className="mono text-zinc-700">{user.email}</span> inició sesión correctamente, pero no pertenece a
+          ningún grupo de acceso autorizado para este módulo.
+        </p>
+        <div className="mt-4 rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-3 text-left text-xs text-zinc-600">
+          <p><b>Inicio de sesión:</b> Corporativo (SSO) — Active Directory federado</p>
+          <p className="mt-1"><b>Grupos requeridos:</b> Operador de Precios o Aprobador de Precios</p>
+          <p className="mt-1"><b>Grupos de la cuenta:</b> Usuario General</p>
+        </div>
+        <p className="text-[11px] text-zinc-400 mt-4">Si considera que esto es un error, solicite acceso a través del portal corporativo de gestión de accesos.</p>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   TABLA DE PREVISUALIZACIÓN — compartida entre Operador y Aprobador
+   Columnas: Fila Excel | Código Artículo | Lista | Descripción | Precio Actual |
+   Factor ingresado | Factor Aplicado | Precio Propuesto | Margen Est. | Validación
+   ========================================================================= */
+function TablaPrevisualizacion({ filas, compacta }) {
+  const UMBRAL_PAGINACION = 5000;
+  const FILAS_POR_PAGINA = 100;
+  const [paginaActual, setPaginaActual] = useState(1);
+  const conError = filas.filter(function (f) { return !f.validacion.valido; }).length;
+  const usaPaginacion = filas.length > UMBRAL_PAGINACION;
+  const totalPaginas = usaPaginacion ? Math.ceil(filas.length / FILAS_POR_PAGINA) : 1;
+  const paginaSegura = Math.min(paginaActual, totalPaginas);
+  const inicio = usaPaginacion ? (paginaSegura - 1) * FILAS_POR_PAGINA : 0;
+  const fin = usaPaginacion ? Math.min(inicio + FILAS_POR_PAGINA, filas.length) : filas.length;
+  const filasVisibles = usaPaginacion ? filas.slice(inicio, fin) : filas;
+  const erroresVisibles = filasVisibles.filter(function (f) { return !f.validacion.valido; });
+
+  useEffect(function () {
+    setPaginaActual(1);
+  }, [filas]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <p className="text-xs text-zinc-500">
+          {filas.length} fila(s) evaluada(s){conError > 0 ? " · " + conError + " con hallazgo" : ""}
+          {usaPaginacion ? " · Vista detallada paginada para carga masiva" : ""}
+        </p>
+        {usaPaginacion && (
+          <p className="text-xs text-zinc-500 mono">Mostrando {inicio + 1}–{fin} de {filas.length} registros</p>
+        )}
+      </div>
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs text-zinc-500">
+            <tr>
+              <th className="text-left font-medium px-3 py-2">Fila Excel</th>
+              <th className="text-left font-medium px-3 py-2">Código Artículo</th>
+              <th className="text-left font-medium px-3 py-2">Lista de Precio</th>
+              <th className="text-left font-medium px-3 py-2">Descripción</th>
+              <th className="text-right font-medium px-3 py-2">Precio Actual</th>
+              <th className="text-right font-medium px-3 py-2">Factor ingresado</th>
+              <th className="text-right font-medium px-3 py-2">Factor aplicado</th>
+              <th className="text-right font-medium px-3 py-2">Precio Propuesto</th>
+              <th className="text-right font-medium px-3 py-2">Margen Est.</th>
+              <th className="text-left font-medium px-3 py-2">Validación</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {filasVisibles.map(function (f) {
+              const v = f.validacion;
+              return (
+                <tr key={f.fila + "-" + f.codigo} className={!v.valido ? "row-alert" : ""}>
+                  <td className="px-3 py-2 mono">{f.fila}</td>
+                  <td className="px-3 py-2 mono">{f.codigo}</td>
+                  <td className="px-3 py-2">{f.lista || "—"}</td>
+                  <td className="px-3 py-2">{f.descripcion}</td>
+                  <td className="px-3 py-2 text-right mono">{v.precioActual != null ? fmtMonto(v.precioActual) : "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{f.variacionPorcentaje != null && f.variacionPorcentaje !== "" ? f.variacionPorcentaje : "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{f.valorPropuestoRaw || "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{v.precioPropuesto != null ? fmtMonto(v.precioPropuesto) : "—"}</td>
+                  <td className={"px-3 py-2 text-right " + (v.margenEst != null && v.margenEst < 0 ? "text-red-700 font-medium" : "")}>
+                    {v.margenEst != null ? v.margenEst.toFixed(1) + "%" : "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    {v.valido
+                      ? <span className="badge badge-ok"><Icon name="check" className="w-3 h-3" /> Válida</span>
+                      : <span className="badge badge-costo" title={v.causa}><Icon name="alertTriangle" className="w-3 h-3" /> Con hallazgo</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {usaPaginacion && (
+        <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-zinc-500">Página {paginaSegura} de {totalPaginas} · {FILAS_POR_PAGINA} registros por página</p>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn btn-outline" disabled={paginaSegura === 1}
+              onClick={function () { setPaginaActual(function (p) { return Math.max(1, p - 1); }); }}>
+              Anterior
+            </button>
+            <button type="button" className="btn btn-outline" disabled={paginaSegura === totalPaginas}
+              onClick={function () { setPaginaActual(function (p) { return Math.min(totalPaginas, p + 1); }); }}>
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
+      {!compacta && conError > 0 && (
+        <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+          <p className="text-xs font-semibold text-red-800 mb-1.5">
+            {usaPaginacion ? "Hallazgos de la página actual:" : "Detalle de hallazgos encontrados en la previsualización:"}
+          </p>
+          <ul className="text-xs text-red-700 space-y-1">
+            {erroresVisibles.map(function (f) {
+              return <li key={f.fila}>Fila {f.fila} [{f.codigo}]: {f.validacion.causa}</li>;
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   ZONA DE CARGA DE ARCHIVO XLSX (simulación de subida a S3)
+   ========================================================================= */
+function ExcelUploader({ disabled, modo, procesoKey, onParsed, onError }) {
+  const [drag, setDrag] = useState(false);
+  const [fileName, setFileName] = useState(null);
+  const [s3Key, setS3Key] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef(null);
+
+  function procesar(file) {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (ext !== "xlsx") {
+      onError("Formato no soportado. Suba únicamente la plantilla oficial .xlsx.");
+      return;
+    }
+    setLoading(true);
+    setFileName(file.name);
+    parsearArchivoExcel(file, modo, procesoKey).then(function (filas) {
+      const key = "erp-precios-uploads/" + nombreArchivoS3("carga", ext);
+      setS3Key(key);
+      setLoading(false);
+      onParsed(filas, file.name, key);
+    }).catch(function () {
+      setLoading(false);
+      onError("No fue posible leer el archivo. Verifique que respete el formato de la plantilla oficial.");
+    });
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setDrag(false);
+    if (disabled) return;
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    procesar(file);
+  }
+
+  return (
+    <div>
+      <div
+        className={"dropzone" + (drag ? " drag" : "") + (disabled ? " opacity-50 pointer-events-none" : "")}
+        onDragOver={function (e) { e.preventDefault(); setDrag(true); }}
+        onDragLeave={function () { setDrag(false); }}
+        onDrop={handleDrop}
+        onClick={function () { if (!disabled && inputRef.current) inputRef.current.click(); }}
+      >
+        <input ref={inputRef} type="file" accept=".xlsx" className="hidden" disabled={disabled}
+          onChange={function (e) { procesar(e.target.files && e.target.files[0]); }} />
+        <Icon name="upload" className="w-6 h-6 mx-auto mb-2 text-zinc-400" />
+        {loading ? (
+          <p className="text-sm text-zinc-500 flex items-center justify-center gap-2"><Icon name="loader" className="w-4 h-4" spin /> Leyendo archivo…</p>
+        ) : fileName ? (
+          <div>
+            <p className="text-sm font-medium text-zinc-700 flex items-center justify-center gap-1.5"><Icon name="fileSpreadsheet" className="w-4 h-4" /> {fileName}</p>
+            {s3Key && <p className="s3-tag mt-1 mono">s3://erp-precios-uploads/{s3Key.split("/")[1]}</p>}
+            <p className="text-xs text-zinc-400 mt-1">Haga clic para reemplazar el archivo.</p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm font-medium text-zinc-700">Arrastre aquí su plantilla, o haga clic para seleccionarla</p>
+            <p className="text-xs text-zinc-400 mt-1">Formato admitido: .xlsx según la plantilla oficial del proceso</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   PANTALLA: NUEVA SOLICITUD (OPERADOR) — con soporte de solo-lectura
+   "Gestión Global" se captura manualmente por lista y factor. "Actualización
+   Masiva de Precios" actualiza exclusivamente la lista base configurada por
+   Grupo de Artículos y versión aprobada. "Descuento por Artículo" permite captura
+   manual o carga masiva XLSX por lista, artículo y factor. Las cargas son
+   variables —incluidas cargas de hasta 12,000 registros— y, al superar 5,000
+   filas, se muestran paginadas en la previsualización para no sobrecargar la interfaz.
+
+   Ámbito (RF-02 / RF-03): toda opción de Compañía y Lista de Precio se
+   filtra según companiasPermitidas/listasPermitidas del usuario actual, y
+   el envío se bloquea de forma defensiva si algún valor quedara fuera de
+   ámbito (equivalente a la validación que debe repetir el backend).
+   ========================================================================= */
+function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
+  const [tab, setTab] = useState("FACTOR_PRECIO");
+  const [modalidad, setModalidad] = useState("manual"); // manual | excel
+  const [compania, setCompania] = useState("");
+  const [nivel, setNivel] = useState("");
+  const [codigoArticulo, setCodigoArticulo] = useState("");
+  const [grupoArticulo, setGrupoArticulo] = useState("");
+  const [nivelLista, setNivelLista] = useState(""); // reservado para edición manual de lista
+  const [factor, setFactor] = useState("");
+  const [itemsManual, setItemsManual] = useState([]); // artículos o listas agregados uno a uno con "+"
+  const [errorItem, setErrorItem] = useState(null);
+  const [ack, setAck] = useState(false);
+  const [simulado, setSimulado] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [filasExcel, setFilasExcel] = useState(null);
+  const [archivoNombre, setArchivoNombre] = useState(null);
+  const [archivoS3Key, setArchivoS3Key] = useState(null);
+  const [errorCarga, setErrorCarga] = useState(null);
+
+  const companiaOpts = COMPANIAS.map(function (c) {
+    return { value: c, label: c, disabled: !estaEnAmbito(currentUser, c, null) };
+  });
+  const nivelOptsBase = [
+    { value: "mayorista", label: "Lista Mayorista" },
+    { value: "detalle", label: "Lista Detalle" },
+    { value: "corporativa", label: "Lista Corporativa" },
+  ];
+  const nivelOpts = nivelOptsBase.filter(function (o) { return estaEnAmbito(currentUser, null, o.value); });
+  const articuloOpts = Object.keys(CATALOGO_ARTICULOS).map(function (cod) {
+    return { value: cod, label: cod + " — " + CATALOGO_ARTICULOS[cod].descripcion };
+  });
+  const grupoArticuloOpts = Object.keys(GRUPOS_ARTICULOS).map(function (codigo) {
+    return { value: codigo, label: GRUPOS_ARTICULOS[codigo].label + " (" + GRUPOS_ARTICULOS[codigo].articulos.length + " artículos)" };
+  });
+
+  useEffect(function () {
+    setSimulado(false);
+    setSent(false);
+    setFilasExcel(null);
+    setArchivoNombre(null);
+    setArchivoS3Key(null);
+    setErrorCarga(null);
+    setItemsManual([]);
+    setErrorItem(null);
+    setGrupoArticulo("");
+    setModalidad("manual");
+  }, [tab]);
+
+  useEffect(function () {
+    setSimulado(false);
+    setSent(false);
+  }, [compania, nivel, codigoArticulo, grupoArticulo, nivelLista, factor, ack, modalidad, itemsManual]);
+
+  const conversionFactor = convertirPorcentajeAFactor(factor);
+  const factorMultiplicador = conversionFactor.valido ? conversionFactor.factor : null;
+  const factorInvalido = factor !== "" && !conversionFactor.valido;
+  const modo = PROCESOS[tab].modo;
+  const esDescuentoArticulo = tab === "DESCUENTO_LISTA_PRECIO";
+  const esListaBase = tab === "MAYOREOD_MASIVO";
+  const esGestionGlobal = tab === "FACTOR_PRECIO";
+  const articuloSeleccionado = esDescuentoArticulo ? CATALOGO_ARTICULOS[codigoArticulo] : null;
+  const grupoSeleccionado = esListaBase ? GRUPOS_ARTICULOS[grupoArticulo] : null;
+  const codigosYaAgregados = itemsManual.map(function (it) { return it.codigo; });
+
+  // MAYOREOD es exclusivo de la Lista Base; la carga masiva pertenece a Descuento por Artículo.
+  const permiteExcel = esDescuentoArticulo;
+  const companiaFueraDeAmbito = !!compania && !estaEnAmbito(currentUser, compania, null);
+  const listaFueraDeAmbito = !!nivel && !estaEnAmbito(currentUser, null, nivel);
+  const conteoErroresExcel = filasExcel ? filasExcel.filter(function (f) { return !f.validacion.valido; }).length : 0;
+  const filasExcelFueraDeAmbito = esDescuentoArticulo && modalidad === "excel" && filasExcel && filasExcel.some(function (f) {
+    return !f.listaCodigo || !estaEnAmbito(currentUser, null, f.listaCodigo);
+  });
+
+  function agregarItem() {
+    const conversionItem = convertirPorcentajeAFactor(factor);
+    if (!codigoArticulo || factorInvalido || factor === "") return;
+    if (codigosYaAgregados.indexOf(codigoArticulo) !== -1) {
+      setErrorItem("El artículo " + codigoArticulo + " ya fue agregado a esta solicitud.");
+      return;
+    }
+    setErrorItem(null);
+    setItemsManual(function (list) {
+      return list.concat([{
+        fila: list.length + 1,
+        codigo: codigoArticulo,
+        variacionPorcentaje: conversionItem.porcentaje,
+        valorPropuestoRaw: textoFactorCalculado(conversionItem.factor),
+      }]);
+    });
+    setCodigoArticulo("");
+    setFactor("");
+  }
+
+  function quitarItem(codigo) {
+    setItemsManual(function (list) {
+      return list.filter(function (it) { return it.codigo !== codigo; }).map(function (it, idx) { return Object.assign({}, it, { fila: idx + 1 }); });
+    });
+  }
+
+  function camposManualCompletos() {
+    if (!compania || companiaFueraDeAmbito) return false;
+    if (esListaBase) return !!grupoArticulo && !factorInvalido && factor !== "" && ack;
+    if (esDescuentoArticulo) return itemsManual.length > 0 && !!nivel && !listaFueraDeAmbito;
+    return !!nivel && !factorInvalido && factor !== "" && !listaFueraDeAmbito;
+  }
+
+  function camposCompletos() {
+    if (modalidad === "excel" && permiteExcel) {
+      return !!filasExcel && filasExcel.length > 0 && conteoErroresExcel === 0 && !filasExcelFueraDeAmbito && !!compania && !companiaFueraDeAmbito;
+    }
+    return camposManualCompletos();
+  }
+
+  function puedeEnviar() {
+    return simulado && camposCompletos() && !readOnly;
+  }
+
+  function handleSimular() {
+    if (!camposCompletos()) return;
+    if (modalidad === "manual") {
+      if (esListaBase) {
+        setFilasExcel(construirFilasMayoreodMasivo(grupoArticulo, textoFactorCalculado(factorMultiplicador), conversionFactor.porcentaje));
+      } else if (esDescuentoArticulo) {
+        // Carga individual: cada fila corresponde a un artículo agregado con
+        // "+", con los mismos campos que persistirá dbo.DESCUENTO_LISTA_PRECIO.
+        setFilasExcel(itemsManual.map(function (it) { return construirFilaCompleta(it, modo); }));
+      } else if (esGestionGlobal) {
+        setFilasExcel(construirFilasGestionGlobal(nivel, textoFactorCalculado(factorMultiplicador), conversionFactor.porcentaje));
+      }
+    }
+    setSimulado(true);
+  }
+
+  function handleArchivoParsed(filas, nombre, s3Key) {
+    const filasValidadas = esDescuentoArticulo ? filas.map(function (fila) {
+      if (fila.listaCodigo && estaEnAmbito(currentUser, null, fila.listaCodigo)) return fila;
+      return Object.assign({}, fila, {
+        validacion: Object.assign({}, fila.validacion, {
+          valido: false,
+          causa: "La lista de precio de esta fila no está dentro de su ámbito autorizado.",
+        }),
+      });
+    }) : filas;
+    setFilasExcel(filasValidadas);
+    setArchivoNombre(nombre);
+    setArchivoS3Key(s3Key);
+    setErrorCarga(null);
+    setSimulado(false);
+  }
+
+  function resetFormulario() {
+    setSent(false);
+    setSimulado(false);
+    setFactor("");
+    setCodigoArticulo("");
+    setGrupoArticulo("");
+    setNivelLista("");
+    setAck(false);
+    setFilasExcel(null);
+    setArchivoNombre(null);
+    setArchivoS3Key(null);
+    setItemsManual([]);
+    setErrorItem(null);
+  }
+
+  function handleEnviar() {
+    if (!puedeEnviar() || sending) return;
+    // Validación defensiva de ámbito (RF-03): la interfaz nunca debe poder
+    // enviar una solicitud fuera del ámbito autorizado del usuario, incluso
+    // si el estado del formulario quedara inconsistente.
+    if (!estaEnAmbito(currentUser, compania, esDescuentoArticulo && modalidad === "manual" ? nivel : null) || filasExcelFueraDeAmbito) {
+      setErrorItem("Esta solicitud está fuera de su ámbito autorizado (compañía o lista). No puede enviarse.");
+      return;
+    }
+    setSending(true);
+    setTimeout(function () {
+      onSubmit({
+        proceso: tab,
+        modalidad: modalidad,
+        compania: compania,
+        parametros: {
+          nivel: nivel,
+          factor: (esGestionGlobal || esListaBase) && factorMultiplicador != null ? textoFactorCalculado(factorMultiplicador) : null,
+          variacionPorcentaje: (esGestionGlobal || esListaBase) && factor !== "" ? conversionFactor.porcentaje : null,
+          listaBase: esListaBase ? LISTA_BASE_OBJETIVO.codigo : null,
+          nivelPrecio: esListaBase ? LISTA_BASE_OBJETIVO.nivelPrecio : null,
+          version: esListaBase ? "Se resuelve en backend: " + LISTA_BASE_OBJETIVO.versionEstado : null,
+          grupoArticulos: esListaBase ? grupoArticulo : null,
+          articulos: esDescuentoArticulo ? (modalidad === "excel" ? filasExcel : itemsManual) : null,
+        },
+        filas: filasExcel || [],
+        archivoNombre: archivoNombre,
+        archivoS3Key: archivoS3Key,
+      });
+      setSending(false);
+      setSent(true);
+      setTimeout(resetFormulario, 1300);
+    }, 850);
+  }
+
+  return (
+    <div className="card p-6 combo-parent">
+      {readOnly && (
+        <div className="mb-5 flex items-center gap-2 rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-xs text-zinc-600">
+          <Icon name="eye" className="w-4 h-4 text-zinc-400" />
+          Modo lectura: su rol (Aprobador) no puede crear ni enviar solicitudes. Esta vista se muestra únicamente como referencia.
+        </div>
+      )}
+
+      <div className="tabs-list mb-6">
+        {Object.keys(PROCESOS).map(function (key) {
+          return (
+            <span key={key} className={"tab-trigger" + (tab === key ? " active" : "")} onClick={function () { setTab(key); }}>
+              {PROCESOS[key].label}
+            </span>
+          );
+        })}
+      </div>
+
+      <h3 className="text-sm font-semibold mb-1">{PROCESOS[tab].desc}</h3>
+
+      <div className="max-w-xs mb-4">
+        <label className="block text-xs font-medium text-zinc-500 mb-1.5">Compañía</label>
+        <Combobox id={"compania-" + tab} value={compania} onChange={function (o) { setCompania(o.value); }} options={companiaOpts} placeholder="Seleccionar compañía..." disabled={readOnly} />
+        {companiaFueraDeAmbito && <p className="text-[11px] text-red-600 mt-1">Esta compañía no está dentro de su ámbito autorizado.</p>}
+        {companiaOpts.every(function (o) { return o.disabled; }) && <p className="text-[11px] text-red-600 mt-1">No tiene compañías autorizadas para este proceso.</p>}
+      </div>
+
+      {esDescuentoArticulo && (
+        <div className="flex items-center gap-2 my-4">
+          <button type="button" className={"subtab" + (modalidad === "manual" ? " active" : "")} disabled={readOnly}
+            onClick={function () { setModalidad("manual"); }}>
+            Captura Manual
+          </button>
+          <button type="button" className={"subtab" + (modalidad === "excel" ? " active" : "")} disabled={readOnly}
+            onClick={function () { setModalidad("excel"); }}>
+            Carga Masiva por Plantilla Excel
+          </button>
+        </div>
+      )}
+
+      {modalidad === "manual" && tab === "FACTOR_PRECIO" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Lista de Precio</label>
+            <Combobox id={"nivel-" + tab} value={nivel} onChange={function (o) { setNivel(o.value); }} options={nivelOpts} placeholder="Seleccionar lista..." disabled={readOnly} />
+            {nivelOpts.length === 0 && <p className="text-[11px] text-red-600 mt-1">No tiene listas autorizadas.</p>}
+            <p className="text-[11px] text-zinc-400 mt-1">La versión activa de la lista se valida automáticamente contra la base de datos; no requiere selección manual.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor</label>
+            <input type="number" step="0.01" min="-99" max="100" value={factor} disabled={readOnly}
+              onChange={function (e) { setFactor(e.target.value); }}
+              placeholder="Ej. 10"
+              className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 disabled:bg-zinc-50 disabled:text-zinc-400" />
+            {!factorInvalido && factor !== "" && <p className="text-[11px] text-zinc-500 mt-1">Factor calculado: <b className="mono">{textoFactorCalculado(factorMultiplicador)}</b></p>}
+            {factorInvalido && <p className="text-[11px] text-red-600 mt-1">{conversionFactor.causa}</p>}
+          </div>
+        </div>
+      )}
+
+      {modalidad === "manual" && esDescuentoArticulo && (
+        <div className="space-y-4 mb-4">
+          <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-3 py-2 text-[11px] text-zinc-500">
+            Agregue uno o más artículos con su factor.
+          </div>
+
+          <div className="max-w-md">
+            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Lista de Precio</label>
+            <Combobox id={"nivel-" + tab} value={nivel} onChange={function (o) { setNivel(o.value); }} options={nivelOpts} placeholder="Seleccionar lista..." disabled={readOnly} />
+            {nivelOpts.length === 0 && <p className="text-[11px] text-red-600 mt-1">No tiene listas autorizadas.</p>}
+          </div>
+
+          <div className="combo-parent">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-zinc-500 mb-1.5">Código de Artículo</label>
+                <Combobox id="codigo-articulo" value={codigoArticulo} onChange={function (o) { setCodigoArticulo(o.value); setErrorItem(null); }} options={articuloOpts} placeholder="Buscar artículo..." disabled={readOnly} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor</label>
+                <input type="number" step="0.01" min="-99" max="100" value={factor} disabled={readOnly}
+                  onChange={function (e) { setFactor(e.target.value); }}
+                  placeholder="Ej. 10"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 disabled:bg-zinc-50 disabled:text-zinc-400" />
+              </div>
+              <div className="pt-5">
+                <button type="button" className="btn btn-outline w-full" disabled={readOnly || !codigoArticulo || factorInvalido || factor === ""}
+                  onClick={agregarItem}>
+                  <Icon name="plus" className="w-3.5 h-3.5" /> Agregar
+                </button>
+              </div>
+            </div>
+
+            {articuloSeleccionado && (
+              <div className="grid grid-cols-3 gap-3 mt-3">
+                <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Descripción</p><p className="text-xs font-medium">{articuloSeleccionado.descripcion}</p></div>
+                <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Precio Actual</p><p className="text-xs font-medium mono">{fmtMonto(articuloSeleccionado.precioActual)}</p></div>
+                <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Precio Propuesto</p><p className="text-xs font-medium mono">{!factorInvalido && factor !== "" ? fmtMonto(Math.round(articuloSeleccionado.precioActual * factorMultiplicador)) : "—"}</p></div>
+              </div>
+            )}
+
+            {!factorInvalido && factor !== "" && <p className="text-[11px] text-zinc-500 mt-2">Factor calculado: <b className="mono">{textoFactorCalculado(factorMultiplicador)}</b></p>}
+            {factorInvalido && <p className="text-[11px] text-red-600 mt-2">{conversionFactor.causa}</p>}
+            {errorItem && <p className="text-[11px] text-red-600 mt-2">{errorItem}</p>}
+          </div>
+
+          {itemsManual.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-zinc-600 mb-2">Artículos agregados a esta solicitud ({itemsManual.length})</p>
+              <div className="card overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-zinc-50 text-zinc-500">
+                    <tr>
+                      <th className="text-left font-medium px-3 py-2">#</th>
+                      <th className="text-left font-medium px-3 py-2">Código</th>
+                      <th className="text-left font-medium px-3 py-2">Descripción</th>
+                      <th className="text-right font-medium px-3 py-2">Factor ingresado</th>
+                      <th className="text-right font-medium px-3 py-2">Factor aplicado</th>
+                      <th className="text-right font-medium px-3 py-2">Quitar</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {itemsManual.map(function (it, idx) {
+                      const art = CATALOGO_ARTICULOS[it.codigo];
+                      return (
+                        <tr key={it.codigo}>
+                          <td className="px-3 py-2 mono">{idx + 1}</td>
+                          <td className="px-3 py-2 mono">{it.codigo}</td>
+                          <td className="px-3 py-2">{art ? art.descripcion : "—"}</td>
+                          <td className="px-3 py-2 text-right mono">{it.variacionPorcentaje}</td>
+                          <td className="px-3 py-2 text-right mono">{it.valorPropuestoRaw}</td>
+                          <td className="px-3 py-2 text-right">
+                            <button type="button" className="btn btn-ghost" disabled={readOnly} onClick={function () { quitarItem(it.codigo); }}>
+                              <Icon name="trash" className="w-3.5 h-3.5 text-red-500" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {modalidad === "manual" && esListaBase && (
+        <div className="space-y-4 mb-4">
+          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+            <p className="font-semibold">⚠️ Atención: esta actualización afectará directamente a la Lista Base ({LISTA_BASE_OBJETIVO.nombre} / {LISTA_BASE_OBJETIVO.codigo}) para la versión actualmente {LISTA_BASE_OBJETIVO.versionEstado}.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+            <div>
+              <label className="block text-xs font-medium text-zinc-500 mb-1.5">Grupo de Artículos</label>
+              <Combobox id="grupo-articulos-mayoreod" value={grupoArticulo} onChange={function (o) { setGrupoArticulo(o.value); setErrorItem(null); }} options={grupoArticuloOpts} placeholder="Seleccionar grupo..." disabled={readOnly} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor</label>
+              <input type="number" step="0.01" min="-99" max="100" value={factor} disabled={readOnly}
+                onChange={function (e) { setFactor(e.target.value); }}
+                placeholder="Ej. 10"
+                className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 disabled:bg-zinc-50 disabled:text-zinc-400" />
+              {!factorInvalido && factor !== "" && <p className="text-[11px] text-zinc-500 mt-1">Factor aplicado: <b className="mono">{textoFactorCalculado(factorMultiplicador)}</b></p>}
+              {factorInvalido && <p className="text-[11px] text-red-600 mt-1">{conversionFactor.causa}</p>}
+            </div>
+          </div>
+          {grupoSeleccionado && (
+            <div className="grid grid-cols-3 gap-3 max-w-2xl">
+              <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Lista objetivo</p><p className="text-xs font-medium mono">{LISTA_BASE_OBJETIVO.nombre} / {LISTA_BASE_OBJETIVO.nivelPrecio}</p></div>
+              <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Versión</p><p className="text-xs font-medium">{LISTA_BASE_OBJETIVO.versionEstado} (backend)</p></div>
+              <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Artículos del grupo</p><p className="text-xs font-medium">{grupoSeleccionado.articulos.length}</p></div>
+            </div>
+          )}
+          {errorItem && <p className="text-[11px] text-red-600">{errorItem}</p>}
+          <label className="flex items-start gap-3 rounded-lg border border-zinc-200 p-3 cursor-pointer select-none max-w-xl">
+            <input type="checkbox" checked={ack} disabled={readOnly} onChange={function (e) { setAck(e.target.checked); }} className="mt-0.5 h-4 w-4" />
+            <span className="text-sm">Entiendo que esta solicitud actualizará directamente {LISTA_BASE_OBJETIVO.nombre} / {LISTA_BASE_OBJETIVO.nivelPrecio} para la versión {LISTA_BASE_OBJETIVO.versionEstado} y el grupo seleccionado.</span>
+          </label>
+        </div>
+      )}
+
+      {modalidad === "excel" && permiteExcel && (
+        <div className="space-y-4 mb-4">
+          <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
+            <p className="text-xs text-zinc-600 flex items-center gap-1.5">
+              <Icon name="fileSpreadsheet" className="w-3.5 h-3.5 text-zinc-400" />
+              ¿Aún no tiene el archivo? Descargue la plantilla oficial con Lista de Precio, Código de Artículo y Factor. El sistema convierte el factor ingresado a multiplicador y valida cada fila antes de permitir el envío.
+            </p>
+            <button type="button" className="btn btn-outline" onClick={function () { descargarPlantillaExcel(tab); }}>
+              <Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla ({PROCESOS[tab].label})
+            </button>
+          </div>
+          <ExcelUploader disabled={readOnly} modo={modo} procesoKey={tab} onParsed={handleArchivoParsed} onError={setErrorCarga} />
+          {errorCarga && <p className="text-[11px] text-red-600">{errorCarga}</p>}
+          {conteoErroresExcel > 0 && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+              La carga contiene {conteoErroresExcel} fila(s) inválida(s). Corrija y cargue nuevamente el archivo: el lote completo queda bloqueado antes de enviarse a aprobación.
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
+        <button className="btn btn-outline" disabled={readOnly || !camposCompletos()} onClick={handleSimular}>
+          <Icon name="search" className="w-3.5 h-3.5" /> {modalidad === "excel" && permiteExcel ? "Precalcular impacto" : "Simular impacto"}
+        </button>
+        <button
+          className={"btn " + (esListaBase ? "btn-destructive" : "btn-default")}
+          disabled={!puedeEnviar() || sending}
+          onClick={handleEnviar}
+        >
+          {sending ? (<><Icon name="loader" className="w-3.5 h-3.5" spin /> Enviando…</>)
+            : sent ? (<><Icon name="check" className="w-3.5 h-3.5" /> Enviado</>)
+            : "Enviar a Aprobación"}
+        </button>
+      </div>
+
+      {filasExcel && filasExcel.length > 0 && (
+        <div className="mt-6 pt-5 border-t border-zinc-100">
+          <div className="flex items-center gap-2 mb-2">
+            <Icon name="search" className="w-4 h-4 text-zinc-500" />
+            <h3 className="text-sm font-semibold">🔍 Previsualización de Impacto (Muestra Representativa / Diff)</h3>
+          </div>
+          <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-xs text-green-800 mb-3 flex items-center gap-2">
+            <Icon name="check" className="w-3.5 h-3.5" />
+            ✅ Simulación completada sobre una muestra representativa / filas del archivo. Revise los valores resultantes antes de continuar.
+          </div>
+          <TablaPrevisualizacion filas={filasExcel} compacta={false} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   TABLA: MIS SOLICITUDES ENVIADAS (OPERADOR)
+   ========================================================================= */
+function MisSolicitudes({ solicitudes, currentUser }) {
+  const propias = solicitudes.filter(function (s) { return s.solicitanteEmail === currentUser.email; });
+  return (
+    <div className="card overflow-hidden mt-6">
+      <div className="px-4 py-3 border-b border-zinc-100">
+        <h3 className="text-sm font-semibold">Mis solicitudes enviadas</h3>
+      </div>
+      {propias.length === 0 ? (
+        <div className="px-4 py-10 text-center text-sm text-zinc-400">Aún no ha enviado solicitudes en esta sesión.</div>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs text-zinc-500">
+            <tr>
+              <th className="text-left font-medium px-4 py-2.5">ID</th>
+              <th className="text-left font-medium px-4 py-2.5">Proceso</th>
+              <th className="text-left font-medium px-4 py-2.5">Compañía</th>
+              <th className="text-left font-medium px-4 py-2.5">Fecha</th>
+              <th className="text-left font-medium px-4 py-2.5">Estado</th>
+              <th className="text-left font-medium px-4 py-2.5">Detalle</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {propias.map(function (s) {
+              return (
+                <tr key={s.id}>
+                  <td className="px-4 py-2.5 mono">{s.id}</td>
+                  <td className="px-4 py-2.5"><span className="badge badge-outline">{PROCESOS[s.proceso].label}</span></td>
+                  <td className="px-4 py-2.5 text-zinc-500">{s.compania}</td>
+                  <td className="px-4 py-2.5 text-zinc-500">{s.fechaEnvio}</td>
+                  <td className="px-4 py-2.5"><EstadoBadge estado={s.estado} /></td>
+                  <td className="px-4 py-2.5 text-zinc-500">
+                    {s.estado === "RECHAZADO" && s.motivoRechazo ? ("Motivo: " + s.motivoRechazo) : (s.idProcesoSP ? <span className="mono">{s.idProcesoSP}</span> : "—")}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   BANDEJA DE APROBACIÓN
+   ========================================================================= */
+function BandejaAprobacion({ solicitudes, currentUser, readOnly, onAbrir }) {
+  const estadoOpts = [
+    { value: "Todos", label: "Todos" },
+    { value: "PENDIENTE", label: "Pendiente de aprobación" },
+    { value: "EN_PROCESO", label: "En proceso" },
+    { value: "PROCESADO", label: "Procesado" },
+    { value: "PROCESADO_CON_ERRORES", label: "Procesado con errores" },
+    { value: "RECHAZADO", label: "Rechazado" },
+    { value: "ERROR_EJECUCION", label: "Error de ejecución" },
+  ];
+  const procesoOpts = [{ value: "Todos", label: "Todos" }].concat(
+    Object.keys(PROCESOS).map(function (k) { return { value: k, label: PROCESOS[k].label }; })
+  );
+
+  const [fEstado, setFEstado] = useState("Todos");
+  const [fProceso, setFProceso] = useState("Todos");
+
+  const filtradas = solicitudes.filter(function (s) {
+    const okEstado = fEstado === "Todos" || s.estado === fEstado;
+    const okProceso = fProceso === "Todos" || s.proceso === fProceso;
+    // Ámbito (RF-02/RF-03): un Aprobador solo puede ver/gestionar solicitudes
+    // de compañías dentro de su ámbito autorizado.
+    const okAmbito = estaEnAmbito(currentUser, s.compania, null);
+    return okEstado && okProceso && okAmbito;
+  });
+
+  return (
+    <div>
+      <div className="card p-4 mb-4 combo-parent">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-56">
+            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Estado</label>
+            <Combobox value={fEstado} onChange={function (o) { setFEstado(o.value); }} options={estadoOpts} />
+          </div>
+          <div className="w-56">
+            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Proceso</label>
+            <Combobox value={fProceso} onChange={function (o) { setFProceso(o.value); }} options={procesoOpts} />
+          </div>
+          <div className="text-xs text-zinc-400 pb-2">{filtradas.length} solicitud(es) encontradas</div>
+        </div>
+      </div>
+
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs text-zinc-500">
+            <tr>
+              <th className="text-left font-medium px-4 py-3">ID</th>
+              <th className="text-left font-medium px-4 py-3">Proceso</th>
+              <th className="text-left font-medium px-4 py-3">Compañía</th>
+              <th className="text-left font-medium px-4 py-3">Solicitante</th>
+              <th className="text-left font-medium px-4 py-3">Fecha</th>
+              <th className="text-left font-medium px-4 py-3">Estado</th>
+              <th className="text-right font-medium px-4 py-3">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {filtradas.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-zinc-400">
+                <Icon name="inbox" className="w-6 h-6 mx-auto mb-2 text-zinc-300" />
+                No hay solicitudes que coincidan con los filtros aplicados.
+              </td></tr>
+            )}
+            {filtradas.map(function (s) {
+              const esPropia = s.solicitanteEmail === currentUser.email;
+              const puedeRevisar = !readOnly && !esPropia && s.estado === "PENDIENTE";
+              const puedeVer = !readOnly && s.estado !== "PENDIENTE";
+              return (
+                <tr key={s.id}>
+                  <td className="px-4 py-3 mono">{s.id}</td>
+                  <td className="px-4 py-3"><span className="badge badge-outline">{PROCESOS[s.proceso].label}</span></td>
+                  <td className="px-4 py-3 text-zinc-500">{s.compania}</td>
+                  <td className="px-4 py-3">
+                    {s.solicitanteNombre}
+                    {esPropia && <span className="badge badge-outline ml-1.5">Tu solicitud</span>}
+                  </td>
+                  <td className="px-4 py-3 text-zinc-500">{s.fechaEnvio}</td>
+                  <td className="px-4 py-3"><EstadoBadge estado={s.estado} /></td>
+                  <td className="px-4 py-3 text-right">
+                    {puedeRevisar && (
+                      <button className="btn btn-outline" onClick={function () { onAbrir(s.id); }}>
+                        <Icon name="eye" className="w-3.5 h-3.5" /> Revisar / Simular
+                      </button>
+                    )}
+                    {!puedeRevisar && s.estado === "PENDIENTE" && esPropia && (
+                      <button className="btn btn-outline" disabled title="No puede aprobar su propia solicitud">
+                        <Icon name="ban" className="w-3.5 h-3.5" /> Revisar / Simular
+                      </button>
+                    )}
+                    {puedeVer && (
+                      <button className="btn btn-ghost" onClick={function () { onAbrir(s.id); }}>Ver detalle</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   MODAL: REVISIÓN -> EN PROCESO -> RESULTADO CON DESGLOSE FILA POR FILA
+   ========================================================================= */
+function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarEjecucion, onAprobar }) {
+  const [fase, setFase] = useState("diff"); // diff | monitoreo | resultado
+  const [motivo, setMotivo] = useState("");
+  const [progreso, setProgreso] = useState(0);
+  const [idProcesoSP, setIdProcesoSP] = useState("");
+  const [resultado, setResultado] = useState(null);
+  const overlayRef = useRef(null);
+  const timerRef = useRef(null);
+
+  useEffect(function () {
+    return function () { if (timerRef.current) clearInterval(timerRef.current); };
+  }, []);
+
+  if (!solicitud) return null;
+
+  const filas = solicitud.filas && solicitud.filas.length > 0 ? solicitud.filas : filasEjemploExcel(PROCESOS[solicitud.proceso].modo);
+  const filasConHallazgo = filas.filter(function (f) { return !f.validacion.valido; });
+
+  function handleOverlayClick(ev) {
+    if (!ev || !ev.target || ev.target !== overlayRef.current) return;
+    if (fase === "monitoreo") return;
+    onClose();
+  }
+
+  function iniciarEjecucion() {
+    const id = nuevoIdProcesoSP();
+    setIdProcesoSP(id);
+    setFase("monitoreo");
+    setProgreso(0);
+    onIniciarEjecucion(solicitud.id);
+    timerRef.current = setInterval(function () {
+      setProgreso(function (p) {
+        const next = Math.min(100, p + Math.round(8 + Math.random() * 14));
+        if (next >= 100) {
+          clearInterval(timerRef.current);
+          setTimeout(function () { finalizarEjecucion(id); }, 250);
+        }
+        return next;
+      });
+    }, 260);
+  }
+
+  function finalizarEjecucion(id) {
+    const totalLote = filas.length;
+    const fallidos = filasConHallazgo.length;
+    const exitosos = totalLote - fallidos;
+    const estadoFinal = fallidos === 0 ? "PROCESADO" : (fallidos === totalLote ? "ERROR_EJECUCION" : "PROCESADO_CON_ERRORES");
+    const logKey = "erp-precios-logs/" + nombreArchivoS3("log-auditoria-" + solicitud.id, "csv");
+    const res = { totalLote: totalLote, exitosos: exitosos, fallidos: fallidos, filas: filas, estadoFinal: estadoFinal, logS3Key: logKey, aprobadoPor: currentUser.nombre, aprobadoPorEmail: currentUser.email };
+    setResultado(res);
+    setFase("resultado");
+    onAprobar(solicitud.id, { idProcesoSP: id, resultado: res, estadoFinal: estadoFinal });
+  }
+
+  function descargarLogAuditoria() {
+    descargarTexto(nombreArchivoS3("log-auditoria-" + solicitud.id, "csv"), filasADataCsv(resultado.filas));
+  }
+
+  function descargarSoloFallidas() {
+    const soloFallidas = resultado.filas.filter(function (f) { return !f.validacion.valido; });
+    descargarExcelFilas(nombreArchivoS3("filas-a-corregir-" + solicitud.id, "xlsx"), soloFallidas);
+  }
+
+  return (
+    <div className="modal-overlay" ref={overlayRef} onClick={handleOverlayClick}>
+      <div className="modal-box" onClick={function (e) { e.stopPropagation(); }}>
+
+        {fase === "diff" && (
+          <React.Fragment>
+            <div className="p-6 border-b border-zinc-100 flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h2 className="text-lg font-semibold">Revisión de solicitud — <span className="mono">{solicitud.id}</span></h2>
+                  <span className="badge badge-outline">{PROCESOS[solicitud.proceso].label}</span>
+                </div>
+                <p className="text-xs text-zinc-500">Solicitante: <b>{solicitud.solicitanteNombre}</b> · Compañía: <b>{solicitud.compania}</b> · Enviado: {solicitud.fechaEnvio}</p>
+                {solicitud.archivoNombre && (
+                  <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1"><Icon name="fileSpreadsheet" className="w-3.5 h-3.5" /> Plantilla: {solicitud.archivoNombre}</p>
+                )}
+              </div>
+              <button className="btn btn-ghost" onClick={onClose}><Icon name="x" className="w-4 h-4" /></button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">Filas evaluadas</p><p className="text-lg font-semibold">{filas.length}</p></div>
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">Con hallazgo</p><p className="text-lg font-semibold text-red-600">{filasConHallazgo.length}</p></div>
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">Modalidad</p><p className="text-sm font-semibold">{solicitud.modalidad === "excel" ? "Plantilla Excel" : "Captura manual"}</p></div>
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">Ejecución</p><p className="text-sm font-semibold">{PROCESOS[solicitud.proceso].ejecucion}</p></div>
+              </div>
+
+              <TablaPrevisualizacion filas={filas} compacta={false} />
+
+              <div className="border-t border-zinc-100 pt-4">
+                <label className="block text-xs font-medium mb-1.5">Motivo de rechazo <span className="text-red-600">*</span></label>
+                <textarea rows={2} value={motivo} onChange={function (e) { setMotivo(e.target.value); }}
+                  placeholder="Obligatorio si la decisión es rechazar la solicitud..."
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10" />
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-zinc-100 flex items-center justify-end gap-2">
+              <button className="btn btn-outline text-red-600" disabled={motivo.trim().length === 0}
+                onClick={function () { onRechazar(solicitud.id, motivo.trim()); onClose(); }}>
+                Rechazar
+              </button>
+              <button className="btn btn-destructive" onClick={iniciarEjecucion}>
+                Aprobar e Iniciar Procesamiento
+              </button>
+            </div>
+          </React.Fragment>
+        )}
+
+        {fase === "monitoreo" && (
+          <React.Fragment>
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <EstadoBadge estado="EN_PROCESO" />
+                <h2 className="text-base font-semibold">Monitor de Auditoría en Tiempo Real — <span className="mono">{solicitud.id}</span></h2>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-zinc-500 mb-4">Procesando la actualización en Softland (microservicio en EC2)… esto puede tardar unos minutos.</p>
+              <div className="progress-track mb-2">
+                <div className="progress-fill" style={{ width: progreso + "%" }}></div>
+              </div>
+              <p className="text-xs text-zinc-400 mb-5">{progreso}% completado</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">ID de Proceso (SP)</p><p className="mono text-sm font-medium">{idProcesoSP}</p></div>
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">Autorizado por</p><p className="text-sm font-medium">{currentUser.nombre}</p><p className="text-[11px] text-zinc-400 mono">{currentUser.email}</p></div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-zinc-100 flex items-center justify-end gap-2">
+              <button className="btn btn-secondary" onClick={onClose}>Cerrar y notificarme</button>
+            </div>
+          </React.Fragment>
+        )}
+
+        {fase === "resultado" && resultado && (
+          <React.Fragment>
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <EstadoBadge estado={resultado.estadoFinal} />
+                <h2 className="text-base font-semibold">Resultado de <span className="mono">{solicitud.id}</span></h2>
+              </div>
+              <button className="btn btn-ghost" onClick={onClose}><Icon name="x" className="w-4 h-4" /></button>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">ID de Proceso (SP)</p><p className="mono text-sm font-medium">{idProcesoSP}</p></div>
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">Autorizado por</p><p className="text-sm font-medium">{resultado.aprobadoPor}</p></div>
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">Filas exitosas 🟢</p><p className="text-xl font-semibold text-green-600">{resultado.exitosos}</p></div>
+                <div className="card p-3"><p className="text-[11px] text-zinc-400">Filas con error 🔴</p><p className="text-xl font-semibold text-orange-600">{resultado.fallidos}</p></div>
+              </div>
+
+              <div className="flex items-center gap-2 mb-2">
+                <Icon name="fileWarning" className="w-4 h-4 text-zinc-500" />
+                <p className="text-sm font-semibold">Auditoría detallada fila por fila / artículo por artículo</p>
+              </div>
+              <div className="card overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-zinc-50 text-zinc-500">
+                    <tr>
+                      <th className="text-left font-medium px-3 py-2">Fila Excel / Cód. Artículo</th>
+                      <th className="text-left font-medium px-3 py-2">Descripción</th>
+                      <th className="text-right font-medium px-3 py-2">Precio Anterior</th>
+                      <th className="text-right font-medium px-3 py-2">Precio Nuevo Procesado</th>
+                      <th className="text-left font-medium px-3 py-2">Estado</th>
+                      <th className="text-left font-medium px-3 py-2">Causa Exacta del Error</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {resultado.filas.map(function (f) {
+                      const v = f.validacion;
+                      return (
+                        <tr key={f.fila + "-" + f.codigo} className={!v.valido ? "row-alert" : ""}>
+                          <td className="px-3 py-2 mono whitespace-nowrap">Fila {f.fila} [{f.codigo}]</td>
+                          <td className="px-3 py-2">{f.descripcion}</td>
+                          <td className="px-3 py-2 text-right mono">{v.precioActual != null ? fmtMonto(v.precioActual) : "—"}</td>
+                          <td className="px-3 py-2 text-right mono">{v.valido && v.precioPropuesto != null ? fmtMonto(v.precioPropuesto) : "—"}</td>
+                          <td className="px-3 py-2">
+                            {v.valido
+                              ? <span className="badge badge-ok">🟢 Exitoso</span>
+                              : <span className="badge badge-costo">🔴 Error</span>}
+                          </td>
+                          <td className="px-3 py-2 text-red-700">
+                            {v.valido ? "—" : "Fila " + f.fila + " [" + f.codigo + "]: " + v.causa}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
+                <p className="s3-tag mono">Log de auditoría: s3://erp-precios-logs/{resultado.logS3Key.split("/")[1]}</p>
+                <div className="flex items-center gap-2">
+                  <button className="btn btn-outline" onClick={descargarLogAuditoria}>
+                    <Icon name="download" className="w-3.5 h-3.5" /> 📥 Descargar Log de Auditoría desde S3 (CSV)
+                  </button>
+                  <button className="btn btn-outline" disabled={resultado.fallidos === 0} onClick={descargarSoloFallidas}>
+                    <Icon name="refreshCw" className="w-3.5 h-3.5" /> 🔄 Exportar Solo Filas con Error (Excel)
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-zinc-100 flex items-center justify-end gap-2">
+              <button className="btn btn-default" onClick={onClose}>Cerrar</button>
+            </div>
+          </React.Fragment>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   AUDITORÍA (log derivado de los cambios de estado)
+   ========================================================================= */
+function Auditoria({ eventos }) {
+  return (
+    <div className="card overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-zinc-50 text-xs text-zinc-500">
+          <tr>
+            <th className="text-left font-medium px-4 py-3">Fecha/Hora</th>
+            <th className="text-left font-medium px-4 py-3">Usuario</th>
+            <th className="text-left font-medium px-4 py-3">Rol</th>
+            <th className="text-left font-medium px-4 py-3">Evento</th>
+            <th className="text-left font-medium px-4 py-3">ID Solicitud</th>
+            <th className="text-left font-medium px-4 py-3">ID de Proceso</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100">
+          {eventos.length === 0 && (
+            <tr><td colSpan={6} className="px-4 py-10 text-center text-zinc-400">Sin eventos registrados en esta sesión todavía.</td></tr>
+          )}
+          {eventos.map(function (e) {
+            return (
+              <tr key={e.id}>
+                <td className="px-4 py-3 mono text-zinc-500">{e.fecha}</td>
+                <td className="px-4 py-3">{e.usuario}</td>
+                <td className="px-4 py-3"><span className="badge badge-outline">{e.rol}</span></td>
+                <td className="px-4 py-3"><span className="badge badge-outline">{e.evento}</span></td>
+                <td className="px-4 py-3 mono">{e.solicitudId || "—"}</td>
+                <td className="px-4 py-3 mono">{e.idProcesoSP || "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* =========================================================================
+   APP RAÍZ
+   ========================================================================= */
+const COMPANIAS = ["Costa Rica", "Colombia", "Venezuela"];
+
+function seedSolicitudes() {
+  const filasAprobadas = [
+    { fila: 5, codigo: "ART-231", valorPropuestoRaw: "1.10", variacionPorcentaje: 10 },
+    { fila: 8, codigo: "ART-455", valorPropuestoRaw: "1.10", variacionPorcentaje: 10 },
+  ].map(function (r) { return construirFilaCompleta(r, "factor"); });
+  const filasMayoreod = construirFilasMayoreodMasivo("linea_blanca", "1.10", 10);
+  const filasDescuentoMasivo = [
+    { fila: 2, listaCodigo: "mayorista", codigo: "ART-231", variacionPorcentaje: 10 },
+    { fila: 3, listaCodigo: "detalle", codigo: "ART-455", variacionPorcentaje: -5 },
+  ].map(construirFilaDescuentoMasivo);
+
+  return [
+    { id: "SOL-10449", proceso: "FACTOR_PRECIO", modalidad: "manual", compania: "Costa Rica", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@empresa.com", parametros: { factor: "1.10" }, filas: filasAprobadas, archivoNombre: null, archivoS3Key: null, fechaEnvio: "2026-08-13 11:30", estado: "PROCESADO", motivoRechazo: null, idProcesoSP: "#SP-20260813-2210" },
+    { id: "SOL-10448", proceso: "MAYOREOD_MASIVO", modalidad: "manual", compania: "Colombia", solicitanteNombre: "María Rodríguez", solicitanteEmail: "mrodriguez@empresa.com", parametros: { listaBase: LISTA_BASE_OBJETIVO.codigo, nivelPrecio: LISTA_BASE_OBJETIVO.nivelPrecio, version: LISTA_BASE_OBJETIVO.versionEstado, grupoArticulos: "linea_blanca", factor: "1.10", variacionPorcentaje: 10 }, filas: filasMayoreod, archivoNombre: null, archivoS3Key: null, fechaEnvio: "2026-08-13 09:05", estado: "PENDIENTE", motivoRechazo: null, idProcesoSP: null },
+    { id: "SOL-10447", proceso: "DESCUENTO_LISTA_PRECIO", modalidad: "excel", compania: "Venezuela", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@empresa.com", parametros: { articulos: filasDescuentoMasivo }, filas: filasDescuentoMasivo, archivoNombre: "descuento-articulos-masivo.xlsx", archivoS3Key: "erp-precios-uploads/descuento-articulos-masivo.xlsx", fechaEnvio: "2026-08-12 15:10", estado: "RECHAZADO", motivoRechazo: "El factor genera márgenes por debajo del costo en artículos de alto valor; corregir antes de reenviar.", idProcesoSP: null },
+  ];
+}
+
+function App() {
+  const [user, setUser] = useState(IDENTITIES[0]);
+  const [nav, setNav] = useState("nueva");
+  const [solicitudes, setSolicitudes] = useState(seedSolicitudes());
+  const [seq, setSeq] = useState(1);
+  const [toasts, setToasts] = useState([]);
+  const [modalId, setModalId] = useState(null);
+  const [eventos, setEventos] = useState([]);
+
+  useEffect(function () {
+    if (user.rol === "APROBADOR") setNav("bandeja");
+    else if (user.rol === "OPERADOR") setNav("nueva");
+    setModalId(null);
+  }, [user]);
+
+  function pushToast(message, variant) {
+    const id = Date.now() + Math.random();
+    setToasts(function (t) { return t.concat([{ id: id, message: message, variant: variant }]); });
+    setTimeout(function () {
+      setToasts(function (t) { return t.filter(function (x) { return x.id !== id; }); });
+    }, 3400);
+  }
+
+  function registrarEvento(evento, extra) {
+    const now = new Date();
+    const fecha = now.toLocaleString("es-CR", { hour12: false });
+    setEventos(function (evs) {
+      return [{
+        id: Date.now() + Math.random(),
+        fecha: fecha,
+        usuario: user.nombre,
+        rol: user.rol,
+        evento: evento,
+        solicitudId: extra && extra.solicitudId,
+        idProcesoSP: extra && extra.idProcesoSP,
+      }].concat(evs);
+    });
+  }
+
+  function handleNuevaSolicitud(payload) {
+    const id = nuevoIdSolicitud(seq);
+    setSeq(function (s) { return s + 1; });
+    const now = new Date();
+    const nueva = {
+      id: id,
+      proceso: payload.proceso,
+      modalidad: payload.modalidad,
+      compania: payload.compania,
+      solicitanteNombre: user.nombre,
+      solicitanteEmail: user.email,
+      parametros: payload.parametros,
+      filas: payload.filas,
+      archivoNombre: payload.archivoNombre,
+      archivoS3Key: payload.archivoS3Key,
+      fechaEnvio: now.toLocaleString("es-CR", { hour12: false }),
+      estado: "PENDIENTE",
+      motivoRechazo: null,
+      idProcesoSP: null,
+    };
+    setSolicitudes(function (list) { return [nueva].concat(list); });
+    registrarEvento("SOLICITUD_ENVIADA", { solicitudId: id });
+    pushToast("Solicitud " + id + " enviada a aprobación · Estado: Pendiente de aprobación", "success");
+  }
+
+  function handleRechazar(id, motivo) {
+    setSolicitudes(function (list) {
+      return list.map(function (s) { return s.id === id ? Object.assign({}, s, { estado: "RECHAZADO", motivoRechazo: motivo }) : s; });
+    });
+    registrarEvento("SOLICITUD_RECHAZADA", { solicitudId: id });
+    pushToast("Solicitud " + id + " rechazada. El solicitante fue notificado.", "error");
+  }
+
+  function handleAprobarInicio(id) {
+    setSolicitudes(function (list) {
+      return list.map(function (s) { return s.id === id ? Object.assign({}, s, { estado: "EN_PROCESO" }) : s; });
+    });
+    registrarEvento("EJECUCION_INICIADA", { solicitudId: id });
+  }
+
+  function handleAprobarResultado(id, data) {
+    setSolicitudes(function (list) {
+      return list.map(function (s) {
+        return s.id === id ? Object.assign({}, s, { estado: data.estadoFinal, idProcesoSP: data.idProcesoSP, filas: data.resultado.filas }) : s;
+      });
+    });
+    registrarEvento("EJECUCION_FINALIZADA", { solicitudId: id, idProcesoSP: data.idProcesoSP });
+    pushToast("Ejecución " + data.idProcesoSP + " finalizada: " + data.estadoFinal.replace(/_/g, " "), data.estadoFinal === "PROCESADO" ? "success" : "error");
+  }
+
+  const solicitudModal = solicitudes.find(function (s) { return s.id === modalId; });
+
+  function abrirModal(id) { setModalId(id); }
+
+  const esAprobador = user.rol === "APROBADOR";
+  const esOperador = user.rol === "OPERADOR";
+
+  return (
+    <div>
+      <Header user={user} onChangeUser={setUser} onNav={setNav} activeNav={nav} />
+      <Toaster toasts={toasts} />
+
+      {user.rol === "SIN_PERMISO" ? (
+        <Vista403 user={user} />
+      ) : (
+        <main className="max-w-7xl mx-auto px-6 py-8">
+          {nav === "nueva" && (
+            <div>
+              <div className="mb-5">
+                <h1 className="text-2xl font-semibold">Nueva solicitud de cambio de precio</h1>
+              </div>
+              <NuevaSolicitud readOnly={!esOperador} currentUser={user} onSubmit={handleNuevaSolicitud} />
+              {esOperador && <MisSolicitudes solicitudes={solicitudes} currentUser={user} />}
+            </div>
+          )}
+
+          {nav === "bandeja" && (
+            <div>
+              <div className="mb-5">
+                <h1 className="text-2xl font-semibold">Bandeja de aprobación</h1>
+                <p className="text-sm text-zinc-500 mt-1">Solicitudes dentro de su ámbito. No puede aprobar solicitudes creadas por usted mismo.</p>
+              </div>
+              <BandejaAprobacion solicitudes={solicitudes} currentUser={user} readOnly={!esAprobador} onAbrir={abrirModal} />
+            </div>
+          )}
+
+          {nav === "auditoria" && (
+            <div>
+              <div className="mb-5">
+                <h1 className="text-2xl font-semibold">Auditoría y Logs</h1>
+                <p className="text-sm text-zinc-500 mt-1">Historial de eventos generados durante esta sesión de simulación.</p>
+              </div>
+              <Auditoria eventos={eventos} />
+            </div>
+          )}
+        </main>
+      )}
+
+      {solicitudModal && (
+        <RevisionModal
+          solicitud={solicitudModal}
+          currentUser={user}
+          onClose={function () { setModalId(null); }}
+          onRechazar={handleRechazar}
+          onIniciarEjecucion={handleAprobarInicio}
+          onAprobar={handleAprobarResultado}
+        />
+      )}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>

@@ -1,52 +1,18 @@
 {
-  "summary": "IA-DLC: el usuario revisó y aprobó las Historias de Usuario de la Interfaz Web de Gestión de Listas de Precio. Se completaron 17 historias en seis épicas y tres personas: Solicitante, Aprobador y Auditor/Administrador. Las historias preservan gestión global, carga masiva Excel, gestión individual, segregación maker-checker, simulación obligatoria, control de ámbitos, auditoría, ejecución híbrida, resultado parcial Con errores, reintentos transitorios limitados e idempotencia. La solicitud individual aprobada se ejecuta una sola vez automáticamente; un reproceso posterior exige autorización explícita del Aprobador, motivo, nueva correlación y preservación de la evidencia original. Se reforzaron personas, trazabilidad RF/RNF y restricciones de seguridad, resiliencia y pruebas basadas en propiedades. El siguiente paso es la Planificación del Flujo IA-DLC.",
-  "changed_files": [
-    "aidlc-docs/inception/plans/story-generation-plan.md",
-    "aidlc-docs/inception/user-stories/personas.md",
-    "aidlc-docs/inception/user-stories/stories.md",
-    "aidlc-docs/aidlc-state.md",
-    "aidlc-docs/audit.md"
-  ],
+  "summary": "Se aclaro al usuario el origen de la nomenclatura de los 3 procesos del prototipo (FACTOR_PRECIO/Factor por Nivel, MAYOREOD_MASIVO/Actualizacion Lista Base, DESCUENTO_LISTA_PRECIO/Descuento por Articulo): NO provienen de aidlc-docs/inception/requirements/requirements.md (que usa nomenclatura funcional generica: RF-01 'gestion global por lista', 'actualizacion masiva por archivo Excel', 'gestion individual por articulo/lista/factor', sin esos identificadores). Los identificadores tecnicos originales (FACTOR_PRECIO, MAYOREOD_MASIVO, UDF_FACTOR_ARTICULO) vienen de docs/propuesta_interfaz.md (documento pre-existente del usuario). El renombre del proceso 3 a DESCUENTO_LISTA_PRECIO y los 3 nombres amigables de negocio (Factor por Nivel, Actualizacion Lista Base, Descuento por Articulo) fueron instrucciones explicitas del usuario en turnos anteriores de esta conversacion, transcritas literalmente al mockup. No hay codigo modificado en este turno; se re-verifico la sintaxis del prototipo existente (gestion-masiva-precios.html) como confirmacion de estabilidad tras el checkpoint anterior (chk_000003).",
+  "changed_files": [],
   "decisions": [
-    {
-      "decision": "Historias de Usuario y personas revisadas y aprobadas para continuar.",
-      "rationale": "El usuario indicó que ya revisó stories.md y solicitó proceder al siguiente paso."
-    },
-    {
-      "decision": "La aprobación produce una sola ejecución automática; los duplicados no inician una segunda ejecución.",
-      "rationale": "Protege la integridad de precio y permite idempotencia."
-    },
-    {
-      "decision": "El reproceso individual es excepcional y requiere autorización explícita del Aprobador.",
-      "rationale": "Mantiene segregación, trazabilidad y evita cambios repetidos no controlados."
-    },
-    {
-      "decision": "Resultados parciales usan el estado Con errores.",
-      "rationale": "El requisito RF-26 se mantiene como fuente de verdad."
-    },
-    {
-      "decision": "Security Baseline, Resiliency Baseline y Property-Based Testing permanecen habilitadas.",
-      "rationale": "Decisión validada durante Análisis de Requerimientos."
-    }
+    "Se documento formalmente la trazabilidad de origen de los nombres de proceso (propuesta_interfaz.md + instrucciones directas del usuario en chat) para evitar ambiguedad futura sobre si forman parte de los requisitos formales IA-DLC (requirements.md/stories.md) o no.",
+    "Se confirma que requirements.md usa nomenclatura funcional distinta y mas generica (RF-01 a RF-16) que coexiste con la nomenclatura tecnica/de negocio del prototipo mediante la tabla de reconciliacion terminologica ya documentada en docs/especificacion-visual-gestion-masiva-precios.md (seccion 0)."
   ],
   "open_threads": [
-    {
-      "thread_id": "thread_workflow_design_nfr_pendiente",
-      "ts_opened": "2026-08-14T16:35:00Z",
-      "summary": "Planificar y aprobar el flujo IA-DLC; después ejecutar Diseño de Aplicación, Generación de Unidades y diseños por unidad. Resolver decisiones de RTO/RPO, DR, cambio, CI/CD, rollback, despliegue, topología regional, SSO/IdP, contratos backend, plantilla Excel, rangos individuales e idempotencia concreta.",
-      "status": "open",
-      "linked_files": [
-        "aidlc-docs/inception/plans/execution-plan.md",
-        "aidlc-docs/inception/plans/workflow-planning-questions.md",
-        "aidlc-docs/inception/requirements/requirements.md",
-        "aidlc-docs/inception/user-stories/stories.md"
-      ],
-      "last_touched": "2026-08-14T16:35:00Z"
-    }
+    "Pendiente: usuario debe confirmar/aprobar el estado actual del mockup para crear la primera linea base en Product-Definition/mockups/.versions/ segun la directiva de checkpoints.",
+    "Pendiente: definir si la plantilla Excel descargable y el motor de validacion deben ampliarse a un catalogo de articulos mas completo o conectarse a datos reales de Softland en una fase posterior de diseno funcional/infraestructura.",
+    "Pendiente: si el usuario desea, formalizar la nomenclatura de negocio (Factor por Nivel, Actualizacion Lista Base, Descuento por Articulo) dentro de aidlc-docs/inception/requirements/requirements.md para que quede trazada como requisito oficial IA-DLC, no solo como decision de diseno visual."
   ],
   "next_actions": [
-    "Completar las respuestas de workflow-planning-questions.md.",
-    "Aprobar execution-plan.md.",
-    "Continuar a Diseño de Aplicación para concretar componentes, SSO/IdP, contratos y límites técnicos."
+    "Esperar confirmacion o feedback del usuario sobre el prototipo actual (gestion-masiva-precios.html).",
+    "Si el usuario lo solicita, actualizar requirements.md para incorporar formalmente los 3 nombres de proceso de negocio.",
+    "Si se aprueba el mockup, crear checkpoint de mockup (.versions/) segun 02-mockup-workflow."
   ]
 }
