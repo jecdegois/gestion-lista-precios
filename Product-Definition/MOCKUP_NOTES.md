@@ -1,7 +1,9 @@
 # Registro de Estado de Mockups — MV26020
 
 ## Línea Base Activa
-_Aún no existe una línea base aprobada._ El contenido actual en `Product-Definition/mockups/` es **borrador en progreso**, pendiente de validación del usuario.
+**v1_aprobado** — `Product-Definition/mockups/.versions/v1_aprobado.html`.
+
+Aprobada por el usuario como la línea base vigente. Incluye filtros por atributos de artículo, compañías y listas de precio condicionadas, exclusión de MAYOREOD fuera de Actualización Masiva de Precios, reglas de roles y el detalle Artículo + Lista de Precio compartido entre solicitante y aprobador.
 
 ## Componentes clave en el borrador actual (`gestion-masiva-precios.html`)
 
@@ -58,7 +60,7 @@ _Aún no existe una línea base aprobada._ El contenido actual en `Product-Defin
 - **Captura manual de un único artículo por solicitud en "Descuento por Artículo" (Versión 4).** Se descartó porque el usuario pidió poder ingresar uno o más artículos manualmente, acumulándolos en pantalla con un botón "+"; se reemplazó por el patrón de agregar/quitar artículos (`itemsManual`) con tabla acumulada.
 
 ## Historial de Versiones
-_Sin checkpoints creados aún._ Se creará una copia en `Product-Definition/mockups/.versions/` cuando el usuario confirme o apruebe el estado actual.
+- **v1_aprobado** — `Product-Definition/mockups/.versions/v1_aprobado.html` (línea base activa aprobada).
 
 ## Corrección — Versión 7 (Actualización Lista Base = captura manual multi-lista, ámbito por compañía/lista)
 
@@ -178,3 +180,83 @@ _Sin checkpoints creados aún._ Se creará una copia en `Product-Definition/mock
 - **Trazabilidad de revisión:** abrir una solicitud pendiente registra el evento `SIMULACION_REVISADA` en la Auditoría. La decisión mantiene el flujo Pendiente → En proceso → resultado, o Rechazado con motivo obligatorio.
 - **Mensajería funcional:** el monitor de estado ya no expone detalles de infraestructura; informa únicamente que la actualización autorizada está en proceso.
 - **Validación:** se revisaron los bloques JSX modificados, se confirmó por búsqueda el control de rol + estado pendiente + no autoaprobación, los seis parámetros de revisión y la reasignación de `SOL-10448` a Juan Pérez. El mockup se sirvió localmente y respondió `HTTP 200` (107,669 bytes).
+
+## Corrección — Versión 21 (compañías reales, listas por compañía, filtros de artículo, Aprobador puede crear solicitudes)
+
+- **Compañías del listado maestro actualizadas.** `COMPANIAS` pasó de `["Costa Rica", "Colombia", "Venezuela"]` a `["SILLACA", "BEVAL", "FEBECA", "COFERSA"]`. Los dos usuarios con acceso (Operador y Aprobador) tienen las 4 compañías en `companiasPermitidas`, cumpliendo "el operador pueda ver con el usuario operador todas las compañías".
+- **Listas de precio por compañía (`LISTAS_POR_COMPANIA`):** SILLACA, BEVAL y FEBECA habilitan `MAYOREOD, MAYOREOB, LPARAGUA, GRUPOPICO, LARAB`; COFERSA habilita `LPV1` a `LPV18`. El selector "Lista de Precio" del formulario de Nueva Solicitud ahora deriva sus opciones de la Compañía elegida (filtradas además por `listasPermitidas` del usuario, sin tocar la lógica de ámbito existente). Se corrigieron referencias obsoletas a los códigos `mayorista/detalle/corporativa` (plantilla Excel, solicitud semilla `SOL-10447`) para usar `mayoreod`/`lpv1` reales.
+- **Filtros de artículos añadidos en "Descuento por Artículo" (captura manual):** nuevo bloque con 6 comboboxes — Categoría, Subcategoría, Grupo, Marca, Marca Grupo Compra y BDF — que filtran en tiempo real las opciones del selector "Código de Artículo". Se enriqueció `CATALOGO_ARTICULOS` con esos 6 atributos por artículo (usando los valores ya definidos en `FILTROS_ARTICULOS`) y se agregó el contador "N artículo(s) coinciden con los filtros aplicados".
+- **El Aprobador ahora puede crear solicitudes.** Se eliminó el bloqueo `readOnly={!esOperador}` del formulario de Nueva Solicitud: ambos roles (Operador y Aprobador) pueden capturar, simular y enviar solicitudes. La segregación de funciones se mantiene intacta por otra vía: solo el rol `APROBADOR` puede abrir el modal de revisión (`abrirModal` sigue validando `user.rol !== "APROBADOR"`) y `puedeDecidir`/`puedeAprobar` siguen bloqueando la autoaprobación. El Operador nunca ve botones de aprobar/rechazar porque nunca accede al modal de revisión.
+- **Verificación técnica:** bloque Babel con delimitadores balanceados (811/811 llaves, 981/981 paréntesis, 259/259 corchetes). El mockup se sirvió localmente y respondió `HTTP 200` (118,354 bytes).
+
+## Corrección — Versión 22 (MAYOREOD exclusivo de Actualización Masiva de Precios)
+
+- **Gestión Global ya no puede seleccionar MAYOREOD.** El selector "Lista de Precio" de esta pestaña (`FACTOR_PRECIO`) usa un nuevo listado `nivelOptsGestionGlobal` que excluye explícitamente `mayoreod`; el resto de listas (MAYOREOB, LPARAGUA, GRUPOPICO, LARAB, LPV1–LPV18, según ámbito/compañía) permanecen disponibles sin cambios. Descuento por Artículo no se vio afectado y conserva acceso a todas sus listas autorizadas, incluida MAYOREOD para descuentos puntuales por artículo.
+- **Limpieza defensiva de estado:** si el usuario tenía `mayoreod` seleccionado en otra pestaña y cambia a Gestión Global, el campo Lista de Precio se resetea automáticamente para no dejar un valor inválido ya no visible en las opciones.
+- **Nota aclaratoria en el formulario:** se añadió el texto "La lista base (MAYOREOD) se gestiona exclusivamente desde Actualización Masiva de Precios" junto al selector de Gestión Global.
+- **Verificación técnica:** bloque Babel balanceado (812/812 llaves, 988/988 paréntesis, 259/259 corchetes). El mockup respondió `HTTP 200` al servirse localmente (119,010 bytes).
+
+## Corrección — Versión 23 (MAYOREOD excluida también de Descuento por Artículo)
+
+- **Descuento por Artículo ya no puede seleccionar MAYOREOD.** El selector "Lista de Precio" de esta pestaña (captura manual) ahora usa `nivelOptsSinListaBase` (renombrado desde `nivelOptsGestionGlobal`, que ya excluía MAYOREOD en Gestión Global); se agregó una nota aclaratoria idéntica a la de Gestión Global: "La lista base (MAYOREOD) se gestiona exclusivamente desde Actualización Masiva de Precios".
+- **Carga masiva por Excel también bloqueada para MAYOREOD:** si una fila de la plantilla trae `MAYOREOD` como Lista de Precio, `handleArchivoParsed` la marca inválida con la causa "La Lista Base (MAYOREOD) no se gestiona desde Descuento por Artículo; use Actualización Masiva de Precios", bloqueando el lote completo como ya ocurre con otras filas inválidas.
+- **Datos de ejemplo corregidos:** la plantilla descargable de Descuento por Artículo y la solicitud semilla `SOL-10447` usan `MAYOREOB` en vez de `MAYOREOD` como fila de ejemplo válida.
+- **Limpieza defensiva de estado:** cambiar a la pestaña Descuento por Artículo (además de Gestión Global) resetea el campo Lista de Precio si tenía `mayoreod` seleccionado desde otra pestaña.
+- **Verificación técnica:** bloque Babel balanceado (817/817 llaves, 994/994 paréntesis, 260/260 corchetes). El mockup respondió `HTTP 200` al servirse localmente (119,631 bytes).
+
+## Corrección — Versión 24 (Descuento por Artículo: lista por compañía y por fila)
+
+- **Lista de precio condicionada por compañía:** en Descuento por Artículo, el selector queda deshabilitado y no muestra opciones hasta seleccionar una Compañía. Una vez seleccionada, carga exclusivamente las listas de `LISTAS_POR_COMPANIA` para dicha compañía, menos la Lista Base `MAYOREOD`. El formulario presenta el mensaje "Seleccione una compañía para cargar sus listas de precio disponibles" mientras falte ese contexto.
+- **Lista persistida por artículo agregado:** al pulsar `Agregar`, cada fila manual conserva `listaCodigo` y `lista` junto con el artículo, factor ingresado y factor aplicado. La tabla "Artículos agregados a esta solicitud" muestra ahora la columna **Lista de Precio** por cada artículo.
+- **Mismo artículo en distintas listas:** la regla de duplicidad pasó de `Artículo` a `Artículo + Lista de Precio`; se puede agregar el mismo artículo en listas diferentes, pero se bloquea el duplicado exacto dentro de la misma lista. El botón Quitar identifica la misma combinación.
+- **Simulación compartida:** `handleSimular` conserva esos campos en `filasExcel` mediante `construirFilaCompleta`. `TablaPrevisualizacion` —reutilizada en la simulación del Solicitante y el modal de Revisión del Aprobador— ya representa `f.lista` en su columna **Lista de Precio**, por lo cual ambos perfiles observan el mismo detalle Artículo + Lista.
+- **Verificación técnica:** bloque Babel balanceado (820/820 llaves, 994/994 paréntesis, 264/264 corchetes). El mockup respondió `HTTP 200` al servirse localmente (120,652 bytes).
+## Corrección — Versión 25 (procesamiento asíncrono no bloqueante de SP)
+
+- **Liberación inmediata de la UI:** el botón del Aprobador se denomina ahora **Procesar Solicitud**. Al confirmarlo, la solicitud cambia de inmediato a `EN_PROCESO`, recibe un identificador de proceso y el modal se cierra automáticamente; no existe una pantalla de espera que obligue al usuario a permanecer en la vista.
+- **Trabajo en segundo plano simulado:** la ejecución se representa desde `App` mediante un worker temporal independiente del modal. Esto ilustra el comportamiento objetivo del backend/cola: el navegador recibe aceptación rápida y solo consulta el estado; no invoca ni espera al Stored Procedure.
+- **Seguimiento desde listados:** Bandeja de Aprobación y Mis Solicitudes muestran un aviso funcional de procesamiento no bloqueante, el badge `En proceso`, el identificador de proceso y la acción **Consultar avance**. El usuario puede navegar, cerrar el detalle o cambiar de módulo sin cancelar la ejecución.
+- **Resultado consultable:** al terminar el worker, la solicitud actualiza de forma automática a `PROCESADO`, `PROCESADO_CON_ERRORES` o `ERROR_EJECUCION`. El detalle conserva el resultado, contadores y exportaciones de auditoría.
+- **Ejercicio y arquitectura:** se agregó `docs/arquitectura-procesamiento-asincrono-sp.md`, que contiene los contratos `202 Accepted`, background jobs, polling, idempotencia, concurrencia, reintentos, observabilidad, seguridad y el ejercicio de los tres pasos solicitado.
+- **Segregación preservada:** siguen vigentes el control de rol Aprobador, el bloqueo de autoaprobación y la consulta de solicitudes dentro del ámbito autorizado.
+
+
+## Corrección — Versión 26 (auditoría con resultado amigable del SP y versión sin "APROBADA")
+
+- **Auditoría muestra el resultado del control de estados del SP:** se agregó la columna "Resultado del control de estados" en la tabla de Auditoría. Al finalizar la ejecución del Stored Procedure sobre la Lista Base, el evento `EJECUCION_FINALIZADA` incluye un texto amigable con badge: **"OK · Ejecutado completo (N de N registros)"** en verde, **"Completado con errores (X exitosos, Y con error de N)"** en naranja, o **"Error de ejecución (0 de N registros aplicados)"** en rojo. El mismo texto se muestra como badge junto al título "Resultado final del procesamiento" en el modal de detalle de la solicitud.
+- **Etiquetas de evento traducidas a lenguaje de negocio:** se agregó `EVENTOS_AUDITORIA`, que traduce las claves técnicas (`SOLICITUD_ENVIADA`, `EJECUCION_ENCOLADA`, `EJECUCION_FINALIZADA`, etc.) a texto legible en la columna "Evento" de la Auditoría, incluyendo "Stored Procedure autorizado sobre Lista Base" para el encolado de la ejecución.
+- **Se eliminó "APROBADA" como estado expuesto de backend:** `LISTA_BASE_OBJETIVO.versionEstado` cambió de `"APROBADA"` a `"Vigente"`. El payload de la solicitud ya no envía el texto `"Se resuelve en backend: APROBADA"`; ahora indica `"Validada automáticamente por el sistema"`. Los textos de alerta, checkbox de confirmación y tarjetas de parámetros en el formulario y en el modal de revisión se reescribieron para comunicar que la versión se valida automáticamente, sin exponer el nombre del estado interno del backend.
+- **Documentación técnica actualizada:** `docs/arquitectura-procesamiento-asincrono-sp.md` incorpora la regla de traducción amigable del resultado de auditoría y la indicación de no exponer el estado interno de versión de la Lista Base en la interfaz.
+- **Verificación técnica:** bloque Babel balanceado (888/888 llaves, 1004/1004 paréntesis y 260/260 corchetes). El mockup se sirvió localmente y respondió `HTTP 200` con 120,330 bytes.
+
+
+## Corrección — Versión 27 (se quitan "Versión" y "Stored Procedure autorizado sobre Lista Base" de pantalla)
+
+- **Campo "Versión" eliminado del modal y del payload:** se removió la tarjeta "Versión" del bloque "Resumen para autorizar la ejecución sobre la Lista Base" y el campo `version` del payload de la solicitud (`handleEnviar`) y de la solicitud semilla `SOL-10448`. `LISTA_BASE_OBJETIVO.versionEstado` se conserva en la configuración interna únicamente para la tarjeta "Validación de versión" del formulario de captura (Grupo de Artículos), pero ya no se expone en el modal de revisión ni en el payload.
+- **"Stored Procedure autorizado sobre Lista Base" eliminado de la interfaz:** se reemplazó por "Actualización automatizada autorizada" en `PROCESOS.MAYOREOD_MASIVO.ejecucion` (tarjeta "Ejecución" del modal) y por "Ejecución autorizada y encolada" en `EVENTOS_AUDITORIA.EJECUCION_ENCOLADA` (columna "Evento" de la Auditoría).
+- **Verificación técnica:** bloque Babel balanceado (887/887 llaves, 1004/1004 paréntesis y 259/259 corchetes). El mockup se sirvió localmente y respondió `HTTP 200` con 119,984 bytes.
+
+
+## Corrección — Versión 28 (Factor %, validación de no negativos, duración de "En proceso" y terminología de negocio)
+
+- **Etiqueta "Factor %":** todos los campos de captura (Gestión Global, Descuento por Artículo manual, Actualización Masiva de Precios) y las columnas de tablas (previsualización, artículos agregados, plantilla Excel, CSV/Excel de auditoría exportado) que decían "Factor" o "Factor ingresado" ahora dicen "Factor %" o "Factor_Porcentaje", dejando explícito que el valor capturado es un porcentaje. La columna "Factor aplicado" (multiplicador) se conserva sin cambios junto a "Factor %".
+- **Validación de porcentajes negativos:** `convertirPorcentajeAFactor` distingue ahora un valor negativo de un error de formato y lo rechaza explícitamente con el mensaje "El Factor % no admite valores negativos. Ingrese un porcentaje entre 0 y 100." Los 3 inputs de Factor % cambiaron su atributo `min` de `-99` a `0`. Se agregó un ícono de alerta junto al mensaje de error. Los datasets de ejemplo (`filasEjemploExcel`, plantilla de Descuento por Artículo) se corrigieron para no contener ningún Factor % negativo (`-1` → `0`, `-5` → `5`).
+- **Duración perceptible de "En proceso":** el worker simulado pasó de 6.5 a 15 segundos antes de resolver a un estado terminal. Se agregó una barra de progreso indeterminada (`.progress-track` + `.progress-indeterminate`) dentro del banner de "En proceso" del modal, para reforzar visualmente que la tarea sigue activa.
+- **Terminología de negocio sin "SP"/"Stored Procedure"/"procedimiento":** el banner de detalle pasó de "El procedimiento está ejecutándose en segundo plano" a "La solicitud se está procesando en segundo plano"; el identificador visible cambió de `#SP-YYYYMMDD-NNNN` a `#PROC-YYYYMMDD-NNNN` (función `nuevoIdProcesoSP`); la tarjeta "ID de Proceso (SP)" pasó a "ID de procesamiento"; el evento de auditoría "Ejecución del Stored Procedure finalizada" pasó a "Procesamiento en segundo plano finalizado"; los toasts de aprobación y finalización ya no mencionan "SP" ni "Ejecución #SP-...". Los términos técnicos solo permanecen en comentarios internos de código no visibles y en la documentación de arquitectura dirigida al equipo de desarrollo.
+- **Nuevo documento:** `docs/especificacion-modal-detalle-solicitud.md`, con la especificación técnica completa y el mockup en ASCII del flujo de 4 pasos (revisión, liberación de UI, consulta de avance con duración perceptible, resultado final) y el detalle de auditoría con resultado amigable.
+- **Verificación técnica:** bloque Babel balanceado (892/892 llaves, 1009/1009 paréntesis y 261/261 corchetes). El mockup se sirvió localmente y respondió `HTTP 200` con 121,570 bytes.
+
+
+## Corrección — Versión 29 (columna "Resultado del control de estados" removida de Auditoría)
+
+- **Columna eliminada:** se quitó la columna "Resultado del control de estados" de la tabla de Auditoría (era redundante con el badge de resultado ya visible en el modal de "Detalle de solicitud" bajo "Resultado final del procesamiento", y no aportaba información nueva en el log de eventos). La tabla de Auditoría vuelve a sus 6 columnas: Fecha/Hora, Usuario, Rol, Evento, ID Solicitud, ID de Proceso.
+- **Limpieza de código asociado:** se removió el campo `resultado` de `registrarEvento`/`EVENTOS_AUDITORIA` y del cálculo `resumenParaAuditoria` en `handleAprobarInicio`. La función `textoResultadoAuditoria` se conserva porque sigue usándose en el badge del modal de detalle ("Resultado final del procesamiento").
+- **Verificación técnica:** bloque Babel balanceado (889/889 llaves, 1005/1005 paréntesis y 261/261 corchetes). El mockup se sirvió localmente y respondió `HTTP 200` con 120,903 bytes.
+
+
+## Corrección — Versión 30 (el Operador puede consultar el detalle de sus propias solicitudes)
+
+- **Bug corregido:** `abrirModal` exigía `user.rol === "APROBADOR"` sin excepción, por lo que el botón "Ver detalle" / "Consultar avance" de "Mis solicitudes enviadas" no hacía nada cuando el usuario activo era Operador.
+- **Nueva regla:** el propio solicitante (Operador o Aprobador) siempre puede abrir el detalle de su propia solicitud en modo consulta (solo lectura), sin importar el estado (`Pendiente`, `En proceso`, `Procesado`, etc.). Un Aprobador conserva además la capacidad de abrir solicitudes ajenas dentro de su ámbito de compañía para revisarlas o decidir.
+- **Segregación de funciones preservada:** el modal sigue calculando `puedeDecidir` exigiendo rol `APROBADOR`, estado `PENDIENTE` y `solicitanteEmail !== currentUser.email`; cuando el Operador abre su propia solicitud, el modal se muestra siempre en modo lectura (sin botones de aprobar/rechazar). El evento de auditoría `SIMULACION_REVISADA` solo se registra cuando quien abre es un Aprobador revisando una solicitud ajena, no cuando el solicitante consulta la suya.
+- **Verificación técnica:** bloque Babel balanceado (890/890 llaves, 1008/1008 paréntesis y 261/261 corchetes). El mockup se sirvió localmente y respondió `HTTP 200` con 121,288 bytes.

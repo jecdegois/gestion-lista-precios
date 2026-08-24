@@ -181,3 +181,88 @@ Gobernanza de Datos: Confirmación de que ninguna pantalla intente hacer INSERT 
 **Context**: Construcción - Validación de mockup Maker-Checker
 
 ---
+## Cambio de mockup — Procesamiento asíncrono no bloqueante
+**Timestamp**: 2026-08-24T00:00:00Z
+**User Input**: "Actúa como un Desarrollador Senior y Diseñador de Interfaces UX/UI. Necesito actualizar el sistema Kiro para manejar el procesamiento asíncrono no bloqueante de Stored Procedures (SP) de larga duración al procesar solicitudes.
+
+Además, debes generar un MOCKUP detallado (usando componentes visuales en Markdown/código) como EJEMPLO Y EJERCICIO práctico que muestre el flujo completo paso a paso.
+
+ESPECIFICACIONES DEL REQUERIMIENTO:
+
+1. PROCESAMIENTO ASÍNCRONO NO BLOQUEANTE Y ESTADOS
+
+El SP procesa masivamente los registros y puede demorar horas. La interfaz NO debe bloquearse ni hacer esperar al usuario con una pantalla de carga:
+
+- Al hacer clic en \"Procesar Solicitud\", la acción dispara el SP en segundo plano y el estado de la solicitud cambia INMEDIATAMENTE a \"EN PROCESO\".
+
+- Liberación inmediata de la UI: El Aprobador/Operador NO debe esperar en la pantalla. Puede continuar trabajando en el sistema, navegar a otros módulos o salir.
+
+- Consulta de Estado: La solicitud se mantendrá en el listado/tabla general con el estado \"EN PROCESO\" (con una etiqueta/badge indicativo) para que el usuario pueda consultar cómo va el avance en cualquier momento.
+
+- Transición Final: ÚNICAMENTE cuando el SP finalice su ejecución en la base de datos, el registro actualizará automáticamente su estado en el listado a \"PROCESADA\" (o \"COMPLETADA\"), o a \"ERROR\" si falla.
+
+2. ENTREGABLE: MOCKUP Y EJERCICIO PRÁCTICO
+
+Genera una representación visual / mockup de la interfaz que ilustre el siguiente ejercicio paso a paso:
+
+- Paso 1 (Detalle de Solicitud): El Aprobador visualiza la solicitud pendiente y presiona el botón \"Procesar Solicitud\".
+
+- Paso 2 (Listado General / Navegación Libre): La interfaz regresa o redirige al listado general de solicitudes, mostrando la solicitud en estado \"EN PROCESO\" (badge amarillo/azul), permitiendo al usuario realizar otras acciones libremente.
+
+- Paso 3 (Seguimiento y Estado Final): Vista de la solicitud cuando el usuario entra a consultar su avance más tarde, y el listado final actualizado a \"PROCESADA\" una vez concluye el SP.
+
+Por favor, proporciona la arquitectura técnica de tareas en segundo plano (Background Jobs/Polling) y los mockups de UI correspondientes.
+
+continua"
+**AI Response**: "Se actualizó el mockup de Gestión Masiva de Precios para que Procesar Solicitud cambie inmediatamente el estado a EN_PROCESO, cierre el detalle y permita navegación libre mientras un worker simulado continúa el trabajo. Se incorporaron badges, consulta de avance, actualización terminal automática y la documentación técnica del patrón API 202 + cola + worker + polling + idempotencia."
+**Context**: Construcción - Mockup UX/UI y arquitectura de procesamiento asíncrono
+
+---
+
+## Continuación de cambio de mockup
+**Timestamp**: 2026-08-24T00:00:00Z
+**User Input**: "hazlo"
+**AI Response**: "Se inició la implementación del mockup no bloqueante y del ejercicio práctico con arquitectura técnica documentada."
+**Context**: Construcción - Confirmación de ejecución
+
+---
+
+## Auditoría amigable del SP y remoción de "APROBADA" expuesta
+**Timestamp**: 2026-08-24T00:00:00Z
+**User Input**: "Ejecución Stored Procedure autorizado sobre Lista Base esto es el contrl de los estados por el sp se debe ver en la auditoria al esta ok ejecutado completo hazlo amigable version Versión Se resuelve en backend: APROBADA quita eso" / "continua" / "continua aplica el cambio en concreto" / "hazlo" / "continua"
+**AI Response**: "Se agregó a la Auditoría y al modal de detalle un resultado amigable del control de estados del Stored Procedure (OK · Ejecutado completo / Completado con errores / Error de ejecución) con badges de color, y se tradujeron las claves técnicas de evento a lenguaje de negocio, incluyendo 'Stored Procedure autorizado sobre Lista Base'. Se eliminó 'APROBADA' como estado de backend expuesto: la versión de la Lista Base pasó a mostrarse como validación automática ('Validada automáticamente por el sistema'), sin exponer el nombre del estado interno. Se actualizó la documentación técnica con la misma regla y se verificó el balance de delimitadores del bloque Babel (888/888, 1004/1004, 260/260) y la carga HTTP local del mockup (200, 120,330 bytes)."
+**Context**: Construcción - Ajuste de mockup y arquitectura de procesamiento asíncrono (Auditoría amigable del SP)
+
+---
+
+## Remoción de "Versión" y "Stored Procedure autorizado sobre Lista Base" en pantalla
+**Timestamp**: 2026-08-24T00:00:00Z
+**User Input**: "Versión Validada automáticamente por el sistema quitalo aqui Stored Procedure autorizado sobre Lista Base quitalo"
+**AI Response**: "Se eliminó la tarjeta 'Versión' del modal de revisión de la Lista Base y el campo version del payload/solicitud semilla. Se reemplazó el texto 'Stored Procedure autorizado sobre Lista Base' por 'Actualización automatizada autorizada' (tarjeta Ejecución del modal) y por 'Ejecución autorizada y encolada' (evento de Auditoría). Se verificó el balance de delimitadores del bloque Babel (887/887, 1004/1004, 259/259) y la carga HTTP local del mockup (200, 119,984 bytes)."
+**Context**: Construcción - Ajuste de mockup de procesamiento asíncrono (remoción de textos de Versión y ejecución del SP)
+
+---
+
+## Factor %, validación de negativos, duración de "En proceso" y terminología de negocio
+**Timestamp**: 2026-08-24T00:00:00Z
+**User Input**: "Actúa como un Desarrollador Senior y Diseñador de Interfaces UX/UI. Necesito actualizar la lógica, validaciones e interfaz del modal de 'Detalle de Solicitud' en el sistema Kiro. REQUERIMIENTOS Y REGLAS DE NEGOCIO: 1. ETIQUETADO DE CAMPOS (FACTOR %) - Renombrar la etiqueta del campo de factor en las tablas de detalle y plantillas a 'Factor %' (o 'Factor % ingresado'), garantizando que quede explícito que se trata de un valor porcentual. 2. VALIDACIÓN DE VALORES (PORCENTAJES NEGATIVOS) - No se permiten porcentajes ni valores negativos en la columna/campo 'Factor %'. El sistema debe validar e impedir importes menores a 0 (con mensajes de alerta si detecta un factor negativo). 3. TIEMPO DE PERMANENCIA DEL ESTADO 'EN PROCESO' (AUDITORÍA) - La transición de estados ('Pendiente' -> 'En proceso' -> 'Procesada') NO debe ser inmediata ni demasiado rápida en la interfaz. La solicitud debe mantenerse de manera perceptible en estado 'En proceso' [...] el tiempo necesario para que los usuarios y auditores puedan constatar claramente que la tarea está en ejecución antes de pasar a su estado final. 4. TERMINOLOGÍA EN LA INTERFAZ - Eliminar de los mensajes del usuario final cualquier término técnico como 'procedimiento', 'Stored Procedure' o 'SP'. Reemplazar por lenguaje de negocio: En lugar de: 'El procedimiento está ejecutándose...' / 'ID de ejecución: #SP-...' Usar: 'La solicitud se está procesando en segundo plano...' / 'ID de procesamiento: #PROC-...' 5. MODAL DE DETALLE Y VISTA GENERAL [...] 6. ENTREGABLE: MOCKUP Y ESPECIFICACIÓN Genera la especificación técnica y el mockup de UI en Markdown que muestre este flujo con las etiquetas de 'Factor %', las validaciones para evitar porcentajes negativos y la terminología corregida."
+**AI Response**: "Se renombraron todas las etiquetas y columnas de Factor a 'Factor %' en formularios, tablas de previsualización, artículos agregados, plantilla Excel y exportaciones CSV/Excel de auditoría, conservando 'Factor aplicado' como columna separada. Se modificó convertirPorcentajeAFactor para rechazar explícitamente valores negativos (min=0 en los inputs) con el mensaje 'El Factor % no admite valores negativos...' y se corrigieron los datasets de ejemplo/semilla que usaban factores negativos. Se aumentó la duración del worker simulado de 6.5 a 15 segundos y se agregó una barra de progreso indeterminada en el banner de En proceso para hacer perceptible la transición. Se eliminó la terminología técnica (procedimiento, Stored Procedure, SP, #SP-) de todos los textos visibles, reemplazándola por 'La solicitud se está procesando en segundo plano', 'ID de procesamiento: #PROC-...' y equivalentes en toasts y auditoría. Se creó docs/especificacion-modal-detalle-solicitud.md con la especificación técnica completa y el mockup ASCII del flujo de 4 pasos. Se verificó el balance de delimitadores del bloque Babel (892/892, 1009/1009, 261/261) y la carga HTTP local del mockup (200, 121,570 bytes)."
+**Context**: Construcción - Ajuste de mockup de procesamiento asíncrono (Factor %, validaciones, duración de En proceso, terminología de negocio)
+
+---
+
+## Remoción de columna "Resultado del control de estados" en Auditoría
+**Timestamp**: 2026-08-24T00:00:00Z
+**User Input**: "Resultado del control de estados esto que? si no tiene utilidad quitalo tambien si comparto el html lo pueden ver ogual que yo aca?"
+**AI Response**: "Se removió la columna 'Resultado del control de estados' de la tabla de Auditoría por ser redundante con el badge de resultado ya visible en el modal de detalle de la solicitud. Se limpió el código asociado (campo resultado en registrarEvento y resumenParaAuditoria). Se verificó el balance de delimitadores (889/889, 1005/1005, 261/261) y la carga HTTP local (200, 120,903 bytes). Se explicó que compartir el archivo HTML entrega exactamente la misma vista interactiva a cualquier persona que lo abra en su navegador, sin necesidad de servidor ni de Kiro."
+**Context**: Construcción - Ajuste de mockup (limpieza de Auditoría) y aclaración sobre portabilidad del archivo HTML
+
+---
+
+## Corrección: Operador no podía ver el detalle de sus solicitudes enviadas
+**Timestamp**: 2026-08-24T00:00:00Z
+**User Input**: "el operador no ve el detalle de las solictudes enviadas corrige"
+**AI Response**: "Se identificó que abrirModal exigía rol APROBADOR sin excepción, bloqueando el botón Ver detalle/Consultar avance en Mis solicitudes enviadas para el Operador. Se corrigió para que cualquier solicitante pueda abrir el detalle de su propia solicitud en modo consulta, preservando que solo un Aprobador puede decidir (aprobar/rechazar) sobre solicitudes ajenas dentro de su ámbito y nunca sobre las propias. Se verificó el balance de delimitadores (890/890, 1008/1008, 261/261) y la carga HTTP local del mockup (200, 121,288 bytes)."
+**Context**: Construcción - Corrección de bug de acceso al detalle de solicitud para el rol Operador
+
+---
