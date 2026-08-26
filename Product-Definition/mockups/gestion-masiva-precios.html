@@ -136,6 +136,7 @@ const ICONS = {
   refreshCw: "M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
   trash: "M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z",
   plus: "M12 5v14M5 12h14",
+  lock: "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2ZM7 11V7a5 5 0 0 1 10 0v4M12 15v2",
 };
 
 function Icon({ name, className = "w-4 h-4", spin = false }) {
@@ -265,89 +266,212 @@ function Combobox({ id, value, onChange, options, placeholder, disabled }) {
 }
 
 /* =========================================================================
+   INFERENCIA AUTOMÁTICA DE COMPAÑÍA (SIMULACIÓN SOFTLAND SECURITY S2/SS)
+   El backend real resolvería la compañía del usuario autenticado consultando
+   Softland Security (S2/SS) por su identidad corporativa. Aquí se simula esa
+   resolución a partir del dominio de correo de la sesión SSO, de forma que
+   NINGUNA pantalla ofrezca un selector manual de compañía: el contexto queda
+   fijo y aislado para toda la sesión (aislamiento visual de datos por tenant).
+   ========================================================================= */
+const DOMINIO_A_COMPANIA_S2SS = {
+  "sillaca.com": "SILLACA",
+  "beval.com": "BEVAL",
+  "febeca.com": "FEBECA",
+  "cofersa.com": "COFERSA",
+};
+
+function resolverCompaniaPorCorreo(email) {
+  const dominio = String(email || "").split("@")[1] || "";
+  return DOMINIO_A_COMPANIA_S2SS[dominio.toLowerCase()] || null;
+}
+
+/* =========================================================================
    DATOS DE SESIÓN SIMULADA (OIDC / SSO — AWS Cognito / Active Directory)
+   La compañía NO se declara aquí manualmente: se deriva del dominio de correo
+   mediante resolverCompaniaPorCorreo, replicando la resolución S2/SS. Debe
+   existir al menos un usuario de ejemplo por compañía para poder demostrar
+   el aislamiento de datos entre compañías (multitenant); SILLACA conserva
+   además el par Operador/Aprobador para demostrar el flujo Maker-Checker
+   dentro de una misma compañía.
    ========================================================================= */
 const IDENTITIES = [
-  {
-    email: "jperez@empresa.com", nombre: "Juan Pérez", rol: "OPERADOR", color: "#2563eb",
-    companiasPermitidas: ["SILLACA", "BEVAL", "FEBECA", "COFERSA"],
-    listasPermitidas: ["mayoreod", "mayoreob", "lparagua", "grupopico", "larab", "lpv1", "lpv2", "lpv3", "lpv4", "lpv5", "lpv6", "lpv7", "lpv8", "lpv9", "lpv10", "lpv11", "lpv12", "lpv13", "lpv14", "lpv15", "lpv16", "lpv17", "lpv18"],
-  },
-  {
-    email: "mrodriguez@empresa.com", nombre: "María Rodríguez", rol: "APROBADOR", color: "#7c3aed",
-    companiasPermitidas: ["SILLACA", "BEVAL", "FEBECA", "COFERSA"],
-    listasPermitidas: ["mayoreod", "mayoreob", "lparagua", "grupopico", "larab", "lpv1", "lpv2", "lpv3", "lpv4", "lpv5", "lpv6", "lpv7", "lpv8", "lpv9", "lpv10", "lpv11", "lpv12", "lpv13", "lpv14", "lpv15", "lpv16", "lpv17", "lpv18"],
-  },
-  {
-    email: "cgomez@empresa.com", nombre: "Carlos Gómez", rol: "SIN_PERMISO", color: "#71717a",
-    companiasPermitidas: [],
-    listasPermitidas: [],
-  },
-];
+  { email: "jperez@sillaca.com", nombre: "Juan Pérez", rol: "OPERADOR", color: "#2563eb" },
+  { email: "mrodriguez@sillaca.com", nombre: "María Rodríguez", rol: "APROBADOR", color: "#7c3aed" },
+  { email: "palvarado@beval.com", nombre: "Pedro Alvarado", rol: "OPERADOR", color: "#0d9488" },
+  { email: "ljimenez@febeca.com", nombre: "Lucía Jiménez", rol: "APROBADOR", color: "#ea580c" },
+  { email: "dvargas@cofersa.com", nombre: "Diego Vargas", rol: "OPERADOR", color: "#b45309" },
+  { email: "cgomez@sinmapeo.com", nombre: "Carlos Gómez", rol: "SIN_PERMISO", color: "#71717a" },
+].map(function (identity) {
+  return Object.assign({}, identity, { compania: resolverCompaniaPorCorreo(identity.email) });
+});
 
 function initials(nombre) {
   return nombre.split(" ").map(function (p) { return p[0]; }).join("").slice(0, 2).toUpperCase();
 }
 
-function IdentitySwitcher({ current, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
-  const triggerRef = useRef(null);
+/* =========================================================================
+   PANTALLA DE LOGIN (reemplaza el selector de identidad en el header)
+   Presenta un usuario de ejemplo por compañía (más el caso sin acceso) para
+   iniciar sesión, simulando la autenticación corporativa (SSO/S2SS) antes de
+   entrar a la aplicación. La compañía mostrada en cada tarjeta ya proviene
+   de la resolución automática por dominio de correo (resolverCompaniaPorCorreo).
+   ========================================================================= */
+function LoginScreen({ onLogin }) {
+  const [selectedEmail, setSelectedEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(function () {
-    const closeFn = function () { setOpen(false); };
-    comboRegistry.add(closeFn);
-    return function () { comboRegistry.delete(closeFn); };
-  }, []);
-
-  function handleOpen() {
-    const wasOpen = open;
-    comboRegistry.forEach(function (fn) { fn(); });
-    if (!wasOpen) {
-      const el = triggerRef.current;
-      if (el && el.getBoundingClientRect) {
-        const rect = el.getBoundingClientRect();
-        setPos({ top: rect.bottom + 6, left: Math.max(12, rect.right - 300), width: 300 });
-      }
-      setOpen(true);
-    }
+  function handleContinue() {
+    if (!selectedEmail || isLoading) return;
+    setIsLoading(true);
+    setTimeout(function () {
+      const identity = IDENTITIES.find(function (i) { return i.email === selectedEmail; });
+      if (identity) onLogin(identity);
+      setIsLoading(false);
+    }, 1200);
   }
 
-  function pick(ev, identity) {
-    if (ev) ev.stopPropagation();
-    setOpen(false);
-    if (onChange) onChange(identity);
-  }
+  const selectedIdentity = IDENTITIES.find(function (i) { return i.email === selectedEmail; });
+  const sinAcceso = selectedIdentity && selectedIdentity.rol === "SIN_PERMISO";
 
   return (
-    <div className="combo-w">
-      <button ref={triggerRef} className="btn btn-outline" onFocus={handleOpen} onClick={handleOpen} style={{ paddingLeft: 8 }}>
-        <span className="avatar" style={{ background: current.color }}>{initials(current.nombre)}</span>
-        <span className="text-left">
-          <span className="block text-xs font-semibold leading-none">{current.nombre}</span>
-          <span className="block text-[10px] text-zinc-400 leading-none mt-0.5">{current.rol.replace("_", " ")}</span>
-        </span>
-        <Icon name="chevronDown" className="w-3.5 h-3.5" />
-      </button>
-      {open && (
-        <div className="combo-dd" style={{ top: pos.top, left: pos.left, width: pos.width }}>
-          <div className="px-2.5 pt-1.5 pb-1 text-[11px] font-medium text-zinc-400 uppercase tracking-wide">Simular sesión SSO (OIDC)</div>
-          {IDENTITIES.map(function (identity) {
-            return (
-              <div key={identity.email} className="combo-opt items-start" onClick={function (ev) { pick(ev, identity); }}>
-                <span className="avatar mt-0.5" style={{ background: identity.color }}>{initials(identity.nombre)}</span>
-                <span>
-                  <span className="block font-medium">{identity.nombre}</span>
-                  <span className="block text-[11px] text-zinc-500">{identity.email}</span>
-                  <span className={"badge mt-1 " + (identity.rol === "OPERADOR" ? "badge-outline" : identity.rol === "APROBADOR" ? "badge-enproceso" : "badge-rechazado")}>
-                    {identity.rol === "SIN_PERMISO" ? "SIN PERMISO (403)" : "Rol: " + identity.rol}
-                  </span>
-                </span>
-              </div>
-            );
-          })}
+    <div className="min-h-screen flex items-center justify-center px-6 py-10 bg-white">
+      <div className="relative w-full max-w-md">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <div className="w-14 h-14 rounded-lg bg-zinc-900 flex items-center justify-center text-white font-bold text-lg mx-auto mb-4 shadow-md">GP</div>
+          <h1 className="text-2xl font-bold text-zinc-900 mb-1">Gestión Masiva de Precios</h1>
+          <p className="text-zinc-500 text-sm">Sistema de automatización de listas de precio</p>
         </div>
-      )}
+
+        {/* Tarjeta principal */}
+        <div className="card p-8 shadow-lg border border-zinc-100">
+          
+          {/* Etapa 1: Selección */}
+          {!selectedEmail ? (
+            <div className="space-y-5">
+              <div className="mb-6">
+                <h2 className="text-lg font-semibold text-zinc-900 mb-1">Iniciar sesión</h2>
+                <p className="text-zinc-500 text-sm">Seleccione su usuario corporativo</p>
+              </div>
+
+              <div>
+                <label htmlFor="user-select" className="block text-sm font-medium text-zinc-700 mb-3">
+                  <Icon name="user" className="w-4 h-4 inline mr-2 text-zinc-600" />
+                  Usuario
+                </label>
+                
+                <div className="relative">
+                  <select
+                    id="user-select"
+                    value={selectedEmail}
+                    onChange={function (e) { setSelectedEmail(e.target.value); }}
+                    className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-zinc-300 rounded-lg bg-white text-zinc-900 focus:outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 transition-all cursor-pointer hover:border-zinc-400">
+                    <option value="">-- Seleccione un usuario --</option>
+                    {IDENTITIES.map(function (identity) {
+                      const sinAcceso = identity.rol === "SIN_PERMISO";
+                      return (
+                        <option key={identity.email} value={identity.email} disabled={sinAcceso}>
+                          {identity.nombre} • {identity.rol} • {identity.compania || "—"}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-zinc-400">
+                    <Icon name="chevronDown" className="w-4 h-4" />
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-3 text-xs text-zinc-600 space-y-1">
+                <p>👤 {IDENTITIES.filter(function (i) { return i.rol !== "SIN_PERMISO"; }).length} usuario(s) disponible(s)</p>
+                <p>🔒 Autenticación corporativa (SSO)</p>
+              </div>
+            </div>
+          ) : (
+            /* Etapa 2: Confirmación */
+            <div className="space-y-5">
+              <div className="mb-6">
+                <h2 className="text-lg font-semibold text-zinc-900 mb-1">Confirmación de cuenta</h2>
+                <p className="text-zinc-500 text-sm">Verifique sus datos antes de continuar</p>
+              </div>
+
+              {/* Tarjeta de usuario */}
+              <div className="rounded-lg border border-zinc-300 bg-gradient-to-br from-zinc-50 to-white p-4">
+                <div className="flex items-center gap-4 mb-4">
+                  <span className="avatar w-12 h-12 text-lg font-semibold" style={{ background: selectedIdentity.color }}>
+                    {initials(selectedIdentity.nombre)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-zinc-900 font-semibold truncate">{selectedIdentity.nombre}</p>
+                    <p className="text-zinc-500 text-sm mono truncate">{selectedIdentity.email}</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2 border-t border-zinc-200 pt-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-600">Compañía:</span>
+                    <span className="text-zinc-900 font-medium">{selectedIdentity.compania || "—"}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-600">Rol:</span>
+                    <span className={"font-medium " + (selectedIdentity.rol === "OPERADOR" ? "text-blue-600" : selectedIdentity.rol === "APROBADOR" ? "text-purple-600" : "text-red-600")}>
+                      {selectedIdentity.rol}
+                    </span>
+                  </div>
+                  {sinAcceso && (
+                    <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-red-700 text-xs flex items-center gap-1.5">
+                        <Icon name="alertTriangle" className="w-3.5 h-3.5 flex-none" />
+                        Esta cuenta no tiene permisos para acceder al módulo
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Botones de acción */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={function () { setSelectedEmail(""); }}
+                  disabled={isLoading}
+                  className="flex-1 btn btn-secondary text-zinc-900">
+                  <Icon name="x" className="w-4 h-4" /> Cambiar
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedEmail || isLoading || sinAcceso}
+                  onClick={handleContinue}
+                  className="flex-1 btn btn-default">
+                  {isLoading ? (
+                    <><Icon name="loader" className="w-4 h-4" spin /> Autenticando...</>
+                  ) : (
+                    <><Icon name="check" className="w-4 h-4" /> Continuar</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-6 text-center space-y-1">
+          <p className="text-zinc-500 text-xs">
+            🔐 Acceso seguro mediante autenticación corporativa (Softland Security S2/SS)
+          </p>
+        </div>
+
+        {/* Indicador de carga */}
+        {isLoading && (
+          <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 text-center">
+              <div className="w-10 h-10 border-3 border-zinc-300 border-t-zinc-900 rounded-full animate-spin mx-auto mb-3"></div>
+              <p className="text-zinc-900 text-sm font-medium">Iniciando sesión...</p>
+              <p className="text-zinc-500 text-xs mt-1">Validando credenciales corporativas</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -371,30 +495,96 @@ function fmtMonto(n) {
   return "₡" + n.toLocaleString("es-CR", { maximumFractionDigits: 2 });
 }
 
-/* El usuario captura un Factor % (variación porcentual). El sistema la
-   traduce al multiplicador que usa Softland: 10% → 1.10. No se admiten
-   valores negativos: el Factor % siempre debe ser cero o positivo (0–100). */
+/* =========================================================================
+   MARGEN MÍNIMO Y COSTO MÍNIMO DEL ARTÍCULO (Precio Piso)
+   El margen mínimo NUNCA se muestra en pantalla (ni el porcentaje ni el
+   monto de margen): es un parámetro interno de negocio usado únicamente
+   para derivar el "Costo Mínimo del Artículo" (Precio Piso). La interfaz
+   solo expone ese monto final ya traducido a moneda.
+   Fórmula: Costo Mínimo = Costo de Reposición / (1 - Margen Mínimo).
+   ========================================================================= */
+const MARGEN_MINIMO_ARTICULO = 0.20; // 20% — parámetro interno, no se expone en UI.
+
+function calcularCostoMinimoArticulo(articulo) {
+  if (!articulo || typeof articulo.costoReposicion !== "number") return null;
+  const margen = MARGEN_MINIMO_ARTICULO;
+  if (margen <= 0 || margen >= 1) return articulo.costoReposicion;
+  return articulo.costoReposicion / (1 - margen);
+}
+
+/* Convierte una variación porcentual YA CON SIGNO (positiva = Aumento,
+   negativa = Disminución) al multiplicador que usa Softland: +10% → 1.10,
+   -10% → 0.90. El signo no lo captura el usuario escribiéndolo: proviene
+   siempre de la columna/campo obligatorio "Tipo de Variación" (ver
+   calcularVariacion), que traduce Aumento en (+) y Disminución en (-) sin
+   alterar esta fórmula matemática base. */
 function convertirPorcentajeAFactor(valor) {
   const crudo = String(valor == null ? "" : valor).trim().replace(",", ".");
   const porcentaje = parseFloat(crudo);
   const formatoValido = crudo !== "" && !isNaN(porcentaje) && /^-?\d+(\.\d+)?$/.test(crudo);
-  const esNegativo = formatoValido && porcentaje < 0;
   const factor = formatoValido ? 1 + (porcentaje / 100) : null;
-  const dentroDeRango = formatoValido && !esNegativo && factor > 0 && factor <= 2;
+  const dentroDeRango = formatoValido && factor > 0 && factor <= 2;
   return {
     valido: dentroDeRango,
     porcentaje: porcentaje,
     factor: factor,
     causa: !formatoValido
-      ? "Formato de Factor % inválido / valor no numérico."
-      : esNegativo
-        ? "El Factor % no admite valores negativos. Ingrese un porcentaje entre 0 y 100."
-        : "El Factor % debe estar entre 0 y 100 (multiplicador resultante mayor que 0 y menor o igual a 2).",
+      ? "Formato de variación inválido / valor no numérico."
+      : "El Factor % debe generar un multiplicador mayor que 0 y menor o igual a 2 (variación entre -100% y 100%).",
   };
 }
 
 function textoFactorCalculado(factor) {
   return factor != null && !isNaN(factor) ? factor.toFixed(2) : "—";
+}
+
+/* =========================================================================
+   TIPO DE VARIACIÓN (Aumento / Disminución) — columna obligatoria que
+   reemplaza la captura directa de un signo en el campo Factor %. El usuario
+   siempre ingresa una magnitud igual o mayor a cero en "Factor %"; el signo
+   aplicado sobre la fórmula (Precio Destino = Precio Base × Factor) lo
+   determina exclusivamente este campo: Aumento → (+), Disminución → (-).
+   ========================================================================= */
+const TIPOS_VARIACION = { AUMENTO: "Aumento", DISMINUCION: "Disminución" };
+
+function signoDeTipoVariacion(tipoVariacion) {
+  return tipoVariacion === "DISMINUCION" ? -1 : 1;
+}
+
+function tipoVariacionDesdeSigno(valorConSigno) {
+  return typeof valorConSigno === "number" && valorConSigno < 0 ? "DISMINUCION" : "AUMENTO";
+}
+
+function normalizarTipoVariacion(valor) {
+  const crudo = String(valor == null ? "" : valor).trim().toLowerCase();
+  if (crudo.indexOf("dismin") === 0 || crudo.indexOf("disminuci") !== -1) return "DISMINUCION";
+  if (crudo.indexOf("aumento") === 0 || crudo === "+" || crudo === "increment" || crudo.indexOf("increment") === 0) return "AUMENTO";
+  return null;
+}
+
+/* Combina la magnitud (siempre >= 0, tal como la captura el usuario) con el
+   Tipo de Variación seleccionado para obtener el porcentaje con signo y, a
+   partir de él, el factor multiplicador final. La fórmula matemática base
+   (factor = 1 + porcentaje/100) permanece intacta; solo cambia el signo
+   aplicado antes de evaluarla. */
+function calcularVariacion(tipoVariacion, magnitudRaw) {
+  const crudo = String(magnitudRaw == null ? "" : magnitudRaw).trim().replace(",", ".");
+  const magnitud = parseFloat(crudo);
+  const formatoValido = crudo !== "" && !isNaN(magnitud) && /^\d+(\.\d+)?$/.test(crudo);
+  const signo = signoDeTipoVariacion(tipoVariacion);
+  const porcentajeConSigno = formatoValido ? signo * magnitud : null;
+  const conversion = formatoValido ? convertirPorcentajeAFactor(String(porcentajeConSigno)) : null;
+  return {
+    valido: !!tipoVariacion && !!conversion && conversion.valido,
+    magnitud: magnitud,
+    porcentaje: porcentajeConSigno,
+    factor: conversion ? conversion.factor : null,
+    causa: !tipoVariacion
+      ? "Debe indicar el Tipo de Variación (Aumento o Disminución)."
+      : !formatoValido
+        ? "El Factor % debe ser un valor numérico igual o mayor a cero. El signo se define únicamente con Tipo de Variación."
+        : (conversion && !conversion.valido ? conversion.causa : null),
+  };
 }
 
 /* =========================================================================
@@ -411,10 +601,12 @@ function validarFila(row, modo) {
       valido: false,
       precioActual: null,
       precioPropuesto: null,
-      margenEst: null,
+      costoMinimo: null,
       causa: "El código de artículo no existe en el catálogo activo.",
     };
   }
+
+  const costoMinimo = calcularCostoMinimoArticulo(articulo);
 
   const crudo = String(row.valorPropuestoRaw).trim().replace(",", ".");
   const numero = parseFloat(crudo);
@@ -425,7 +617,7 @@ function validarFila(row, modo) {
       valido: false,
       precioActual: articulo.precioActual,
       precioPropuesto: null,
-      margenEst: null,
+      costoMinimo: costoMinimo,
       causa: "Formato de celda inválido / valor no numérico.",
     };
   }
@@ -436,7 +628,7 @@ function validarFila(row, modo) {
         valido: false,
         precioActual: articulo.precioActual,
         precioPropuesto: Math.round(articulo.precioActual * numero),
-        margenEst: null,
+        costoMinimo: costoMinimo,
         causa: "El factor aplicado (" + numero + ") está fuera del rango permitido (mayor que 0 y menor o igual a 2).",
       };
     }
@@ -449,24 +641,25 @@ function validarFila(row, modo) {
       valido: false,
       precioActual: articulo.precioActual,
       precioPropuesto: precioPropuesto,
-      margenEst: null,
+      costoMinimo: costoMinimo,
       causa: "El precio propuesto resultante debe ser mayor que cero.",
     };
   }
 
-  if (precioPropuesto < articulo.costoReposicion) {
-    const margenNegativo = ((precioPropuesto - articulo.costoReposicion) / precioPropuesto) * 100;
+  /* La validación de piso se realiza contra el Costo Mínimo del Artículo
+     (que ya incorpora el margen mínimo interno sobre el costo de reposición),
+     nunca contra el porcentaje de margen expuesto en pantalla. */
+  if (costoMinimo != null && precioPropuesto < costoMinimo) {
     return {
       valido: false,
       precioActual: articulo.precioActual,
       precioPropuesto: precioPropuesto,
-      margenEst: margenNegativo,
-      causa: "El precio propuesto (" + fmtMonto(precioPropuesto) + ") genera un margen de " + margenNegativo.toFixed(1) + "% por debajo del costo en Softland.",
+      costoMinimo: costoMinimo,
+      causa: "El precio propuesto (" + fmtMonto(precioPropuesto) + ") es menor que el Costo Mínimo del Artículo (" + fmtMonto(costoMinimo) + ").",
     };
   }
 
-  const margenEst = ((precioPropuesto - articulo.costoReposicion) / precioPropuesto) * 100;
-  return { valido: true, precioActual: articulo.precioActual, precioPropuesto: precioPropuesto, margenEst: margenEst, causa: null };
+  return { valido: true, precioActual: articulo.precioActual, precioPropuesto: precioPropuesto, costoMinimo: costoMinimo, causa: null };
 }
 
 function construirFilaCompleta(row, modo) {
@@ -480,7 +673,7 @@ function construirFilaCompleta(row, modo) {
 
 function construirFilaDesdeVariacion(row, modo) {
   if (modo !== "factor") return construirFilaCompleta(row, modo);
-  const conversion = convertirPorcentajeAFactor(row.variacionPorcentaje);
+  const conversion = calcularVariacion(row.tipoVariacion, row.variacionPorcentaje);
   const filaConFactor = Object.assign({}, row, {
     valorPropuestoRaw: conversion.valido ? textoFactorCalculado(conversion.factor) : "",
   });
@@ -491,7 +684,7 @@ function construirFilaDesdeVariacion(row, modo) {
         valido: false,
         precioActual: CATALOGO_ARTICULOS[row.codigo].precioActual,
         precioPropuesto: null,
-        margenEst: null,
+        costoMinimo: calcularCostoMinimoArticulo(CATALOGO_ARTICULOS[row.codigo]),
         causa: conversion.causa,
       },
     });
@@ -500,26 +693,34 @@ function construirFilaDesdeVariacion(row, modo) {
 }
 
 /* Conjunto de datos de ejemplo determinístico: reproduce exactamente los
-   tres escenarios de error solicitados (costo, catálogo, formato). El
-   Factor % nunca es negativo; el escenario de margen por debajo del costo
-   se reproduce con 0% (factor 1.00), ya que el precio actual del artículo
-   ya está por debajo de su costo de reposición. */
+   tres escenarios de error solicitados (costo, catálogo, formato) además del
+   uso combinado de Aumento y Disminución sobre el mismo Factor % (magnitud
+   siempre >= 0). El escenario de precio por debajo del Costo Mínimo del
+   Artículo se reproduce con magnitud 0% (factor 1.00), ya que el precio
+   actual del artículo ya está por debajo de su costo mínimo calculado. El
+   identificador de fila es únicamente un índice interno (posición en el
+   arreglo); no proviene de una columna capturada por el usuario. */
 function filasEjemploExcel(modo) {
   const base = [
-    { fila: 5, codigo: "ART-231", variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "11000" },
-    { fila: 8, codigo: "ART-455", variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "4620" },
-    { fila: 12, codigo: "ART-089", variacionPorcentaje: modo === "factor" ? "0" : null, valorPropuestoRaw: modo === "factor" ? "" : "9700" },
-    { fila: 45, codigo: "ART-999", variacionPorcentaje: modo === "factor" ? "5" : null, valorPropuestoRaw: modo === "factor" ? "" : "5000" },
-    { fila: 88, codigo: "ART-104", variacionPorcentaje: modo === "factor" ? "N/D" : null, valorPropuestoRaw: modo === "factor" ? "" : "N/D" },
-    { fila: 91, codigo: "ART-120", variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "3400" },
-    { fila: 102, codigo: "ART-344", variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "2750" },
+    { codigo: "ART-231", tipoVariacion: modo === "factor" ? "AUMENTO" : null, variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "11000" },
+    { codigo: "ART-455", tipoVariacion: modo === "factor" ? "AUMENTO" : null, variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "4620" },
+    { codigo: "ART-089", tipoVariacion: modo === "factor" ? "AUMENTO" : null, variacionPorcentaje: modo === "factor" ? "0" : null, valorPropuestoRaw: modo === "factor" ? "" : "9700" },
+    { codigo: "ART-999", tipoVariacion: modo === "factor" ? "AUMENTO" : null, variacionPorcentaje: modo === "factor" ? "5" : null, valorPropuestoRaw: modo === "factor" ? "" : "5000" },
+    { codigo: "ART-104", tipoVariacion: modo === "factor" ? "AUMENTO" : null, variacionPorcentaje: modo === "factor" ? "N/D" : null, valorPropuestoRaw: modo === "factor" ? "" : "N/D" },
+    { codigo: "ART-120", tipoVariacion: modo === "factor" ? "DISMINUCION" : null, variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "3400" },
+    { codigo: "ART-344", tipoVariacion: modo === "factor" ? "AUMENTO" : null, variacionPorcentaje: modo === "factor" ? "10" : null, valorPropuestoRaw: modo === "factor" ? "" : "2750" },
   ];
-  return base.map(function (r) { return modo === "factor" ? construirFilaDesdeVariacion(r, modo) : construirFilaCompleta(r, modo); });
+  return base.map(function (r, idx) {
+    const conFila = Object.assign({}, r, { fila: idx + 1 });
+    return modo === "factor" ? construirFilaDesdeVariacion(conFila, modo) : construirFilaCompleta(conFila, modo);
+  });
 }
 
 /* Parseo de la plantilla oficial XLSX. El proceso de descuento masivo exige
-   Fila | Lista de Precio | Código Artículo | Factor; el usuario ingresa 10
-   para +10% y el sistema persiste el multiplicador 1.10. */
+   Lista de Precio | Código Artículo | Tipo de Variación | Factor %; el
+   usuario ya no captura ni el sistema depende de una columna de Índice de
+   Fila (el identificador interno de fila es solo la posición en el archivo,
+   nunca una columna requerida ni visible). */
 function codigoListaDesdeArchivo(valor) {
   const crudo = String(valor == null ? "" : valor).trim().toLowerCase();
   return Object.keys(NOMBRES_LISTA).find(function (codigo) {
@@ -556,12 +757,19 @@ function parsearArchivoExcel(file, modo, procesoKey) {
         const dataRows = rows.slice(1).filter(function (r) { return r && r.length > 0; });
         const esDescuentoMasivo = procesoKey === "DESCUENTO_LISTA_PRECIO";
         const parsed = dataRows.map(function (r, idx) {
-          const filaArchivo = {
-            fila: (typeof r[0] === "number" ? r[0] : idx + 2),
-            listaCodigo: esDescuentoMasivo && r[1] !== undefined ? String(r[1]).trim() : null,
-            codigo: esDescuentoMasivo ? (r[2] !== undefined ? String(r[2]).trim() : "") : (r[1] !== undefined ? String(r[1]).trim() : ""),
-            variacionPorcentaje: esDescuentoMasivo ? (r[3] !== undefined ? r[3] : "") : (r[2] !== undefined ? r[2] : ""),
-            valorPropuestoRaw: esDescuentoMasivo ? (r[3] !== undefined ? r[3] : "") : (r[2] !== undefined ? r[2] : ""),
+          const filaArchivo = esDescuentoMasivo ? {
+            fila: idx + 1,
+            listaCodigo: r[0] !== undefined ? String(r[0]).trim() : null,
+            codigo: r[1] !== undefined ? String(r[1]).trim() : "",
+            tipoVariacion: normalizarTipoVariacion(r[2]),
+            variacionPorcentaje: r[3] !== undefined ? r[3] : "",
+            valorPropuestoRaw: r[3] !== undefined ? r[3] : "",
+          } : {
+            fila: idx + 1,
+            codigo: r[0] !== undefined ? String(r[0]).trim() : "",
+            tipoVariacion: normalizarTipoVariacion(r[1]),
+            variacionPorcentaje: r[2] !== undefined ? r[2] : "",
+            valorPropuestoRaw: r[2] !== undefined ? r[2] : "",
           };
           return esDescuentoMasivo ? construirFilaDescuentoMasivo(filaArchivo) : construirFilaDesdeVariacion(filaArchivo, modo);
         });
@@ -574,17 +782,21 @@ function parsearArchivoExcel(file, modo, procesoKey) {
   });
 }
 
-/* Plantilla oficial descargable para la carga masiva de descuento por lista y artículo. */
+/* Plantilla oficial descargable para la carga masiva de descuento por lista y
+   artículo. Ya no incluye una columna de Índice de Fila; en su lugar exige
+   la columna obligatoria "Tipo de Variacion" (Aumento/Disminucion), que
+   define el signo aplicado sobre el Factor % (siempre una magnitud >= 0)
+   antes de evaluar la fórmula Precio Destino = Precio Base × Factor. */
 function descargarPlantillaExcel(procesoKey) {
   const esDescuentoMasivo = procesoKey === "DESCUENTO_LISTA_PRECIO";
   const encabezado = esDescuentoMasivo
-    ? ["Fila", "Lista de Precio", "Codigo Articulo", "Factor %"]
-    : ["Fila", "Codigo Articulo", "Factor %"];
+    ? ["Lista de Precio", "Codigo Articulo", "Tipo de Variacion", "Factor %"]
+    : ["Codigo Articulo", "Tipo de Variacion", "Factor %"];
   const filasEjemplo = esDescuentoMasivo
-    ? [[1, "MAYOREOB", "ART-231", "10"], [2, "LPV1", "ART-455", "5"]]
-    : [[1, "ART-231", "10"], [2, "ART-455", "10"]];
+    ? [["MAYOREOB", "ART-231", "Aumento", "10"], ["LPV1", "ART-455", "Disminucion", "5"]]
+    : [["ART-231", "Aumento", "10"], ["ART-455", "Disminucion", "10"]];
   const hoja = XLSX.utils.aoa_to_sheet([encabezado].concat(filasEjemplo));
-  hoja["!cols"] = esDescuentoMasivo ? [{ wch: 8 }, { wch: 20 }, { wch: 18 }, { wch: 16 }] : [{ wch: 8 }, { wch: 18 }, { wch: 16 }];
+  hoja["!cols"] = esDescuentoMasivo ? [{ wch: 20 }, { wch: 18 }, { wch: 16 }, { wch: 12 }] : [{ wch: 18 }, { wch: 16 }, { wch: 12 }];
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, "Plantilla");
   XLSX.writeFile(libro, "plantilla-" + procesoKey.toLowerCase() + ".xlsx");
@@ -675,14 +887,15 @@ const IMPACTO_POR_LISTA = Object.keys(ARTICULOS_POR_LISTA).reduce(function (acum
   return acumulado;
 }, {});
 
-function construirFilasMayoreodMasivo(codigoGrupo, factor, variacionPorcentaje) {
+function construirFilasMayoreodMasivo(codigoGrupo, factor, tipoVariacion, magnitud) {
   const grupo = GRUPOS_ARTICULOS[codigoGrupo];
   const articulos = grupo ? grupo.articulos : [];
   return articulos.map(function (codigoArticulo, indice) {
     const fila = construirFilaCompleta({
       fila: indice + 1,
       codigo: codigoArticulo,
-      variacionPorcentaje: variacionPorcentaje,
+      tipoVariacion: tipoVariacion,
+      variacionPorcentaje: magnitud,
       valorPropuestoRaw: factor,
     }, "factor");
     return Object.assign({}, fila, {
@@ -692,14 +905,15 @@ function construirFilasMayoreodMasivo(codigoGrupo, factor, variacionPorcentaje) 
   });
 }
 
-function construirFilasGestionGlobal(listaCodigo, factor, variacionPorcentaje) {
+function construirFilasGestionGlobal(listaCodigo, factor, tipoVariacion, magnitud) {
   const codigosArticulo = ARTICULOS_POR_LISTA[listaCodigo] || Object.keys(CATALOGO_ARTICULOS);
   const nombreLista = NOMBRES_LISTA[listaCodigo] || listaCodigo || "Lista seleccionada";
   return codigosArticulo.map(function (codigoArticulo, indice) {
     const fila = construirFilaCompleta({
       fila: indice + 1,
       codigo: codigoArticulo,
-      variacionPorcentaje: variacionPorcentaje,
+      tipoVariacion: tipoVariacion,
+      variacionPorcentaje: magnitud,
       valorPropuestoRaw: factor,
     }, "factor");
     return Object.assign({}, fila, { lista: nombreLista });
@@ -707,13 +921,16 @@ function construirFilasGestionGlobal(listaCodigo, factor, variacionPorcentaje) {
 }
 
 /* Verifica que la compañía y la lista seleccionadas estén dentro del
-   ámbito autorizado del usuario actual. Se evalúa tanto en la interfaz
-   (deshabilitando opciones fuera de ámbito) como en el envío (defensivo,
-   simulando la validación que aplicaría el backend). */
+   ámbito autorizado del usuario actual. La compañía del usuario ya no se
+   captura manualmente: se resolvió una sola vez (S2/SS) al iniciar sesión y
+   queda fija en user.compania. El ámbito, por lo tanto, se reduce a validar
+   que la compañía consultada sea exactamente la compañía de la sesión y que
+   la lista pertenezca al catálogo de esa compañía (aislamiento por tenant,
+   tanto en la interfaz como en el envío defensivo equivalente al backend). */
 function estaEnAmbito(user, compania, listaCodigo) {
-  if (!user) return false;
-  if (compania && user.companiasPermitidas.indexOf(compania) === -1) return false;
-  if (listaCodigo && user.listasPermitidas.indexOf(listaCodigo) === -1) return false;
+  if (!user || !user.compania) return false;
+  if (compania && compania !== user.compania) return false;
+  if (listaCodigo && (LISTAS_POR_COMPANIA[user.compania] || []).indexOf(listaCodigo) === -1) return false;
   return true;
 }
 
@@ -738,11 +955,11 @@ function nombreArchivoS3(prefijo, ext) {
    GENERACIÓN DE CSV / EXCEL DE DESCARGA (reporte completo y filas fallidas)
    ========================================================================= */
 function filasADataCsv(filas) {
-  const header = ["Fila", "Codigo_Articulo", "Descripcion", "Factor_Porcentaje", "Factor_Aplicado", "Precio_Actual", "Precio_Propuesto", "Resultado", "Causa"];
+  const header = ["Codigo_Articulo", "Descripcion", "Tipo_Variacion", "Factor_Porcentaje", "Factor_Aplicado", "Precio_Actual", "Precio_Propuesto", "Resultado", "Causa"];
   const lines = filas.map(function (f) {
     const v = f.validacion;
     return [
-      f.fila, f.codigo, f.descripcion, f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
+      f.codigo, f.descripcion, f.tipoVariacion ? TIPOS_VARIACION[f.tipoVariacion] : "", f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
       v.precioActual != null ? v.precioActual : "",
       v.precioPropuesto != null ? v.precioPropuesto : "",
       v.valido ? "OK" : "ERROR",
@@ -767,11 +984,11 @@ function descargarTexto(nombre, contenido, mime) {
 /* Exportación real a .xlsx (no CSV) para las filas con error, usando la
    misma librería SheetJS ya cargada para la lectura de plantillas. */
 function descargarExcelFilas(nombre, filas) {
-  const encabezado = ["Fila", "Codigo_Articulo", "Descripcion", "Factor_Porcentaje", "Factor_Aplicado", "Precio_Anterior", "Precio_Nuevo_Procesado", "Estado", "Causa_Error"];
+  const encabezado = ["Codigo_Articulo", "Descripcion", "Tipo_Variacion", "Factor_Porcentaje", "Factor_Aplicado", "Precio_Anterior", "Precio_Nuevo_Procesado", "Estado", "Causa_Error"];
   const datos = filas.map(function (f) {
     const v = f.validacion;
     return [
-      f.fila, f.codigo, f.descripcion, f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
+      f.codigo, f.descripcion, f.tipoVariacion ? TIPOS_VARIACION[f.tipoVariacion] : "", f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
       v.precioActual != null ? v.precioActual : "",
       v.precioPropuesto != null ? v.precioPropuesto : "",
       v.valido ? "Exitoso" : "Error",
@@ -827,7 +1044,7 @@ function Toaster({ toasts }) {
 /* =========================================================================
    HEADER
    ========================================================================= */
-function Header({ user, onChangeUser, onNav, activeNav }) {
+function Header({ user, onLogout, onNav, activeNav }) {
   return (
     <header className="border-b border-border bg-white sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap combo-parent">
@@ -853,7 +1070,16 @@ function Header({ user, onChangeUser, onNav, activeNav }) {
           </nav>
         )}
 
-        <IdentitySwitcher current={user} onChange={onChangeUser} />
+        <div className="flex items-center gap-2">
+          <span className="avatar" style={{ background: user.color }}>{initials(user.nombre)}</span>
+          <span className="text-left">
+            <span className="block text-xs font-semibold leading-none">{user.nombre}</span>
+            <span className="block text-[10px] text-zinc-400 leading-none mt-0.5">{user.rol.replace("_", " ")}{user.compania ? " · " + user.compania : ""}</span>
+          </span>
+          <button className="btn btn-ghost" onClick={onLogout} title="Cerrar sesión">
+            <Icon name="x" className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </header>
   );
@@ -887,8 +1113,12 @@ function Vista403({ user }) {
 
 /* =========================================================================
    TABLA DE PREVISUALIZACIÓN — compartida entre Operador y Aprobador
-   Columnas: Fila Excel | Código Artículo | Lista | Descripción | Precio Actual |
-   Factor % | Factor aplicado | Precio Propuesto | Margen Est. | Validación
+   Columnas: Código Artículo | Lista | Descripción | Precio Actual |
+   Tipo de Variación | Factor % | Factor aplicado | Precio Propuesto |
+   Costo Mínimo del Artículo | Validación.
+   Ya no incluye "Fila Excel" (Índice de Fila) ni el porcentaje/monto de
+   margen: el margen mínimo es un parámetro interno que solo se traduce al
+   monto final "Costo Mínimo del Artículo" en moneda.
    ========================================================================= */
 function TablaPrevisualizacion({ filas, compacta }) {
   const UMBRAL_PAGINACION = 5000;
@@ -922,15 +1152,15 @@ function TablaPrevisualizacion({ filas, compacta }) {
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-xs text-zinc-500">
             <tr>
-              <th className="text-left font-medium px-3 py-2">Fila Excel</th>
               <th className="text-left font-medium px-3 py-2">Código Artículo</th>
               <th className="text-left font-medium px-3 py-2">Lista de Precio</th>
               <th className="text-left font-medium px-3 py-2">Descripción</th>
               <th className="text-right font-medium px-3 py-2">Precio Actual</th>
+              <th className="text-left font-medium px-3 py-2">Tipo de Variación</th>
               <th className="text-right font-medium px-3 py-2">Factor %</th>
               <th className="text-right font-medium px-3 py-2">Factor aplicado</th>
               <th className="text-right font-medium px-3 py-2">Precio Propuesto</th>
-              <th className="text-right font-medium px-3 py-2">Margen Est.</th>
+              <th className="text-right font-medium px-3 py-2">Costo Mínimo del Artículo</th>
               <th className="text-left font-medium px-3 py-2">Validación</th>
             </tr>
           </thead>
@@ -939,17 +1169,19 @@ function TablaPrevisualizacion({ filas, compacta }) {
               const v = f.validacion;
               return (
                 <tr key={f.fila + "-" + f.codigo} className={!v.valido ? "row-alert" : ""}>
-                  <td className="px-3 py-2 mono">{f.fila}</td>
                   <td className="px-3 py-2 mono">{f.codigo}</td>
                   <td className="px-3 py-2">{f.lista || "—"}</td>
                   <td className="px-3 py-2">{f.descripcion}</td>
                   <td className="px-3 py-2 text-right mono">{v.precioActual != null ? fmtMonto(v.precioActual) : "—"}</td>
+                  <td className="px-3 py-2">
+                    {f.tipoVariacion
+                      ? <span className={"badge " + (f.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok")}>{TIPOS_VARIACION[f.tipoVariacion]}</span>
+                      : "—"}
+                  </td>
                   <td className="px-3 py-2 text-right mono">{f.variacionPorcentaje != null && f.variacionPorcentaje !== "" ? f.variacionPorcentaje : "—"}</td>
                   <td className="px-3 py-2 text-right mono">{f.valorPropuestoRaw || "—"}</td>
                   <td className="px-3 py-2 text-right mono">{v.precioPropuesto != null ? fmtMonto(v.precioPropuesto) : "—"}</td>
-                  <td className={"px-3 py-2 text-right " + (v.margenEst != null && v.margenEst < 0 ? "text-red-700 font-medium" : "")}>
-                    {v.margenEst != null ? v.margenEst.toFixed(1) + "%" : "—"}
-                  </td>
+                  <td className="px-3 py-2 text-right mono">{v.costoMinimo != null ? fmtMonto(v.costoMinimo) : "—"}</td>
                   <td className="px-3 py-2">
                     {v.valido
                       ? <span className="badge badge-ok"><Icon name="check" className="w-3 h-3" /> Válida</span>
@@ -983,7 +1215,7 @@ function TablaPrevisualizacion({ filas, compacta }) {
           </p>
           <ul className="text-xs text-red-700 space-y-1">
             {erroresVisibles.map(function (f) {
-              return <li key={f.fila}>Fila {f.fila} [{f.codigo}]: {f.validacion.causa}</li>;
+              return <li key={f.fila}>[{f.codigo}]: {f.validacion.causa}</li>;
             })}
           </ul>
         </div>
@@ -1070,19 +1302,47 @@ function ExcelUploader({ disabled, modo, procesoKey, onParsed, onError }) {
    variables —incluidas cargas de hasta 12,000 registros— y, al superar 5,000
    filas, se muestran paginadas en la previsualización para no sobrecargar la interfaz.
 
-   Ámbito (RF-02 / RF-03): toda opción de Compañía y Lista de Precio se
-   filtra según companiasPermitidas/listasPermitidas del usuario actual, y
+   Ámbito (RF-02 / RF-03): toda opción de Lista de Precio se filtra según la
+   compañía fija de la sesión (user.compania, resuelta por S2/SS) y
    el envío se bloquea de forma defensiva si algún valor quedara fuera de
    ámbito (equivalente a la validación que debe repetir el backend).
    ========================================================================= */
+/* Selector obligatorio de Tipo de Variación (Aumento / Disminución). Es un
+   control simple de dos opciones (no un Combobox de catálogo) porque el
+   dominio de valores es fijo y reducido; su único efecto es fijar el signo
+   aplicado sobre la magnitud capturada en Factor %. */
+function TipoVariacionSelect({ value, onChange, disabled }) {
+  return (
+    <div className="flex gap-2">
+      {Object.keys(TIPOS_VARIACION).map(function (key) {
+        const activo = value === key;
+        return (
+          <button key={key} type="button" disabled={disabled}
+            className={"subtab" + (activo ? " active" : "")}
+            onClick={function () { if (onChange) onChange(key); }}>
+            {TIPOS_VARIACION[key]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
   const [tab, setTab] = useState("FACTOR_PRECIO");
   const [modalidad, setModalidad] = useState("manual"); // manual | excel
-  const [compania, setCompania] = useState("");
+  // La compañía ya no se selecciona manualmente: proviene de forma fija de
+  // la sesión resuelta por Softland Security (S2/SS) según el dominio de
+  // correo del usuario autenticado (ver resolverCompaniaPorCorreo).
+  const compania = currentUser.compania;
   const [nivel, setNivel] = useState("");
   const [codigoArticulo, setCodigoArticulo] = useState("");
   const [grupoArticulo, setGrupoArticulo] = useState("");
   const [nivelLista, setNivelLista] = useState(""); // reservado para edición manual de lista
+  // "factor" ahora almacena únicamente la magnitud (siempre >= 0) del
+  // Factor %. El signo aplicado sobre la fórmula lo determina exclusivamente
+  // "tipoVariacion" (Aumento = +, Disminución = -), columna/campo obligatorio.
+  const [tipoVariacion, setTipoVariacion] = useState("AUMENTO");
   const [factor, setFactor] = useState("");
   const [itemsManual, setItemsManual] = useState([]); // artículos o listas agregados uno a uno con "+"
   const [errorItem, setErrorItem] = useState(null);
@@ -1104,9 +1364,6 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
   const [filtroMarcaGrupoCompra, setFiltroMarcaGrupoCompra] = useState("");
   const [filtroBdf, setFiltroBdf] = useState("");
 
-  const companiaOpts = COMPANIAS.map(function (c) {
-    return { value: c, label: c, disabled: !estaEnAmbito(currentUser, c, null) };
-  });
   // Las listas de precio disponibles dependen de la Compañía seleccionada
   // (LISTAS_POR_COMPANIA) y, además, del ámbito autorizado del usuario.
   // La lista de precios depende obligatoriamente de la compañía. Antes de
@@ -1163,9 +1420,9 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
   useEffect(function () {
     setSimulado(false);
     setSent(false);
-  }, [compania, nivel, codigoArticulo, grupoArticulo, nivelLista, factor, ack, modalidad, itemsManual]);
+  }, [compania, nivel, codigoArticulo, grupoArticulo, nivelLista, tipoVariacion, factor, ack, modalidad, itemsManual]);
 
-  const conversionFactor = convertirPorcentajeAFactor(factor);
+  const conversionFactor = calcularVariacion(tipoVariacion, factor);
   const factorMultiplicador = conversionFactor.valido ? conversionFactor.factor : null;
   const factorInvalido = factor !== "" && !conversionFactor.valido;
   const modo = PROCESOS[tab].modo;
@@ -1180,7 +1437,6 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
 
   // MAYOREOD es exclusivo de la Lista Base; la carga masiva pertenece a Descuento por Artículo.
   const permiteExcel = esDescuentoArticulo;
-  const companiaFueraDeAmbito = !!compania && !estaEnAmbito(currentUser, compania, null);
   const listaFueraDeAmbito = !!nivel && !estaEnAmbito(currentUser, null, nivel);
   const conteoErroresExcel = filasExcel ? filasExcel.filter(function (f) { return !f.validacion.valido; }).length : 0;
   const filasExcelFueraDeAmbito = esDescuentoArticulo && modalidad === "excel" && filasExcel && filasExcel.some(function (f) {
@@ -1188,7 +1444,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
   });
 
   function agregarItem() {
-    const conversionItem = convertirPorcentajeAFactor(factor);
+    const conversionItem = calcularVariacion(tipoVariacion, factor);
     const claveArticuloLista = codigoArticulo + "|" + nivel;
     if (!codigoArticulo || !nivel || factorInvalido || factor === "") return;
     if (articulosListaYaAgregados.indexOf(claveArticuloLista) !== -1) {
@@ -1202,6 +1458,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
         codigo: codigoArticulo,
         listaCodigo: nivel,
         lista: NOMBRES_LISTA[nivel] || nivel,
+        tipoVariacion: tipoVariacion,
         variacionPorcentaje: conversionItem.porcentaje,
         valorPropuestoRaw: textoFactorCalculado(conversionItem.factor),
       }]);
@@ -1217,7 +1474,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
   }
 
   function camposManualCompletos() {
-    if (!compania || companiaFueraDeAmbito) return false;
+    if (!compania) return false;
     if (esListaBase) return !!grupoArticulo && !factorInvalido && factor !== "" && ack;
     if (esDescuentoArticulo) return itemsManual.length > 0 && !!nivel && !listaFueraDeAmbito;
     return !!nivel && !factorInvalido && factor !== "" && !listaFueraDeAmbito;
@@ -1225,7 +1482,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
 
   function camposCompletos() {
     if (modalidad === "excel" && permiteExcel) {
-      return !!filasExcel && filasExcel.length > 0 && conteoErroresExcel === 0 && !filasExcelFueraDeAmbito && !!compania && !companiaFueraDeAmbito;
+      return !!filasExcel && filasExcel.length > 0 && conteoErroresExcel === 0 && !filasExcelFueraDeAmbito && !!compania;
     }
     return camposManualCompletos();
   }
@@ -1238,13 +1495,13 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
     if (!camposCompletos()) return;
     if (modalidad === "manual") {
       if (esListaBase) {
-        setFilasExcel(construirFilasMayoreodMasivo(grupoArticulo, textoFactorCalculado(factorMultiplicador), conversionFactor.porcentaje));
+        setFilasExcel(construirFilasMayoreodMasivo(grupoArticulo, textoFactorCalculado(factorMultiplicador), "AUMENTO", conversionFactor.magnitud));
       } else if (esDescuentoArticulo) {
         // Carga individual: cada fila corresponde a un artículo agregado con
         // "+", con los mismos campos que persistirá dbo.DESCUENTO_LISTA_PRECIO.
         setFilasExcel(itemsManual.map(function (it) { return construirFilaCompleta(it, modo); }));
       } else if (esGestionGlobal) {
-        setFilasExcel(construirFilasGestionGlobal(nivel, textoFactorCalculado(factorMultiplicador), conversionFactor.porcentaje));
+        setFilasExcel(construirFilasGestionGlobal(nivel, textoFactorCalculado(factorMultiplicador), "AUMENTO", conversionFactor.magnitud));
       }
     }
     setSimulado(true);
@@ -1279,6 +1536,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
     setSent(false);
     setSimulado(false);
     setFactor("");
+    setTipoVariacion("AUMENTO");
     setCodigoArticulo("");
     setGrupoArticulo("");
     setNivelLista("");
@@ -1308,6 +1566,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
         parametros: {
           nivel: nivel,
           factor: (esGestionGlobal || esListaBase) && factorMultiplicador != null ? textoFactorCalculado(factorMultiplicador) : null,
+          tipoVariacion: (esGestionGlobal || esListaBase) && factor !== "" ? "AUMENTO" : null,
           variacionPorcentaje: (esGestionGlobal || esListaBase) && factor !== "" ? conversionFactor.porcentaje : null,
           listaBase: esListaBase ? LISTA_BASE_OBJETIVO.codigo : null,
           nivelPrecio: esListaBase ? LISTA_BASE_OBJETIVO.nivelPrecio : null,
@@ -1340,9 +1599,12 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
 
       <div className="max-w-xs mb-4">
         <label className="block text-xs font-medium text-zinc-500 mb-1.5">Compañía</label>
-        <Combobox id={"compania-" + tab} value={compania} onChange={function (o) { setCompania(o.value); }} options={companiaOpts} placeholder="Seleccionar compañía..." disabled={readOnly} />
-        {companiaFueraDeAmbito && <p className="text-[11px] text-red-600 mt-1">Esta compañía no está dentro de su ámbito autorizado.</p>}
-        {companiaOpts.every(function (o) { return o.disabled; }) && <p className="text-[11px] text-red-600 mt-1">No tiene compañías autorizadas para este proceso.</p>}
+        <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+          <Icon name="lock" className="w-3.5 h-3.5 text-zinc-400" />
+          <span className="text-sm font-medium text-zinc-700">{compania || "Sin compañía asignada"}</span>
+        </div>
+        <p className="text-[11px] text-zinc-400 mt-1">Contexto resuelto automáticamente por Softland Security (S2/SS) a partir de su sesión. No es editable.</p>
+        {!compania && <p className="text-[11px] text-red-600 mt-1">Su cuenta no tiene una compañía asignada en S2/SS; no puede operar este módulo.</p>}
       </div>
 
       {esDescuentoArticulo && (
@@ -1368,11 +1630,11 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
-            <input type="number" step="0.01" min="0" max="100" value={factor} disabled={readOnly}
+            <input type="number" step="0.01" min="0" value={factor} disabled={readOnly}
               onChange={function (e) { setFactor(e.target.value); }}
               placeholder="Ej. 10"
               className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 disabled:bg-zinc-50 disabled:text-zinc-400" />
-            <p className="text-[11px] text-zinc-400 mt-1">No se admiten valores negativos. Ingrese un porcentaje entre 0 y 100.</p>
+            <p className="text-[11px] text-zinc-400 mt-1">Ingrese la magnitud del cambio como porcentaje. Se aplicará como Aumento sobre la lista seleccionada.</p>
             {!factorInvalido && factor !== "" && <p className="text-[11px] text-zinc-500 mt-1">Factor calculado: <b className="mono">{textoFactorCalculado(factorMultiplicador)}</b></p>}
             {factorInvalido && <p className="text-[11px] text-red-600 mt-1 flex items-center gap-1"><Icon name="alertTriangle" className="w-3 h-3" /> {conversionFactor.causa}</p>}
           </div>
@@ -1436,14 +1698,18 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
               </div>
               <p className="text-[11px] text-zinc-400 mt-2">{articuloOpts.length} artículo(s) coinciden con los filtros aplicados.</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-start">
               <div className="md:col-span-2">
                 <label className="block text-xs font-medium text-zinc-500 mb-1.5">Código de Artículo</label>
                 <Combobox id="codigo-articulo" value={codigoArticulo} onChange={function (o) { setCodigoArticulo(o.value); setErrorItem(null); }} options={articuloOpts} placeholder="Buscar artículo..." disabled={readOnly} />
               </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-zinc-500 mb-1.5">Tipo de Variación</label>
+                <TipoVariacionSelect value={tipoVariacion} onChange={setTipoVariacion} disabled={readOnly} />
+              </div>
               <div>
                 <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
-                <input type="number" step="0.01" min="0" max="100" value={factor} disabled={readOnly}
+                <input type="number" step="0.01" min="0" value={factor} disabled={readOnly}
                   onChange={function (e) { setFactor(e.target.value); }}
                   placeholder="Ej. 10"
                   className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 disabled:bg-zinc-50 disabled:text-zinc-400" />
@@ -1457,10 +1723,11 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
             </div>
 
             {articuloSeleccionado && (
-              <div className="grid grid-cols-3 gap-3 mt-3">
+              <div className="grid grid-cols-4 gap-3 mt-3">
                 <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Descripción</p><p className="text-xs font-medium">{articuloSeleccionado.descripcion}</p></div>
                 <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Precio Actual</p><p className="text-xs font-medium mono">{fmtMonto(articuloSeleccionado.precioActual)}</p></div>
                 <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Precio Propuesto</p><p className="text-xs font-medium mono">{!factorInvalido && factor !== "" ? fmtMonto(Math.round(articuloSeleccionado.precioActual * factorMultiplicador)) : "—"}</p></div>
+                <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Costo Mínimo del Artículo</p><p className="text-xs font-medium mono">{fmtMonto(calcularCostoMinimoArticulo(articuloSeleccionado))}</p></div>
               </div>
             )}
 
@@ -1480,6 +1747,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
                       <th className="text-left font-medium px-3 py-2">Código</th>
                       <th className="text-left font-medium px-3 py-2">Lista de Precio</th>
                       <th className="text-left font-medium px-3 py-2">Descripción</th>
+                      <th className="text-left font-medium px-3 py-2">Tipo de Variación</th>
                       <th className="text-right font-medium px-3 py-2">Factor %</th>
                       <th className="text-right font-medium px-3 py-2">Factor aplicado</th>
                       <th className="text-right font-medium px-3 py-2">Quitar</th>
@@ -1494,6 +1762,9 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
                           <td className="px-3 py-2 mono">{it.codigo}</td>
                           <td className="px-3 py-2 mono">{it.lista || "—"}</td>
                           <td className="px-3 py-2">{art ? art.descripcion : "—"}</td>
+                          <td className="px-3 py-2">
+                            <span className={"badge " + (it.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok")}>{TIPOS_VARIACION[it.tipoVariacion] || "—"}</span>
+                          </td>
                           <td className="px-3 py-2 text-right mono">{it.variacionPorcentaje}</td>
                           <td className="px-3 py-2 text-right mono">{it.valorPropuestoRaw}</td>
                           <td className="px-3 py-2 text-right">
@@ -1524,11 +1795,11 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
             </div>
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
-              <input type="number" step="0.01" min="0" max="100" value={factor} disabled={readOnly}
+              <input type="number" step="0.01" min="0" value={factor} disabled={readOnly}
                 onChange={function (e) { setFactor(e.target.value); }}
                 placeholder="Ej. 10"
                 className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 disabled:bg-zinc-50 disabled:text-zinc-400" />
-              <p className="text-[11px] text-zinc-400 mt-1">No se admiten valores negativos.</p>
+              <p className="text-[11px] text-zinc-400 mt-1">Ingrese la magnitud del cambio (sin signo).</p>
               {!factorInvalido && factor !== "" && <p className="text-[11px] text-zinc-500 mt-1">Factor aplicado: <b className="mono">{textoFactorCalculado(factorMultiplicador)}</b></p>}
               {factorInvalido && <p className="text-[11px] text-red-600 mt-1 flex items-center gap-1"><Icon name="alertTriangle" className="w-3 h-3" /> {conversionFactor.causa}</p>}
             </div>
@@ -1553,7 +1824,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
           <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
             <p className="text-xs text-zinc-600 flex items-center gap-1.5">
               <Icon name="fileSpreadsheet" className="w-3.5 h-3.5 text-zinc-400" />
-              ¿Aún no tiene el archivo? Descargue la plantilla oficial con Lista de Precio, Código de Artículo y Factor %. El sistema convierte el Factor % a multiplicador y valida cada fila antes de permitir el envío; no se admiten valores negativos.
+              ¿Aún no tiene el archivo? Descargue la plantilla oficial con Lista de Precio, Código de Artículo, Tipo de Variación (Aumento/Disminución) y Factor %. El sistema traduce Aumento en (+) y Disminución en (-) sobre la magnitud capturada, la convierte a multiplicador y valida cada fila antes de permitir el envío.
             </p>
             <button type="button" className="btn btn-outline" onClick={function () { descargarPlantillaExcel(tab); }}>
               <Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla ({PROCESOS[tab].label})
@@ -1774,6 +2045,61 @@ function BandejaAprobacion({ solicitudes, currentUser, readOnly, onAbrir }) {
 }
 
 /* =========================================================================
+   SIMULADOR DINÁMICO DE ESTADO DE PROCESO (Stored Procedure de larga
+   duración). Componente de UI que visualiza explícitamente la secuencia
+   PENDIENTE -> EN PROCESO -> COMPLETADO / ERROR. La transición real entre
+   estos estados la disparan los setTimeout de handleAprobarInicio (App); este
+   componente solo traduce el estado actual de la solicitud a una barra de
+   pasos, permitiendo comprobar visualmente en qué punto del flujo se
+   encuentra mientras el trabajo de fondo continúa. */
+function pasoDeEstadoProceso(estado) {
+  if (estado === "PENDIENTE") return 0;
+  if (estado === "EN_PROCESO") return 1;
+  return 2; // PROCESADO, PROCESADO_CON_ERRORES, ERROR_EJECUCION, RECHAZADO
+}
+
+function SimuladorEstadoProceso({ estado }) {
+  const esError = estado === "ERROR_EJECUCION" || estado === "RECHAZADO";
+  const pasos = [
+    { key: "PENDIENTE", label: "Pendiente" },
+    { key: "EN_PROCESO", label: "En proceso" },
+    { key: "TERMINAL", label: esError ? "Error" : "Completado" },
+  ];
+  const pasoActual = pasoDeEstadoProceso(estado);
+
+  return (
+    <div className="flex items-center gap-2" role="status" aria-label={"Estado del proceso: " + pasos[pasoActual].label}>
+      {pasos.map(function (paso, idx) {
+        const completado = idx < pasoActual;
+        const activo = idx === pasoActual;
+        const esUltimoActivoError = activo && idx === 2 && esError;
+        const circuloCls = esUltimoActivoError
+          ? "bg-red-600 text-white border-red-600"
+          : completado
+            ? "bg-green-600 text-white border-green-600"
+            : activo
+              ? "bg-indigo-600 text-white border-indigo-600"
+              : "bg-white text-zinc-400 border-zinc-300";
+        return (
+          <React.Fragment key={paso.key}>
+            <div className="flex flex-col items-center gap-1">
+              <div className={"w-7 h-7 rounded-full border-2 flex items-center justify-center text-[11px] font-semibold " + circuloCls}>
+                {completado ? <Icon name="check" className="w-3.5 h-3.5" /> : (esUltimoActivoError ? <Icon name="x" className="w-3.5 h-3.5" /> : (idx + 1))}
+                {activo && !esUltimoActivoError && idx === 1 && <span className="sr-only">En curso</span>}
+              </div>
+              <span className={"text-[11px] " + (activo ? "font-semibold text-zinc-800" : "text-zinc-400")}>{paso.label}</span>
+            </div>
+            {idx < pasos.length - 1 && (
+              <div className={"h-0.5 w-10 mb-4 " + (idx < pasoActual ? "bg-green-500" : "bg-zinc-200")}></div>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/* =========================================================================
    MODAL: REVISIÓN -> EN PROCESO -> RESULTADO CON DESGLOSE FILA POR FILA
    ========================================================================= */
 function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarEjecucion, onSimularSolicitud }) {
@@ -1806,6 +2132,7 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
       const recalculada = construirFilaCompleta({
         fila: fila.fila,
         codigo: fila.codigo,
+        tipoVariacion: fila.tipoVariacion,
         variacionPorcentaje: fila.variacionPorcentaje,
         valorPropuestoRaw: fila.valorPropuestoRaw,
       }, PROCESOS[solicitud.proceso].modo);
@@ -1850,6 +2177,13 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
         </div>
 
         <div className="p-6 space-y-5">
+          {solicitud.estado !== "RECHAZADO" && (
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 overflow-x-auto">
+              <p className="text-[11px] font-medium text-zinc-500 mb-3">Progreso del procesamiento en segundo plano</p>
+              <SimuladorEstadoProceso estado={solicitud.estado} />
+            </div>
+          )}
+
           {estaEnProceso && (
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 flex gap-3">
               <span className="text-indigo-600 mt-0.5"><Icon name="clock" className="w-5 h-5" /></span>
@@ -1857,7 +2191,7 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
                 <p className="text-sm font-semibold text-indigo-900">La solicitud se está procesando en segundo plano</p>
                 <p className="text-xs text-indigo-800 mt-1">ID de procesamiento: <span className="mono font-medium">{solicitud.idProcesoSP}</span>. Puede cerrar este detalle, navegar o salir del sistema. La solicitud cambiará automáticamente a Procesada, Procesada con errores o Error de ejecución al finalizar.</p>
                 <div className="progress-track mt-3"><div className="progress-fill progress-indeterminate"></div></div>
-                <p className="text-xs text-indigo-700 mt-2">Última consulta: {solicitud.ultimaActualizacion || "recién iniciada"}</p>
+                <p className="text-xs text-indigo-700 mt-2">Última actualización: {solicitud.ultimaActualizacion || "recién iniciada"}</p>
               </div>
             </div>
           )}
@@ -2010,28 +2344,33 @@ function Auditoria({ eventos }) {
 /* =========================================================================
    APP RAÍZ
    ========================================================================= */
-const COMPANIAS = ["SILLACA", "BEVAL", "FEBECA", "COFERSA"];
 
 function seedSolicitudes() {
   const filasAprobadas = [
-    { fila: 5, codigo: "ART-231", valorPropuestoRaw: "1.10", variacionPorcentaje: 10 },
-    { fila: 8, codigo: "ART-455", valorPropuestoRaw: "1.10", variacionPorcentaje: 10 },
+    { fila: 1, codigo: "ART-231", tipoVariacion: "AUMENTO", valorPropuestoRaw: "1.10", variacionPorcentaje: 10 },
+    { fila: 2, codigo: "ART-455", tipoVariacion: "AUMENTO", valorPropuestoRaw: "1.10", variacionPorcentaje: 10 },
   ].map(function (r) { return construirFilaCompleta(r, "factor"); });
-  const filasMayoreod = construirFilasMayoreodMasivo("linea_blanca", "1.10", 10);
+  const filasMayoreod = construirFilasMayoreodMasivo("linea_blanca", "1.10", "AUMENTO", 10);
   const filasDescuentoMasivo = [
-    { fila: 2, listaCodigo: "mayoreob", codigo: "ART-231", variacionPorcentaje: 10 },
-    { fila: 3, listaCodigo: "lpv1", codigo: "ART-455", variacionPorcentaje: -5 },
+    { fila: 1, listaCodigo: "mayoreob", codigo: "ART-231", tipoVariacion: "AUMENTO", variacionPorcentaje: 10 },
+    { fila: 2, listaCodigo: "lpv1", codigo: "ART-455", tipoVariacion: "DISMINUCION", variacionPorcentaje: 5 },
   ].map(construirFilaDescuentoMasivo);
 
+  // Las tres solicitudes semilla pertenecen a la compañía SILLACA, resuelta
+  // por S2/SS a partir del dominio de correo de la sesión simulada, para
+  // demostrar de forma real el aislamiento por compañía (ninguna solicitud
+  // de otra compañía sería visible para esta sesión).
   return [
-    { id: "SOL-10449", proceso: "FACTOR_PRECIO", modalidad: "manual", compania: "SILLACA", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@empresa.com", parametros: { factor: "1.10" }, filas: filasAprobadas, archivoNombre: null, archivoS3Key: null, fechaEnvio: "2026-08-13 11:30", estado: "PROCESADO", motivoRechazo: null, idProcesoSP: "#PROC-20260813-2210", resultado: { totalLote: 2, exitosos: 2, fallidos: 0, filas: filasAprobadas, estadoFinal: "PROCESADO", logS3Key: "erp-precios-logs/log-auditoria-SOL-10449.csv", aprobadoPor: "María Rodríguez", aprobadoPorEmail: "mrodriguez@empresa.com" } },
-    { id: "SOL-10448", proceso: "MAYOREOD_MASIVO", modalidad: "manual", compania: "BEVAL", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@empresa.com", parametros: { listaBase: LISTA_BASE_OBJETIVO.codigo, nivelPrecio: LISTA_BASE_OBJETIVO.nivelPrecio, grupoArticulos: "linea_blanca", factor: "1.10", variacionPorcentaje: 10 }, filas: filasMayoreod, archivoNombre: null, archivoS3Key: null, fechaEnvio: "2026-08-13 09:05", estado: "PENDIENTE", motivoRechazo: null, idProcesoSP: null },
-    { id: "SOL-10447", proceso: "DESCUENTO_LISTA_PRECIO", modalidad: "excel", compania: "COFERSA", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@empresa.com", parametros: { articulos: filasDescuentoMasivo }, filas: filasDescuentoMasivo, archivoNombre: "descuento-articulos-masivo.xlsx", archivoS3Key: "erp-precios-uploads/descuento-articulos-masivo.xlsx", fechaEnvio: "2026-08-12 15:10", estado: "RECHAZADO", motivoRechazo: "El factor genera márgenes por debajo del costo en artículos de alto valor; corregir antes de reenviar.", idProcesoSP: null },
+    { id: "SOL-10449", proceso: "FACTOR_PRECIO", modalidad: "manual", compania: "SILLACA", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@sillaca.com", parametros: { factor: "1.10" }, filas: filasAprobadas, archivoNombre: null, archivoS3Key: null, fechaEnvio: "2026-08-13 11:30", estado: "PROCESADO", motivoRechazo: null, idProcesoSP: "#PROC-20260813-2210", resultado: { totalLote: 2, exitosos: 2, fallidos: 0, filas: filasAprobadas, estadoFinal: "PROCESADO", logS3Key: "erp-precios-logs/log-auditoria-SOL-10449.csv", aprobadoPor: "María Rodríguez", aprobadoPorEmail: "mrodriguez@sillaca.com" } },
+    { id: "SOL-10448", proceso: "MAYOREOD_MASIVO", modalidad: "manual", compania: "SILLACA", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@sillaca.com", parametros: { listaBase: LISTA_BASE_OBJETIVO.codigo, nivelPrecio: LISTA_BASE_OBJETIVO.nivelPrecio, grupoArticulos: "linea_blanca", factor: "1.10", variacionPorcentaje: 10 }, filas: filasMayoreod, archivoNombre: null, archivoS3Key: null, fechaEnvio: "2026-08-13 09:05", estado: "PENDIENTE", motivoRechazo: null, idProcesoSP: null },
+    { id: "SOL-10447", proceso: "DESCUENTO_LISTA_PRECIO", modalidad: "excel", compania: "SILLACA", solicitanteNombre: "Juan Pérez", solicitanteEmail: "jperez@sillaca.com", parametros: { articulos: filasDescuentoMasivo }, filas: filasDescuentoMasivo, archivoNombre: "descuento-articulos-masivo.xlsx", archivoS3Key: "erp-precios-uploads/descuento-articulos-masivo.xlsx", fechaEnvio: "2026-08-12 15:10", estado: "RECHAZADO", motivoRechazo: "El factor genera márgenes por debajo del costo en artículos de alto valor; corregir antes de reenviar.", idProcesoSP: null },
   ];
 }
 
 function App() {
-  const [user, setUser] = useState(IDENTITIES[0]);
+  // Sin sesión activa por defecto: se muestra la pantalla de login hasta
+  // que el usuario elija uno de los usuarios de ejemplo (uno por compañía).
+  const [user, setUser] = useState(null);
   const [nav, setNav] = useState("nueva");
   const [solicitudes, setSolicitudes] = useState(seedSolicitudes());
   const [seq, setSeq] = useState(1);
@@ -2040,6 +2379,7 @@ function App() {
   const [eventos, setEventos] = useState([]);
 
   useEffect(function () {
+    if (!user) return;
     if (user.rol === "APROBADOR") setNav("bandeja");
     else if (user.rol === "OPERADOR") setNav("nueva");
     setModalId(null);
@@ -2174,12 +2514,18 @@ function App() {
     }
   }
 
-  const esAprobador = user.rol === "APROBADOR";
-  const esOperador = user.rol === "OPERADOR";
+  const esAprobador = user ? user.rol === "APROBADOR" : false;
+  const esOperador = user ? user.rol === "OPERADOR" : false;
+
+  // Sin sesión activa: se muestra la pantalla de login con los usuarios de
+  // ejemplo (uno por compañía) en lugar del selector de identidad del header.
+  if (!user) {
+    return <LoginScreen onLogin={setUser} />;
+  }
 
   return (
     <div>
-      <Header user={user} onChangeUser={setUser} onNav={setNav} activeNav={nav} />
+      <Header user={user} onLogout={function () { setUser(null); }} onNav={setNav} activeNav={nav} />
       <Toaster toasts={toasts} />
 
       {user.rol === "SIN_PERMISO" ? (

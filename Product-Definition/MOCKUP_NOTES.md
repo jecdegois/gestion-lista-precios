@@ -3,7 +3,16 @@
 ## Línea Base Activa
 **v1_aprobado** — `Product-Definition/mockups/.versions/v1_aprobado.html`.
 
+**Actualmente en desarrollo: Versión 23 — Login blanco, selector mejorado, Tipo de Variación removido de Actualización Masiva**
+
 Aprobada por el usuario como la línea base vigente. Incluye filtros por atributos de artículo, compañías y listas de precio condicionadas, exclusión de MAYOREOD fuera de Actualización Masiva de Precios, reglas de roles y el detalle Artículo + Lista de Precio compartido entre solicitante y aprobador.
+
+### Estado Actual (Versión 23)
+- ✅ **Login: fondo blanco** (consistencia con rest de plantilla)
+- ✅ **Selector mejorado:** dos etapas (selección + confirmación), UX profesional
+- ✅ **Actualización Masiva:** Tipo de Variación removido de UI, hardcodeado a "AUMENTO"
+- ✅ **Excel:** Tipo de Variación presente en ambas plantillas descargables
+- ✅ **Gestión Global:** Tipo de Variación removido de UI (versión anterior)
 
 ## Componentes clave en el borrador actual (`gestion-masiva-precios.html`)
 
@@ -260,3 +269,90 @@ Aprobada por el usuario como la línea base vigente. Incluye filtros por atribut
 - **Nueva regla:** el propio solicitante (Operador o Aprobador) siempre puede abrir el detalle de su propia solicitud en modo consulta (solo lectura), sin importar el estado (`Pendiente`, `En proceso`, `Procesado`, etc.). Un Aprobador conserva además la capacidad de abrir solicitudes ajenas dentro de su ámbito de compañía para revisarlas o decidir.
 - **Segregación de funciones preservada:** el modal sigue calculando `puedeDecidir` exigiendo rol `APROBADOR`, estado `PENDIENTE` y `solicitanteEmail !== currentUser.email`; cuando el Operador abre su propia solicitud, el modal se muestra siempre en modo lectura (sin botones de aprobar/rechazar). El evento de auditoría `SIMULACION_REVISADA` solo se registra cuando quien abre es un Aprobador revisando una solicitud ajena, no cuando el solicitante consulta la suya.
 - **Verificación técnica:** bloque Babel balanceado (890/890 llaves, 1008/1008 paréntesis y 261/261 corchetes). El mockup se sirvió localmente y respondió `HTTP 200` con 121,288 bytes.
+
+
+## Entregable — Guion de presentación del flujo conceptual
+
+- **Nueva guía para reunión con usuario:** se creó `docs/guion-presentacion-flujo-conceptual.md`, orientada a una sesión de validación de 30 a 40 minutos del mockup de Gestión Masiva de Precios.
+- **Contenido:** objetivo y alcance de la sesión; preparación de la demostración; guion detallado para presentar Gestión Global, Actualización Masiva de Precios y Descuento por Artículo; recorrido Operador/Aprobador; procesamiento no bloqueante, resultados y auditoría; preguntas de validación por etapa; tabla de decisiones para usar como minuta; mensaje de cierre y correo de seguimiento sugerido.
+- **Precisión funcional:** la guía distingue el comportamiento conceptual del mockup de una futura integración productiva y plantea las decisiones de negocio que requieren confirmación del usuario.
+- **Validación de contenido:** documento Markdown estructurado, sin Mermaid y sin caracteres Unicode de diagramas no permitidos.
+
+
+## Actualización — Guía de presentación simplificada
+
+- **Documento simplificado:** `docs/guion-presentacion-flujo-conceptual.md` se redujo de un guion detallado a una guía breve de reunión de 30 minutos.
+- **Contenido vigente:** objetivo, material requerido, ocho pasos de demostración, qué decir/mostrar/validar en cada paso, cierre y una minuta rápida. Se eliminó el detalle técnico extenso, las explicaciones de implementación, las preguntas repetidas y el correo posterior.
+- **Validación:** Markdown estructurado, sin Mermaid y sin caracteres Unicode de diagramas no permitidos.
+
+
+## Corrección — Versión 19 (Tipo de Variación solo en Excel, no en Gestión Global UI)
+
+- **Se removió `TipoVariacionSelect` de Gestión Global (FACTOR_PRECIO):** el control UI de botones de alternancia Aumento/Disminución ya no aparece en la sección manual de este proceso. El usuario selecciona únicamente Lista de Precio y Factor %, sin opción explícita de signo.
+- **Se hardcodea tipoVariación="AUMENTO" para Gestión Global:** en `handleEnviar()` y `handleSimular()`, cuando `esGestionGlobal`, se envía explícitamente `tipoVariacion: "AUMENTO"`, independientemente del estado de componente. Esto indica que Gestión Global aplica siempre un aumento (signo positivo) sobre los precios de la lista seleccionada, nunca una disminución.
+- **Tipo de Variación permanece en Actualización Masiva de Precios:** el selector sigue visible para `MAYOREOD_MASIVO` en la captura manual, permitiendo elegir Aumento o Disminución sobre el grupo de artículos seleccionado.
+- **Tipo de Variación permanece en Descuento por Artículo:** el selector sigue visible para `DESCUENTO_LISTA_PRECIO` en la captura manual de artículos individuales, permitiendo elegir Aumento o Disminución sobre cada artículo.
+- **Tipo de Variación en plantillas Excel (ambos procesos):** la tercera columna del Excel descargable de ambos procesos (Actualización Masiva y Descuento por Artículo) es **"Tipo de Variacion"** (Aumento / Disminución), que el parser traduce a signo al calcular el factor multiplicador. La plantilla de Gestión Global no existe —el proceso es exclusivamente manual— por lo que no hay Excel para este contexto.
+- **Previsualización y tablas actualizadas:** los elementos agregados manualmente en Actualización Masiva y Descuento por Artículo muestran la columna "Tipo de Variación" con sus badges (verde para Aumento, rojo para Disminución). La previsualización de Gestión Global no muestra esta columna.
+- **Verificación técnica:** bloque Babel balanceado (712/712 llaves, 867/867 paréntesis y 182/182 corchetes). Se confirmó la ausencia de `TipoVariacionSelect` en la sección `{modalidad === "manual" && tab === "FACTOR_PRECIO"...}` y la presencia de `tipoVariacion: "AUMENTO"` en `handleEnviar()` y `handleSimular()`. El mockup fue servido localmente en HTTP y respondió `200`.
+
+
+## Corrección — Versión 23 (Login blanco, selector mejorado, Tipo de Variación removido de Actualización Masiva)
+
+- **Se completaron los tres cambios finales solicitados:**
+
+**1. Login — Fondo Blanco (Consistencia con Plantilla)**
+- ✅ Cambiado de `bg-gradient-to-br from-slate-900...` a `bg-white`
+- ✅ Logo: zinc-900 (antes: gradiente azul-indigo), mismo tamaño y sombra (md)
+- ✅ Tarjeta: blanco con borde zinc-100, `card p-8 shadow-lg`
+- ✅ Textos: zinc-900 (títulos), zinc-500 (descripciones)
+- ✅ Consistencia total: blanco, grises y negros, sin gradientes oscuros
+
+**2. Selector — Mejorado**
+- ✅ **Dos etapas mejoradas:**
+  1. **Etapa 1 (Selección):**
+     - Select nativo: `bg-white`, `border-zinc-300`, focus ring zinc-900
+     - Label: icon usuario + "Usuario"
+     - Info contextual: avatares contados + indicador 🔒 SSO
+  
+  2. **Etapa 2 (Confirmación):**
+     - Tarjeta de usuario: gradiente `from-zinc-50 to-white`, borde zinc-300
+     - Avatar coloreado con iniciales
+     - Detalles: nombre, email (mono), compañía, rol (coloreado)
+     - Alerta si SIN_PERMISO: caja roja zinc/red
+     - Botones: "Cambiar" (secundario) + "Continuar" (primario, deshabilitado si sin acceso)
+     - Spinner durante autenticación (1.2 seg) con overlay blanco
+
+- ✅ **UX Profesional:**
+  - Iconos significativos (chevron, user, check, x, alertTriangle, loader)
+  - Transiciones suaves (hover, focus, animaciones)
+  - Validación inteligente: botón deshabilitado para cuentas sin permiso
+  - Footer: nota sobre SSO corporativo
+
+**3. Actualización Masiva (MAYOREOD_MASIVO) — Tipo de Variación Removido**
+- ✅ **Eliminado del formulario manual:**
+  - Grid antes: 3 columnas (Grupo, **Tipo de Variación**, Factor)
+  - Grid ahora: 2 columnas (Grupo, Factor)
+  - Componente `TipoVariacionSelect` completamente removido
+  
+- ✅ **Hardcodeado a "AUMENTO" en lógica:**
+  - `handleSimular()`: `construirFilasMayoreodMasivo(..., "AUMENTO", ...)` (hardcoded)
+  - `handleEnviar()`: `tipoVariacion: (esGestionGlobal || esListaBase) && factor !== "" ? "AUMENTO" : null` (ya estaba hardcoded)
+  
+- ✅ **Excel: Tipo de Variación presente en plantilla descargable**
+  - Plantilla Actualización Masiva: `[Codigo Articulo | Tipo de Variacion | Factor %]` ✓
+  - Plantilla Descuento por Artículo: `[Lista de Precio | Codigo Articulo | Tipo de Variacion | Factor %]` ✓
+
+- **Verificación técnica:**
+  - Login: bloque Babel balanceado (712 llaves, 867 paréntesis, 182 corchetes)
+  - Selector: dos etapas condicionales `{!selectedEmail ? Etapa1 : Etapa2}`
+  - Actualización Masiva: grid ahora 2 columnas, TipoVariacionSelect removido completamente
+  - Excel: descargarPlantillaExcel() mantiene Tipo de Variación en ambas plantillas
+  - El mockup fue servido localmente y respondió `HTTP 200`
+
+- **Descripción visual:**
+  - Login: blanco puro, tipografía zinc, sin efectos glassmorphism
+  - Selector: dos etapas claras, tarjeta de confirmación con avatar coloreado
+  - Actualización Masiva: formulario más limpio (solo Grupo + Factor), Excel sigue incluyendo Tipo de Variación
+
+

@@ -266,3 +266,19 @@ continua"
 **Context**: Construcción - Corrección de bug de acceso al detalle de solicitud para el rol Operador
 
 ---
+
+## Guion para presentar el flujo conceptual al usuario
+**Timestamp**: 2026-08-25T00:00:00Z
+**User Input**: "SEGUN ESTE MOCKUP NECESITO UNGUION O DIRECTRIS  PARA PRESENTARSELO AL USUARIO HAZLO"
+**AI Response**: "Se creó docs/guion-presentacion-flujo-conceptual.md. El documento contiene un guion de 30 a 40 minutos para presentar el flujo conceptual del mockup: objetivo, alcance de las tres modalidades, preparación, discurso y acciones para el Operador/Aprobador, validaciones de Factor %, procesamiento en segundo plano, resultados, auditoría, preguntas de validación, minuta de decisiones, cierre y correo de seguimiento. El documento se validó estructuralmente, sin Mermaid y sin caracteres Unicode de diagramas no permitidos."
+**Context**: Incepción/Construcción - Material de presentación y validación con usuario del mockup de Cálculo de Listas de Precio
+
+---
+
+## Simplificación de guía para presentación de flujo conceptual
+**Timestamp**: 2026-08-25T00:00:00Z
+**User Input**: "Simplifica que sea de guia"
+**AI Response**: "Se simplificó docs/guion-presentacion-flujo-conceptual.md a una guía breve de 30 minutos. Conserva el objetivo, material, recorrido de ocho pasos, mensajes para presentar, elementos a mostrar, preguntas de validación, cierre y minuta rápida; se eliminó el detalle técnico y repetitivo. El Markdown fue validado sin Mermaid ni caracteres Unicode de diagramas no permitidos."
+**Context**: Material de presentación - Simplificación de guía para reunión de validación con usuario
+
+---
