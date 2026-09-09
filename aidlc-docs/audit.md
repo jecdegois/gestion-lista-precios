@@ -282,3 +282,114 @@ continua"
 **Context**: Material de presentación - Simplificación de guía para reunión de validación con usuario
 
 ---
+## Corrección de simulación de carga masiva de margen
+**Timestamp**: 2026-08-26T00:00:00Z
+**User Input**: "por que en la simulacion de la carga de para la aprobacion de Carga Masiva de Margen de Utilidad sale con los mismo articulo de ejemplo del cargador deben aplicarse los y visualizarse todo el redonde y todo lo que estan en lo md's
+
+Detalle de hallazgos encontrados en la previsualización:
+
+[ART-231]: Formato de celda inválido / valor no numérico.
+[ART-455]: Formato de celda inválido / valor no numérico."
+**AI Response**: "Se identificó que el modal sustituía lotes sin filas por ejemplos y que la simulación de margen reconstruía sus filas como cambios de precio, generando falsos errores de formato. Se corregirá para reutilizar el lote real, mostrar la previsualización específica de margen con redondeo comercial y conservar el detalle en las exportaciones."
+**Context**: Construcción - Corrección de mockup de aprobación de carga masiva de margen
+
+---
+## Validación de corrección de simulación de carga masiva de margen
+**Timestamp**: 2026-08-26T00:00:00Z
+**User Input**: "por que en la simulacion de la carga de para la aprobacion de Carga Masiva de Margen de Utilidad sale con los mismo articulo de ejemplo del cargador deben aplicarse los y visualizarse todo el redonde y todo lo que estan en lo md's
+
+Detalle de hallazgos encontrados en la previsualización:
+
+[ART-231]: Formato de celda inválido / valor no numérico.
+[ART-455]: Formato de celda inválido / valor no numérico."
+**AI Response**: "La corrección se validó con una prueba aislada de margen y redondeo, comprobación de rutas de aprobación/exportación y respuesta HTTP 200 del mockup. La compilación JSX completa no se ejecutó porque @babel/standalone no está instalado localmente; el navegador carga esa dependencia desde CDN."
+**Context**: Construcción - Validación de mockup de aprobación de carga masiva de margen
+
+---
+## Cambio de regla — porcentaje de reducción de margen
+**Timestamp**: 2026-08-26T00:00:00Z
+**User Input**: "el factor de margenes es porcentual cargan 10 20 etc el factor multiplicado se hace por el aplicativo 
+
+ 
+
+El factor general inicial será de 10 %; es decir, se aplicará un multiplicador de 0,90 sobre el margen. Por ejemplo, si un artículo tiene un margen promedio de 25 %, su margen mínimo será de 22,5 %. este margen de utilidad mínimmo se debe guardar en el campo nativo de Softland en la tabla ARTICULO_PRECIO"
+**AI Response**: "Se actualizará el contrato de carga para recibir porcentajes como 10 o 20, normalizarlos internamente y aplicar el multiplicador 1 - porcentaje/100 antes de persistir el margen mínimo en ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN."
+**Context**: Construcción - Normalización del porcentaje de reducción de margen
+
+---
+## Cambio de regla — Factor de reducción de margen porcentual
+**Timestamp**: 2026-08-26T00:00:00Z
+**User Input**: "el factor de margenes es porcentual cargan 10 20 etc el factor multiplicado se hace por el aplicativo\n\n \n\nEl factor general inicial será de 10 %; es decir, se aplicará un multiplicador de 0,90 sobre el margen. Por ejemplo, si un artículo tiene un margen promedio de 25 %, su margen mínimo será de 22,5 %. este margen de utilidad mínimmo se debe guardar en el campo nativo de Softland en la tabla ARTICULO_PRECIO"
+**AI Response**: "Se confirmó que la interfaz y el parser recibirán porcentajes de reducción (10, 20, etc.), que la frontera de carga los normalizará a fracciones internas (0.10, 0.20) y que el cálculo conservará la fórmula Margen mínimo = Margen promedio × (1 − factor normalizado). La persistencia se mantiene en ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN mediante el procedimiento almacenado. Los factores de precio 0.95/1.10 no cambian."
+**Context**: Construcción — Normalización de factor porcentual de margen mínimo
+
+---
+## Resultado de implementación — Factor de margen porcentual
+**Timestamp**: 2026-08-26T00:00:00Z
+**User Input**: "el factor de margenes es porcentual cargan 10 20 etc el factor multiplicado se hace por el aplicativo\n\n \n\nEl factor general inicial será de 10 %; es decir, se aplicará un multiplicador de 0,90 sobre el margen. Por ejemplo, si un artículo tiene un margen promedio de 25 %, su margen mínimo será de 22,5 %. este margen de utilidad mínimmo se debe guardar en el campo nativo de Softland en la tabla ARTICULO_PRECIO"
+**AI Response**: "Se actualizó la plantilla y previsualización de margen para recibir Porcentaje Reduccion (10, 20, 10.5), rechazar formatos heredados, normalizar a FACTOR_REDUCCION y mostrar el multiplicador resultante. Se añadieron el DTO y parser Decimal específicos de margen, se documentó que UDT/SP conservan 0.1000 sin dividir de nuevo entre 100 y se mantuvo la persistencia en ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN. Se verificaron sintaxis Python, normalizaciones 10/20/10.5, casos inválidos, regresión de 0.95/1.10, prueba aislada del mockup y respuesta HTTP 200."
+**Context**: Construcción — Implementación y validación de normalización de porcentaje de margen mínimo
+
+---
+## Corrección de modelo — UDF real de factor de margen
+**Timestamp**: 2026-08-26T00:00:00Z
+**User Input**: "CREATE TABLE [COFER].[U_FACTOR_REDUCCION_MARGEN](
+
+	[U_CODIGO] [varchar](260) NOT NULL,
+
+	[U_DESCRIP] [varchar](260) NOT NULL,
+
+	[U_FACTOR_REDUCCION] [decimal](18, 2) NULL,
+
+	[U_ACTIVO] [varchar](1) NOT NULL,
+
+	[NoteExistsFlag] [tinyint] NOT NULL,
+
+	[RecordDate] [datetime] NOT NULL,
+
+	[RowPointer] [uniqueidentifier] NOT NULL,
+
+	[CreatedBy] [varchar](30) NOT NULL,
+
+	[UpdatedBy] [varchar](30) NOT NULL,
+
+	[CreateDate] [datetime] NOT NULL,
+
+ CONSTRAINT [PK_U_FACTOR_REDUCCION_MARGEN] PRIMARY KEY CLUSTERED 
+
+(
+
+	[U_CODIGO] ASC,
+
+	[U_DESCRIP] ASC
+
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+
+) ON [PRIMARY]
+
+essa es la tabla udf asi se llama y todo"
+**AI Response**: "Se registró la estructura de la UDF real COFER.U_FACTOR_REDUCCION_MARGEN. Se identificó que sustituye la tabla propuesta previamente, que carece de una columna ARTICULO y de vigencias, y que U_FACTOR_REDUCCION DECIMAL(18,2) requiere definir si persiste el porcentaje de entrada o una fracción normalizada. Se solicitará confirmación del significado de U_CODIGO antes de modificar la consulta del procedimiento almacenado."
+**Context**: Construcción — Alineación con modelo Softland COFER real
+
+---
+## Solicitud de definición — UDF real de factor de margen
+**Timestamp**: 2026-08-26T00:00:00Z
+**User Input**: "CREATE TABLE [COFER].[U_FACTOR_REDUCCION_MARGEN](...) esa es la tabla udf asi se llama y todo"
+**AI Response**: "Se solicita confirmar la semántica de U_CODIGO y el formato persistido de U_FACTOR_REDUCCION, porque la UDF real no incluye ARTICULO y su precisión DECIMAL(18,2) no permite guardar factores normalizados con cuatro decimales como 0.1050."
+**Context**: Construcción — Preguntas de mapeo de UDF
+
+---
+## Definiciones de UDF real y arquitectura multiempresa
+**Timestamp**: 2026-08-26T00:00:00Z
+**User Input**: "Pregunta 1: Opción A (U_CODIGO = ARTICULO, U_DESCRIP = descripción). Pregunta 2: Opción A (guardar porcentaje explícito 10.00 / 10.50; el SP y Python dividen entre 100.0 solo al calcular; no cambiar precisión de la columna). Pregunta 3: Opción A (reemplazar UDT_FACTOR_REDUCCION_ARTICULO por COFER.U_FACTOR_REDUCCION_MARGEN, consulta sin fechas de vigencia, solo U_ACTIVO='S'). Requerimiento multiempresa: conexión dinámica a la BD Softland de la compañía activa; todas las consultas, SPs y la UDF se ejecutan sobre ese catálogo. El procesador Python debe recibir el parámetro de compañía para elegir la cadena de conexión."
+**AI Response**: "Se adoptan las tres opciones A: la UDF real reemplaza la UDT teórica; el SP consulta COFER.U_FACTOR_REDUCCION_MARGEN por U_CODIGO=@p_articulo y U_ACTIVO='S', divide U_FACTOR_REDUCCION/100.0 y usa 0.10 como fallback; el procesador Python normaliza porcentaje/100.0 y recibe la compañía para el enrutamiento de conexión. Se documenta la arquitectura multiempresa/multibase."
+**Context**: Construcción — Alineación con UDF real y enrutamiento multiempresa
+
+---
+## Resultado — UDF real y multiempresa aplicados
+**Timestamp**: 2026-08-26T00:00:00Z
+**User Input**: "Pregunta 1: Opción A; Pregunta 2: Opción A; Pregunta 3: Opción A; arquitectura multiempresa con conexión dinámica por compañía; el SP y Python dividen entre 100.0 al calcular."
+**AI Response**: "Se creó backend/sql/U_FACTOR_REDUCCION_MARGEN.sql con la UDF real y se eliminó UDT_FACTOR_REDUCCION_ARTICULO.sql. El SP consulta COFER.U_FACTOR_REDUCCION_MARGEN por U_CODIGO=@p_articulo y U_ACTIVO='S', divide U_FACTOR_REDUCCION/100.0, mantiene fallback 0.10 y persiste en ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN; se removieron @p_fecha_calculo y las vigencias. Se añadió backend/api/db_routing.py (EnrutadorCompania) y el campo compania en SolicitudProcesoMasivoRequest; excel_processor.py incorpora factor_desde_udf. Se actualizó documentación y notas. Verificado: AST Python, factor_desde_udf 10/10.5/None, margen 22.5%/20%, enrutador multiempresa, y balance de paréntesis SQL ignorando literales."
+**Context**: Construcción — Implementación de UDF real y arquitectura multiempresa
+
+---

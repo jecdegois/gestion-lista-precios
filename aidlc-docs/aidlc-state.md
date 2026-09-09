@@ -4,10 +4,10 @@
 - **Proyecto:** MV26020 - Automatización de Listas de Precio
 - **Tipo de Proyecto:** Brownfield de mejora y homologación de procesos Softland existentes en Costa Rica, Venezuela y Colombia
 - **Fecha de Inicio:** 2026-08-13T00:00:00Z
-- **Etapa Actual:** INCEPCIÓN - Planificación del Flujo
+- **Etapa Actual:** CONSTRUCCIÓN - Normalización de carga porcentual de margen mínimo validada
 
 ## Estado del Workspace
-- **Código Existente:** No
+- **Código Existente:** Sí — mockup React/Babel, scripts SQL y componentes Python de referencia en el workspace.
 - **Ingeniería Inversa Requerida:** Sí, sobre los objetos legacy de Softland cuando se entreguen los scripts del Job, SP maestro y SPs por compañía. El workspace no contiene código legacy ejecutable.
 - **Raíz del Workspace:** `c:\Users\ysalas\MV26020-Calculo-de-listas-de-precio`
 - **Fuente principal del MVP:** `docs/Especificacion_Automatizacion_Listas_de_Precio.md`

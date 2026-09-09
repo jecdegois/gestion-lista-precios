@@ -3,16 +3,129 @@
 ## Línea Base Activa
 **v1_aprobado** — `Product-Definition/mockups/.versions/v1_aprobado.html`.
 
-**Actualmente en desarrollo: Versión 23 — Login blanco, selector mejorado, Tipo de Variación removido de Actualización Masiva**
+**Actualmente en desarrollo: Versión 30 — Carga de margen porcentual con normalización en la frontera de aplicación**
+
+### Estado Actual (Versión 30)
+- ✅ La plantilla de margen exige `Codigo Articulo | Porcentaje Reduccion`; el usuario carga `10`, `20` o `10.5`, no fracciones como `0.10`.
+- ✅ La interfaz valida el rango `[0, 100)`, convierte una única vez `10 → 0.10` y aplica el multiplicador de margen `0.90`.
+- ✅ La previsualización y exportación muestran porcentaje ingresado, factor normalizado, multiplicador, redondeo, márgenes y rechazos.
+- ✅ Las plantillas legadas con encabezado `Factor Reduccion` se rechazan explícitamente para impedir que `0.10` se interprete como `0.10%`.
+- ✅ La representación SQL se mantiene compatible: UDT/SP consumen `0.1000`; el SP persiste el resultado en `ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN` sin una segunda división entre 100.
+- ✅ Los multiplicadores de precio `0.95` y `1.10` mantienen su contrato independiente.
+
+### Ajuste Versión 30.1 — UDF real de Softland y arquitectura multiempresa
+- ✅ Se reemplazó la UDT teórica `UDT_FACTOR_REDUCCION_ARTICULO` por la UDF real `COFER.U_FACTOR_REDUCCION_MARGEN` (`U_CODIGO` = artículo, `U_DESCRIP` = descripción, `U_FACTOR_REDUCCION DECIMAL(18,2)`, `U_ACTIVO`, más auditoría estándar Softland). Nuevo script `backend/sql/U_FACTOR_REDUCCION_MARGEN.sql`.
+- ✅ La UDF guarda el **porcentaje explícito** (`10.00`, `10.50`); el SP y Python dividen entre `100.0` solo al calcular. Se eliminó el manejo de fechas de vigencia: la excepción aplica con `U_ACTIVO = 'S'`.
+- ✅ `SP_CALCULAR_MARGEN_MINIMO_ARTICULO` consulta la UDF por `U_CODIGO = @p_articulo` y `U_ACTIVO = 'S'`, con fallback `0.10`; se removió `@p_fecha_calculo`.
+- ✅ Nuevo módulo `backend/api/db_routing.py` (`EnrutadorCompania`) para conexión dinámica multiempresa: el SP, la UDF y las actualizaciones se ejecutan sobre el catálogo Softland de la compañía activa. `SolicitudProcesoMasivoRequest` incorpora el campo `compania`.
+- ✅ `excel_processor.py` añade `factor_desde_udf(porcentaje)` que aplica `/100.0` y fallback `0.10`.
+
+### Estado previo aprobado (Versión 29)
+- ✅ **Cargador en 2 pestañas de nivel superior:** "Carga Masiva" (Gestión Global + Actualización Masiva) y "Por Artículo" (Descuento por Artículo), con sub-pestañas cuando el grupo agrupa más de un proceso
+- ✅ **Plantilla Excel SIN "Tipo de Variación"** en ambas pestañas; el usuario ingresa el **Factor Multiplicador directo** (0.95 / 1.10)
+- ✅ **Tabla `UDT_FACTOR_REDUCCION_ARTICULO`** (excepciones de factor de reducción)
+- ✅ **SP `SP_CALCULAR_MARGEN_MINIMO_ARTICULO`** (Regla de Mayoreo): calcula y persiste `MARGEN_UTILIDAD_MIN`
+- ✅ **Backend por pestaña** (`PestanaCargador`) + `calcular_margen_minimo` con factor de reducción (fallback 0.10)
+- ✅ Motor de redondeo de 12 bandas y validación de margen contra precio redondeado (v27/v28)
+
+## Corrección — Versión 29 (Cargador en 2 pestañas + Regla de Mayoreo de margen mínimo)
+
+Solicitud del rol Arquitecto/Lead Full-Stack: reorganizar el cargador en dos pestañas, eliminar definitivamente "Tipo de Variación" de la plantilla Excel y la carga por artículo, y añadir la lógica de márgenes mínimos (tabla UDT + SP) de la Gerencia de Mayoreo.
+
+### Entregables
+
+**1. UI / plantilla Excel en 2 pestañas (mockup `gestion-masiva-precios.html`)**
+- Nuevo `PESTANAS_CARGADOR`: `MASIVA` = [`FACTOR_PRECIO`, `MAYOREOD_MASIVO`], `POR_ARTICULO` = [`DESCUENTO_LISTA_PRECIO`]. Helper `pestanaDeProceso()`.
+- Barra de pestañas de nivel superior (Carga Masiva | Por Artículo) + sub-pestañas dentro del grupo "Carga Masiva". No se eliminó ningún proceso ni clave técnica (respeta anti-regresión).
+- `descargarPlantillaExcel`: **sin** columna "Tipo de Variacion". Encabezados: Masiva `[Codigo Articulo, Factor Multiplicador]`; Por Artículo `[Lista de Precio, Codigo Articulo, Factor Multiplicador]`. Ejemplos `1.10` / `0.95`.
+- `parsearArchivoExcel`: lee el **factor multiplicador directo** (última columna), fija `tipoVariacion="AUMENTO"` (neutro; el signo va en el factor) y procesa con `construirFilaCompleta` / `construirFilaDescuentoMasivo(row, true)`.
+- `construirFilaDescuentoMasivo` acepta ahora `factorDirecto` para usar `construirFilaCompleta`. Texto de ayuda del uploader actualizado.
+
+**2. `backend/sql/UDT_FACTOR_REDUCCION_ARTICULO.sql`** — Tabla personalizada (excepciones)
+- Campos: `ARTICULO`, `FACTOR_REDUCCION DECIMAL(5,4)` (0.1000 = 10%), `ACTIVO` ('S'/'N'), `FECHA_INICIO`, `FECHA_FIN`, `FECHA_ULT_MODIF`, `USUARIO_ULT_MODIF` (+ auditoría de creación). PK, CHECKs (`FACTOR_REDUCCION` en [0,1), `ACTIVO` S/N, fechas), índice de búsqueda vigente y único filtrado por `ACTIVO='S'`.
+
+**3. `backend/sql/SP_CALCULAR_MARGEN_MINIMO_ARTICULO.sql`** — SP independiente (Regla de Mayoreo)
+- `Margen Promedio = (Precio Lista − Costo Promedio) / Precio Lista`.
+- Factor de reducción vía `OUTER APPLY TOP 1` sobre la UDT (vigente y activo); si no existe, **10% por defecto** (`@p_factor_reduccion_default = 0.10`).
+- `Margen Mínimo = Margen Promedio × (1 − Factor Reducción)`, acotado a ≥ 0.
+- Persiste en la columna nativa `ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN`. Ejecutable por artículo (`@p_articulo`) o toda la lista/versión (NULL). Idempotente. Devuelve resumen + detalle con origen del factor (`EXCEPCION_UDT` / `DEFAULT_10PCT`).
+
+**4. Backend actualizado por pestaña (`backend/api/`)**
+- `dtos.py`: enum `PestanaCargador` (`MASIVA` / `POR_ARTICULO`), campo `pestana` y `es_por_articulo()` en `SolicitudProcesoMasivoRequest`. `FilaCargaExcel` sigue sin "Tipo de Variación".
+- `excel_processor.py`: `calcular_margen_minimo(precio, costo, factor_reduccion=None)` replica el SP (fallback 0.10, acota ≥ 0); constante `FACTOR_REDUCCION_DEFAULT = 0.10`.
+
+### Validación en el motor de precios (ambas pestañas)
+Tras calcular el precio redondeado de 12 bandas, se valida `margen ≥ MARGEN_UTILIDAD_MIN`. Si no cumple → `ARTICULO_PRECIO_AJUSTE_RECHAZO` con motivo `MARGEN_MINIMO_NO_CUMPLE` (ya implementado en `SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO`, v28). El nuevo SP alimenta ese `MARGEN_UTILIDAD_MIN` con la Regla de Mayoreo.
+
+### Verificación
+- **Mockup:** transpila con `@babel/standalone` sin errores (148.041 → 178.909 chars).
+- **Python:** `ast.parse` OK; test aislado del margen mínimo (0.27 default, 0.255 con factor 0.15, None precio inválido, 0.0 acotado) + parseo de plantilla sin Tipo de Variación + pestaña — todos OK, test removido.
+- **SQL:** paréntesis del código balanceados (UDT 29/29; el SP muestra 43/44 solo por un `)` dentro del literal de texto `'... rango [0, 1).'`, que es válido — el balance por línea confirma el código correcto).
+
+### Nota de alcance
+La UI se reorganizó **agrupando** los 3 procesos existentes bajo 2 pestañas, sin eliminarlos, para no romper componentes aprobados. `pestana` en el request es un discriminador de orquestación del API (no un parámetro del SP), por lo que no se añade a `to_sp_params()`.
+
+## Corrección — Versión 28 (Margen mínimo dinámico por artículo + entregables backend)
+
+**Historial previo (Versión 28):**
 
 Aprobada por el usuario como la línea base vigente. Incluye filtros por atributos de artículo, compañías y listas de precio condicionadas, exclusión de MAYOREOD fuera de Actualización Masiva de Precios, reglas de roles y el detalle Artículo + Lista de Precio compartido entre solicitante y aprobador.
 
-### Estado Actual (Versión 23)
-- ✅ **Login: fondo blanco** (consistencia con rest de plantilla)
-- ✅ **Selector mejorado:** dos etapas (selección + confirmación), UX profesional
-- ✅ **Actualización Masiva:** Tipo de Variación removido de UI, hardcodeado a "AUMENTO"
-- ✅ **Excel:** Tipo de Variación presente en ambas plantillas descargables
-- ✅ **Gestión Global:** Tipo de Variación removido de UI (versión anterior)
+### Estado Actual (Versión 28)
+- ✅ **Margen mínimo dinámico por artículo** en el mockup (`margenUtilidadMin` por artículo con fallback global 0.20), coherente con el backend
+- ✅ **Entregables backend generados** (`backend/sql/`, `backend/api/`) — ver sección Versión 28 más abajo
+- ✅ **Motor de redondeo comercial de 12 bandas** en mockup, SP y procesador Python (validado 27/27 casos)
+- ✅ **Validación de margen contra precio REDONDEADO** (versión 27)
+- ✅ **Tabla de previsualización con Precio Base · Precio Redondeado · Estado Redondeo** (versión 27)
+- ✅ **8 identidades con Maker-Checker en SILLACA, COFERSA y FEBECA** (versión 26)
+- ✅ **Tipo de Variación solo en Excel** (versiones 19/23/25)
+- ✅ **Login blanco y selector visual** (versiones 23/24)
+
+## Corrección — Versión 28 (Margen mínimo dinámico por artículo + entregables backend)
+
+Solicitud del rol Arquitecto/Lead: ampliar el procesamiento masivo (margen dinámico por artículo + agrupación por atributos) y confirmar la remoción de "Tipo de Variación" en el cargador. Como el repositorio solo contenía el **mockup** y un **SP de referencia embebido en la especificación**, se generaron artefactos backend nuevos versionados en `backend/` y se ajustó el mockup.
+
+### Entregables generados
+
+**1. `backend/sql/fn_RedondeoComercial.sql`** — Función escalar T-SQL
+- Réplica exacta del motor de redondeo de 12 bandas (mismo algoritmo del mockup/informe).
+- `DECIMAL(28,8)` de entrada → `DECIMAL(28,2)` de salida; devuelve `NULL` fuera del rango [0,01; 100.000,00].
+- Paréntesis del código balanceados (54/54).
+
+**2. `backend/sql/SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO.sql`** — Stored Procedure evolucionado
+- **CAMBIO 1 (Redondeo):** cada precio calculado pasa por `fn_RedondeoComercial`; el `PRECIO_REDONDEADO` es el que se persiste en `ARTICULO_PRECIO`. Si queda fuera de rango (NULL), se rechaza con motivo `PRECIO_FUERA_DE_RANGO`.
+- **CAMBIO 2 (Margen dinámico por artículo):** `MARGEN_MINIMO_EFECTIVO = ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN` cuando está definido y > 0; en caso contrario el parámetro global `@p_margen_minimo` (fallback). La fórmula `Margen = 1 - (COSTO_PROM_DOL / PRECIO_REDONDEADO)` se evalúa sobre el precio **redondeado**; si es inferior al mínimo, se rechaza con `MARGEN_MINIMO_NO_CUMPLE`.
+- **CAMBIO 3 (Agrupación por atributos):** nuevos parámetros `@p_categoria`, `@p_linea`, `@p_proveedor`, `@p_esquema_trabajo` que restringen el universo de artículos base (asume columnas `A.CATEGORIA / A.LINEA / A.PROVEEDOR` en `ARTICULO`; ajustables al modelo real).
+- Nuevo parámetro `@p_aplicar_redondeo BIT = 1`. Sin parámetro/columna de "Tipo de Variación" (el signo va en el factor).
+- El detalle de rechazos incluye atributos (categoría/línea/proveedor) para reporte/agrupación en el estado de la solicitud.
+- Paréntesis del código balanceados (139/139).
+
+**3. `backend/api/dtos.py`** — DTOs / entidades (Python dataclasses + Decimal)
+- `SolicitudProcesoMasivoRequest.to_sp_params()` mapea 1:1 con los parámetros del SP.
+- `FiltroAtributos` (categoría/línea/proveedor/esquema). `FilaCargaExcel` **sin** campo Tipo de Variación (solo `codigo_articulo`, `factor`, `lista_precio` opcional).
+- `EstadoSolicitudResponse` con `rechazos_por_margen` y `resumen_por_motivo()` para reflejar los rechazos en la UI.
+- Enums `ModoValidacion`, `EstadoRedondeo`, `MotivoRechazo`.
+
+**4. `backend/api/excel_processor.py`** — Procesador de la plantilla simplificada
+- Lee la plantilla **sin** columna Tipo de Variación; usa el factor directo.
+- Motor de redondeo replicado en Python + validación de margen dinámico por artículo con fallback global, evaluada sobre el precio redondeado.
+- Marca cada fila con `EstadoRedondeo` (CALCULADO / FUERA_DE_RANGO / ALERTA_MARGEN) y `MotivoRechazo`.
+
+### Ajuste en el mockup
+
+- **Catálogo con `margenUtilidadMin` por artículo:** ART-231 (0.30), ART-455 (0.25), ART-089 (0.20), ART-120 (0.20), ART-344 (0.35), y ART-104 **sin** valor (demuestra el fallback al global 0.20).
+- Renombrado `MARGEN_MINIMO_ARTICULO` → `MARGEN_MINIMO_GLOBAL` (fallback).
+- Nueva función `margenMinimoEfectivo(articulo)`; `calcularCostoMinimoArticulo` usa el margen del artículo con fallback. La validación de piso en `validarFila` refleja automáticamente el margen dinámico.
+
+### Verificación
+
+- **Python:** sintaxis OK (`ast.parse`); test aislado con 27/27 casos de redondeo + 3 casos de margen (propio cumple, propio no cumple → `MARGEN_MINIMO_NO_CUMPLE`, fallback global 0.20) — todos OK, test removido.
+- **SQL:** paréntesis del código balanceados (fn 54/54, SP 139/139) descontando comentarios.
+- **Mockup:** transpila con `@babel/standalone` sin errores (145.109 → 176.227 chars).
+
+### Nota de alcance
+
+Los DTOs y el procesador de Excel se implementaron en **Python** por consistencia con el único código previo del repo (`generate_plan_excel.py`); no existía un backend previo. Los scripts SQL usan el esquema `FEBECA` (como el SP de referencia); para otras compañías (COFER/SILLACA/BEVAL/MUNDIAL) se replica cambiando el esquema, según indica la especificación.
 
 ## Componentes clave en el borrador actual (`gestion-masiva-precios.html`)
 
@@ -297,62 +410,178 @@ Aprobada por el usuario como la línea base vigente. Incluye filtros por atribut
 - **Verificación técnica:** bloque Babel balanceado (712/712 llaves, 867/867 paréntesis y 182/182 corchetes). Se confirmó la ausencia de `TipoVariacionSelect` en la sección `{modalidad === "manual" && tab === "FACTOR_PRECIO"...}` y la presencia de `tipoVariacion: "AUMENTO"` en `handleEnviar()` y `handleSimular()`. El mockup fue servido localmente en HTTP y respondió `200`.
 
 
-## Corrección — Versión 23 (Login blanco, selector mejorado, Tipo de Variación removido de Actualización Masiva)
+## Corrección — Versión 27 (Motor de Redondeo Comercial + Validación de Margen Mínimo integrados en la plantilla)
 
-- **Se completaron los tres cambios finales solicitados:**
+- **Se integró la lógica de redondeo comercial y validación de margen mínimo especificada en `docs/Informe_Reglas_Redondeo_Precios.md`.** El motor replica exactamente el algoritmo del libro `Simulador_redondeo_precios.xlsm` y fue validado contra los **27/27 casos de prueba oficiales + caso fuera de rango**.
 
-**1. Login — Fondo Blanco (Consistencia con Plantilla)**
-- ✅ Cambiado de `bg-gradient-to-br from-slate-900...` a `bg-white`
-- ✅ Logo: zinc-900 (antes: gradiente azul-indigo), mismo tamaño y sombra (md)
-- ✅ Tarjeta: blanco con borde zinc-100, `card p-8 shadow-lg`
-- ✅ Textos: zinc-900 (títulos), zinc-500 (descripciones)
-- ✅ Consistencia total: blanco, grises y negros, sin gradientes oscuros
+### Lógica implementada
 
-**2. Selector — Mejorado**
-- ✅ **Dos etapas mejoradas:**
-  1. **Etapa 1 (Selección):**
-     - Select nativo: `bg-white`, `border-zinc-300`, focus ring zinc-900
-     - Label: icon usuario + "Usuario"
-     - Info contextual: avatares contados + indicador 🔒 SSO
-  
-  2. **Etapa 2 (Confirmación):**
-     - Tarjeta de usuario: gradiente `from-zinc-50 to-white`, borde zinc-300
-     - Avatar coloreado con iniciales
-     - Detalles: nombre, email (mono), compañía, rol (coloreado)
-     - Alerta si SIN_PERMISO: caja roja zinc/red
-     - Botones: "Cambiar" (secundario) + "Continuar" (primario, deshabilitado si sin acceso)
-     - Spinner durante autenticación (1.2 seg) con overlay blanco
+**1. Motor de redondeo (12 bandas contiguas · 0,01 – 100.000,00):**
 
-- ✅ **UX Profesional:**
-  - Iconos significativos (chevron, user, check, x, alertTriangle, loader)
-  - Transiciones suaves (hover, focus, animaciones)
-  - Validación inteligente: botón deshabilitado para cuentas sin permiso
-  - Footer: nota sobre SSO corporativo
+| # | Rango | Tipo | Parámetros |
+| :---: | :--- | :--- | :--- |
+| 1 | 0,01 – 0,50 | Por exceso | paso 0,01 |
+| 2 | 0,51 – 1,00 | Por exceso | paso 0,05 |
+| 3 | 1,01 – 2,50 | Por exceso | paso 0,10 |
+| 4 | 2,51 – 4,75 | Por exceso | paso 0,25 |
+| 5 | 4,76 – 5,15 | Precio único | 4,99 |
+| 6 | 5,16 – 10,15 | Terminal más cercano | período 1, offsets [0,29; 0,49; 0,69; 0,99] |
+| 7 | 10,16 – 50,24 | Terminal más cercano | período 1, offsets [0,49; 0,99] |
+| 8 | 50,25 – 99,99 | Terminal más cercano | período 1, offsets [0,99] |
+| 9 | 100 – 500 | Terminal más cercano | período 10, offsets [3; 5; 7; 9] |
+| 10 | 501 – 1.000 | Terminal más cercano | período 10, offsets [0; 5] |
+| 11 | 1.001 – 5.000 | Terminal más cercano | período 100, offsets [30; 50; 70; 90] |
+| 12 | 5.001 – 100.000 | Terminal más cercano | período 100, offsets [50; 90] |
 
-**3. Actualización Masiva (MAYOREOD_MASIVO) — Tipo de Variación Removido**
-- ✅ **Eliminado del formulario manual:**
-  - Grid antes: 3 columnas (Grupo, **Tipo de Variación**, Factor)
-  - Grid ahora: 2 columnas (Grupo, Factor)
-  - Componente `TipoVariacionSelect` completamente removido
-  
-- ✅ **Hardcodeado a "AUMENTO" en lógica:**
-  - `handleSimular()`: `construirFilasMayoreodMasivo(..., "AUMENTO", ...)` (hardcoded)
-  - `handleEnviar()`: `tipoVariacion: (esGestionGlobal || esListaBase) && factor !== "" ? "AUMENTO" : null` (ya estaba hardcoded)
-  
-- ✅ **Excel: Tipo de Variación presente en plantilla descargable**
-  - Plantilla Actualización Masiva: `[Codigo Articulo | Tipo de Variacion | Factor %]` ✓
-  - Plantilla Descuento por Artículo: `[Lista de Precio | Codigo Articulo | Tipo de Variacion | Factor %]` ✓
+- **Regla de desempate:** distancias iguales → se elige el terminal **superior** (`<` estricto en la comparación).
+- **Fuera de rango:** valores < 0,01 o > 100.000,00 → `precioRedondeado = null` y estado `FUERA_DE_RANGO`.
+
+**2. Cálculo de margen mínimo:**
+
+- Se conserva `MARGEN_MINIMO_ARTICULO = 0,20` y `Costo Mínimo = Costo Reposición / (1 - 0,20)`.
+- La validación de piso ahora se ejecuta contra el **precio REDONDEADO** (más estricta) en lugar del precio calculado base. Si el redondeo empuja el precio por debajo del costo mínimo, la fila queda marcada como `ALERTA_MARGEN`.
+- Si el precio está fuera del rango [0,01; 100.000,00], el sistema mantiene el precio calculado sin redondeo y usa el estado `FUERA_DE_RANGO`.
+
+**3. Reflejo visual en la plantilla:**
+
+- **`TablaPrevisualizacion` — nueva estructura de columnas:**
+  Código · Lista · Descripción · Precio Actual · Tipo Variación · Factor % · Factor aplicado · **Precio Calculado (Base)** · **Precio Redondeado** (destacado en negrita) · Costo Mínimo · **Estado Redondeo** (badge) · Validación
+- **Componente nuevo `EstadoRedondeoBadge`:** traduce el enum a un badge con color/tooltip:
+  - `Calculado` — verde, tooltip con número/intervalo de banda
+  - `Fuera de rango` — rojo, tooltip explicando el rango [0,01; 100.000,00]
+  - `Alerta de Margen` — rojo, tooltip explicando que el redondeado quedó por debajo del costo mínimo
+- **Preview en vivo en el formulario manual de Descuento por Artículo:** las tarjetas de resumen pasaron de 4 a **5 columnas** e incluyen: Descripción · Precio Actual · **Precio Calculado (Base)** · **Precio Redondeado** · Costo Mínimo, más una línea bajo el grid con el badge de estado y el número de banda aplicada.
+- **Exportaciones CSV/Excel:** ambas funciones (`filasADataCsv` y `descargarExcelFilas`) incluyen ahora las columnas `Precio_Calculado_Base`, `Precio_Redondeado`, `Banda_Redondeo`, `Estado_Redondeo` y `Costo_Minimo_Articulo`.
+
+### Estructura del objeto `validacion` extendida
+
+```javascript
+{
+  valido: boolean,
+  precioActual: number | null,
+  precioPropuesto: number | null,       // Precio Calculado (Base)
+  precioRedondeado: number | null,      // Nuevo — precio final tras las 12 bandas
+  estadoRedondeo: "CALCULADO" | "FUERA_DE_RANGO" | "ALERTA_MARGEN" | null,
+  bandaRedondeo: { numero, intervalo, tipo, terminales, paso, periodo } | null,
+  costoMinimo: number | null,
+  causa: string | null,
+}
+```
+
+### Verificación técnica
+
+- **Suite de pruebas del motor (aislada, Node.js):** 27/27 casos oficiales del libro Simulador correctos + caso fuera de rango correcto. Ejecutada durante la implementación y removida del repo.
+- **Balanceo Babel:** 997 llaves abiertas = 997 cerradas, 1181 paréntesis abiertos = 1181 cerrados.
+- **Compatibilidad:** todas las funciones (`construirFilaCompleta`, `construirFilaDesdeVariacion`, `construirFilasGestionGlobal`, `construirFilasMayoreodMasivo`) continúan operando; el nuevo objeto de validación es un superconjunto del anterior.
+
+---
+
+## Corrección — Versión 26 (Par Operador/Aprobador en COFERSA y FEBECA)
+
+- **Se agregaron los usuarios faltantes** para completar el flujo Maker-Checker (Operador/Aprobador) también en COFERSA y FEBECA. Antes solo SILLACA tenía ambos roles disponibles; ahora los tres tenants principales pueden demostrar el flujo de aprobación dentro de una misma compañía.
+
+**Usuarios agregados a `IDENTITIES`:**
+
+| Compañía | Nuevo usuario | Rol | Email | Color |
+| :--- | :--- | :--- | :--- | :--- |
+| FEBECA | Ricardo Moreno | OPERADOR | rmoreno@febeca.com | `#f59e0b` |
+| COFERSA | Ana Castro | APROBADOR | acastro@cofersa.com | `#9333ea` |
+
+**Estado consolidado del selector de usuarios (8 identidades):**
+
+| Compañía | Operador | Aprobador |
+| :--- | :--- | :--- |
+| SILLACA | Juan Pérez (jperez@sillaca.com) | María Rodríguez (mrodriguez@sillaca.com) |
+| BEVAL | Pedro Alvarado (palvarado@beval.com) | — |
+| FEBECA | **Ricardo Moreno (rmoreno@febeca.com)** ← nuevo | Lucía Jiménez (ljimenez@febeca.com) |
+| COFERSA | Diego Vargas (dvargas@cofersa.com) | **Ana Castro (acastro@cofersa.com)** ← nuevo |
+| — (sin dominio mapeado) | Carlos Gómez (SIN_PERMISO) | — |
+
+- **Sin cambios en el mapeo S2/SS:** los dominios `febeca.com` y `cofersa.com` ya estaban registrados en `DOMINIO_A_COMPANIA_S2SS`, por lo que la resolución de compañía por dominio de correo continúa funcionando sin ajustes adicionales.
+- **Comentario del bloque IDENTITIES actualizado:** ahora indica que SILLACA, COFERSA y FEBECA conservan el par Operador/Aprobador para demostrar el flujo Maker-Checker dentro de una misma compañía.
+
+- **Verificación técnica:** bloque Babel balanceado (947 llaves, 1109 paréntesis). El selector de login mostrará ahora 7 tarjetas clicables (todos menos el usuario SIN_PERMISO), permitiendo probar los tres flujos Maker-Checker completos.
+
+---
+
+## Corrección — Versión 25 (Tipo de Variación removido de Descuento por Artículo — solo en Excel)
+
+- **Se removió `TipoVariacionSelect` del formulario manual de Descuento por Artículo (`DESCUENTO_LISTA_PRECIO`).** El control UI de Aumento/Disminución ya no aparece en la captura individual de artículos. Con este cambio, **los tres procesos manuales (Gestión Global, Actualización Masiva y Descuento por Artículo) tienen la misma regla**: la captura manual siempre aplica AUMENTO, y la opción Aumento/Disminución solo está disponible en la carga masiva por plantilla Excel.
+
+**Cambios aplicados:**
+
+1. **Formulario manual (Descuento por Artículo):**
+   - Grid antes: 6 columnas (Código[2], **Tipo de Variación[2]**, Factor[1], Botón[1])
+   - Grid ahora: 6 columnas (Código[3], Factor[2], Botón[1])
+   - Nota informativa añadida bajo el input Factor %: *"Se aplica como Aumento. La opción Aumento/Disminución está disponible solo en la carga masiva por plantilla Excel."*
+
+2. **Tabla de artículos agregados:**
+   - Columna "Tipo de Variación" removida (todos son AUMENTO)
+   - Columnas resultantes: `#`, `Código`, `Lista de Precio`, `Descripción`, `Factor %`, `Factor aplicado`, `Quitar`
+
+3. **Lógica `agregarItem()`:**
+   - Hardcodeado a `calcularVariacion("AUMENTO", factor)` (antes: `calcularVariacion(tipoVariacion, factor)`)
+   - El objeto agregado a `itemsManual` fija `tipoVariacion: "AUMENTO"` explícitamente
+   - Comentario añadido: *"En captura manual de Descuento por Artículo, el tipo de variación es siempre AUMENTO. La opción Aumento/Disminución solo está disponible en la carga masiva por plantilla Excel."*
+
+4. **Plantilla Excel (sin cambios):**
+   - `descargarPlantillaExcel("DESCUENTO_LISTA_PRECIO")` mantiene la columna `Tipo de Variacion`
+   - Encabezado: `[Lista de Precio | Codigo Articulo | Tipo de Variacion | Factor %]`
+   - Ejemplo: `["MAYOREOB", "ART-231", "Aumento", "10"], ["LPV1", "ART-455", "Disminucion", "5"]`
+   - El parser Excel sigue traduciendo Aumento → (+) y Disminución → (-)
+
+**Consistencia entre procesos (post-cambio):**
+
+| Proceso | Captura manual | Plantilla Excel |
+| :--- | :---: | :---: |
+| Gestión Global (FACTOR_PRECIO) | Sin UI (siempre AUMENTO) | N/A (proceso solo manual) |
+| Actualización Masiva (MAYOREOD_MASIVO) | Sin UI (siempre AUMENTO) | Columna Tipo de Variacion ✓ |
+| Descuento por Artículo (DESCUENTO_LISTA_PRECIO) | Sin UI (siempre AUMENTO) | Columna Tipo de Variacion ✓ |
+
+- **Verificación técnica:** bloque Babel balanceado (945/945 llaves, 1109/1109 paréntesis). Se confirmó la ausencia total de `TipoVariacionSelect` fuera de su definición como componente. `descargarPlantillaExcel()` conserva la columna `Tipo de Variacion` con las opciones `Aumento` / `Disminucion` en las dos plantillas descargables.
+
+---
+
+## Corrección — Versión 24 (Selector de usuarios rediseñado como tarjetas visuales)
+
+- **Se rediseñó completamente el selector de usuarios** en la pantalla de login: ahora es **un listado visual con tarjetas clicables** en lugar de un `<select>` HTML nativo.
+
+**Diseño Nuevo del Selector:**
+
+- ✅ **Etapa 1 — Selección Visual:**
+  - Título: "Seleccione su cuenta" + descripción
+  - **Grid de tarjetas por usuario:**
+    - Cada usuario es una **tarjeta clicable** (botón estilizado)
+    - Contenido: avatar coloreado + nombre + email + rol (badge)
+    - Hover: borde más oscuro, fondo zinc-50, chevron derecha visible
+    - Transición suave: `transition-all`
+  - Info contextual: caja azul con contador de usuarios + indicador 🔒 SSO
+
+**Ventajas del Nuevo Diseño:**
+- ✅ Visualmente más atractivo: tarjetas con avatar, nombre, email y rol visibles
+- ✅ Interactividad clara: hover effects, chevron que aparece al pasar mouse
+- ✅ Mejor UX: no requiere abrir dropdown, todas las opciones visibles
+- ✅ Accesibilidad: botones nativos en lugar de `<option>` (mejor para screenreaders)
+- ✅ Escalable: si hay más usuarios, el listado crece naturalmente
+
+**Estructura de cada Tarjeta:**
+```
+┌───────────────────────────────────────────┐
+│ JM | Juan Martínez          [OPERADOR] →  │
+│    juan.martinez@sillaca.com              │
+└───────────────────────────────────────────┘
+```
+
+**Etapa 2 — Confirmación (sin cambios):**
+- Tarjeta de usuario destacada con detalles
+- Botones: "Cambiar" (vuelve a Etapa 1) + "Continuar" (procesa login)
 
 - **Verificación técnica:**
-  - Login: bloque Babel balanceado (712 llaves, 867 paréntesis, 182 corchetes)
-  - Selector: dos etapas condicionales `{!selectedEmail ? Etapa1 : Etapa2}`
-  - Actualización Masiva: grid ahora 2 columnas, TipoVariacionSelect removido completamente
-  - Excel: descargarPlantillaExcel() mantiene Tipo de Variación en ambas plantillas
+  - Babel balanceado: 950 llaves abiertas = 950 cerradas ✓
+  - Selector: renderizado como `grid de botones` en lugar de `<select>`
+  - Cada tarjeta: `className="w-full text-left p-3.5 rounded-lg border-2 border-zinc-200 hover:border-zinc-400 hover:bg-zinc-50 transition-all cursor-pointer group"`
+  - Avatar: 44px (w-11 h-11), iniciales centradas
+  - Iconos: chevronRight aparece en hover con `opacity-0 group-hover:opacity-100`
   - El mockup fue servido localmente y respondió `HTTP 200`
-
-- **Descripción visual:**
-  - Login: blanco puro, tipografía zinc, sin efectos glassmorphism
-  - Selector: dos etapas claras, tarjeta de confirmación con avatar coloreado
-  - Actualización Masiva: formulario más limpio (solo Grupo + Factor), Excel sigue incluyendo Tipo de Variación
 
 

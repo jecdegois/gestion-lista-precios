@@ -1,0 +1,351 @@
+/** Motor de cálculo de filas (precio y margen), portado del mockup MV26020. */
+
+import { redondearPrecioComercial } from "./rounding";
+import {
+  CATALOGO_ARTICULOS,
+  NOMBRES_LISTA,
+  GRUPOS_ARTICULOS,
+  ARTICULOS_POR_LISTA,
+  LISTA_BASE_OBJETIVO,
+  calcularCostoMinimoArticulo,
+} from "./catalog";
+import type {
+  FilaMargen,
+  FilaPrecio,
+  ModoProceso,
+  TipoVariacion,
+  ValidacionMargen,
+  ValidacionPrecio,
+} from "./domain-types";
+import { fmtMonto } from "./format";
+
+function round2(x: number): number {
+  return Math.round(x * 100) / 100;
+}
+
+export function textoFactorCalculado(factor: number | null | undefined): string {
+  return factor != null && !Number.isNaN(factor) ? factor.toFixed(2) : "—";
+}
+
+export interface ConversionFactor {
+  valido: boolean;
+  porcentaje: number | null;
+  factor: number | null;
+  causa: string | null;
+}
+
+/** Porcentaje YA CON SIGNO -> factor multiplicador (1 + p/100), válido en (0, 2]. */
+export function convertirPorcentajeAFactor(valor: unknown): ConversionFactor {
+  const crudo = String(valor ?? "").trim().replace(",", ".");
+  const porcentaje = Number.parseFloat(crudo);
+  const formatoValido = crudo !== "" && !Number.isNaN(porcentaje) && /^-?\d+(\.\d+)?$/.test(crudo);
+  if (!formatoValido) {
+    return { valido: false, porcentaje: null, factor: null, causa: "Formato de variación inválido / valor no numérico." };
+  }
+  const factor = 1 + porcentaje / 100;
+  const valido = factor > 0 && factor <= 2;
+  return {
+    valido,
+    porcentaje,
+    factor,
+    causa: valido
+      ? null
+      : "El Factor % debe generar un multiplicador mayor que 0 y menor o igual a 2 (variación entre -100% y 100%).",
+  };
+}
+
+export function signoDeTipoVariacion(tv: TipoVariacion | undefined): number {
+  return tv === "DISMINUCION" ? -1 : 1;
+}
+
+export interface Variacion {
+  valido: boolean;
+  magnitud: number | null;
+  porcentaje: number | null;
+  factor: number | null;
+  causa: string | null;
+}
+
+/** Magnitud SIN signo (>=0) + tipoVariacion -> factor. */
+export function calcularVariacion(tipoVariacion: TipoVariacion | undefined, magnitudRaw: unknown): Variacion {
+  const crudo = String(magnitudRaw ?? "").trim().replace(",", ".");
+  const magnitud = Number.parseFloat(crudo);
+  const formatoValido = crudo !== "" && !Number.isNaN(magnitud) && /^\d+(\.\d+)?$/.test(crudo);
+  if (!tipoVariacion) {
+    return { valido: false, magnitud: null, porcentaje: null, factor: null, causa: "Debe indicar el Tipo de Variación (Aumento o Disminución)." };
+  }
+  if (!formatoValido) {
+    return {
+      valido: false,
+      magnitud: null,
+      porcentaje: null,
+      factor: null,
+      causa: "El Factor % debe ser un valor numérico igual o mayor a cero. El signo se define únicamente con Tipo de Variación.",
+    };
+  }
+  const porcentajeConSigno = signoDeTipoVariacion(tipoVariacion) * magnitud;
+  const conversion = convertirPorcentajeAFactor(String(porcentajeConSigno));
+  return {
+    valido: !!tipoVariacion && conversion.valido,
+    magnitud,
+    porcentaje: porcentajeConSigno,
+    factor: conversion.factor,
+    causa: conversion.valido ? null : conversion.causa,
+  };
+}
+
+export interface FilaInput {
+  fila?: number;
+  codigo: string;
+  listaCodigo?: string | null;
+  tipoVariacion?: TipoVariacion;
+  variacionPorcentaje?: number | string;
+  valorPropuestoRaw?: string;
+  porcentajeReduccionRaw?: string | number;
+  grupoArticulo?: string;
+}
+
+export function validarFila(row: FilaInput, modo: ModoProceso): ValidacionPrecio {
+  const articulo = CATALOGO_ARTICULOS[row.codigo];
+  const base: ValidacionPrecio = {
+    valido: false,
+    precioActual: null,
+    precioPropuesto: null,
+    precioRedondeado: null,
+    estadoRedondeo: null,
+    bandaRedondeo: null,
+    costoMinimo: null,
+    causa: null,
+  };
+
+  if (!articulo) {
+    return { ...base, causa: "El código de artículo no existe en el catálogo activo." };
+  }
+
+  const crudo = String(row.valorPropuestoRaw ?? "").trim().replace(",", ".");
+  const numero = Number.parseFloat(crudo);
+  const formatoValido = crudo !== "" && !Number.isNaN(numero) && /^-?\d+(\.\d+)?$/.test(crudo);
+
+  if (!formatoValido) {
+    return { ...base, precioActual: articulo.precioActual, causa: "Formato de celda inválido / valor no numérico." };
+  }
+
+  if (modo === "factor" && (numero <= 0 || numero > 2)) {
+    return {
+      ...base,
+      precioActual: articulo.precioActual,
+      precioPropuesto: round2(articulo.precioActual * numero),
+      causa: `El factor aplicado (${numero}) está fuera del rango permitido (mayor que 0 y menor o igual a 2).`,
+    };
+  }
+
+  const precioPropuesto = modo === "factor" ? round2(articulo.precioActual * numero) : round2(numero);
+  if (precioPropuesto <= 0) {
+    return { ...base, precioActual: articulo.precioActual, precioPropuesto, causa: "El precio propuesto resultante debe ser mayor que cero." };
+  }
+
+  const redondeo = redondearPrecioComercial(precioPropuesto);
+  const costoMinimo = calcularCostoMinimoArticulo(articulo);
+  const precioParaValidar = redondeo.precioRedondeado ?? precioPropuesto;
+
+  if (costoMinimo != null && precioParaValidar < costoMinimo) {
+    return {
+      valido: false,
+      precioActual: articulo.precioActual,
+      precioPropuesto,
+      precioRedondeado: redondeo.precioRedondeado,
+      estadoRedondeo: redondeo.estado === "CALCULADO" ? "ALERTA_MARGEN" : redondeo.estado,
+      bandaRedondeo: redondeo.banda,
+      costoMinimo,
+      causa: `El precio final (${fmtMonto(precioParaValidar)}) es menor que el Costo Mínimo del Artículo (${fmtMonto(costoMinimo)}).`,
+    };
+  }
+
+  return {
+    valido: true,
+    precioActual: articulo.precioActual,
+    precioPropuesto,
+    precioRedondeado: redondeo.precioRedondeado,
+    estadoRedondeo: redondeo.estado,
+    bandaRedondeo: redondeo.banda,
+    costoMinimo,
+    causa: null,
+  };
+}
+
+export function construirFilaCompleta(row: FilaInput, modo: ModoProceso): FilaPrecio {
+  const articulo = CATALOGO_ARTICULOS[row.codigo];
+  return {
+    fila: row.fila ?? 0,
+    codigo: row.codigo,
+    descripcion: articulo ? articulo.descripcion : "— Código no encontrado —",
+    listaCodigo: row.listaCodigo,
+    tipoVariacion: row.tipoVariacion,
+    variacionPorcentaje: row.variacionPorcentaje,
+    valorPropuestoRaw: row.valorPropuestoRaw,
+    grupoArticulo: row.grupoArticulo,
+    validacion: validarFila(row, modo),
+  };
+}
+
+export function construirFilaDesdeVariacion(row: FilaInput, modo: ModoProceso): FilaPrecio {
+  if (modo !== "factor") return construirFilaCompleta(row, modo);
+  const conversion = calcularVariacion(row.tipoVariacion, row.variacionPorcentaje);
+  const rowConFactor: FilaInput = { ...row, valorPropuestoRaw: textoFactorCalculado(conversion.factor) };
+  const fila = construirFilaCompleta(rowConFactor, modo);
+  const articulo = CATALOGO_ARTICULOS[row.codigo];
+  if (!conversion.valido && articulo) {
+    fila.validacion = { ...fila.validacion, valido: false, causa: conversion.causa };
+  }
+  return fila;
+}
+
+export function codigoListaDesdeArchivo(valor: unknown): string | undefined {
+  const crudo = String(valor ?? "").trim().toLowerCase();
+  return Object.keys(NOMBRES_LISTA).find(
+    (codigo) => codigo === crudo || NOMBRES_LISTA[codigo].toLowerCase() === crudo,
+  );
+}
+
+export function construirFilaDescuentoMasivo(row: FilaInput, factorDirecto?: boolean): FilaPrecio {
+  const fila = factorDirecto ? construirFilaCompleta(row, "factor") : construirFilaDesdeVariacion(row, "factor");
+  const listaCodigo = codigoListaDesdeArchivo(row.listaCodigo);
+  if (!listaCodigo) {
+    return {
+      ...fila,
+      listaCodigo: null,
+      lista: "—",
+      validacion: { ...fila.validacion, valido: false, causa: "La lista de precio no existe o no tiene un formato válido en la plantilla." },
+    };
+  }
+  return { ...fila, listaCodigo, lista: NOMBRES_LISTA[listaCodigo] };
+}
+
+export function construirFilaMargenMasivo(row: FilaInput): FilaMargen {
+  const articulo = CATALOGO_ARTICULOS[row.codigo];
+  const crudo = String(row.porcentajeReduccionRaw ?? "").trim().replace(",", ".");
+  const porcentaje = Number.parseFloat(crudo);
+  const formatoValido = crudo !== "" && !Number.isNaN(porcentaje) && /^\d+(\.\d+)?$/.test(crudo);
+  const factorReduccion = formatoValido ? porcentaje / 100 : null;
+  const multiplicadorMargen = factorReduccion != null ? 1 - factorReduccion : null;
+
+  const validacionBase: ValidacionMargen = {
+    valido: false,
+    precioActual: articulo ? articulo.precioActual : null,
+    precioPropuesto: null,
+    precioRedondeado: null,
+    estadoRedondeo: null,
+    bandaRedondeo: null,
+    costoMinimo: null,
+    margenPromedio: null,
+    margenSobrePrecioRedondeado: null,
+    margenMinimo: null,
+    porcentajeReduccion: formatoValido ? porcentaje : null,
+    factorReduccion,
+    multiplicadorMargen,
+    codigoRechazo: null,
+    causa: null,
+  };
+
+  const base: FilaMargen = {
+    fila: row.fila ?? 0,
+    codigo: row.codigo,
+    descripcion: articulo ? articulo.descripcion : "—",
+    porcentajeReduccion: validacionBase.porcentajeReduccion,
+    factorReduccion,
+    multiplicadorMargen,
+    validacion: validacionBase,
+  };
+
+  if (!articulo) {
+    return { ...base, validacion: { ...validacionBase, precioActual: null, codigoRechazo: "ARTICULO_NO_EXISTE", causa: "El código de artículo no existe en el catálogo activo." } };
+  }
+  if (!formatoValido || porcentaje < 0 || porcentaje >= 100) {
+    return {
+      ...base,
+      validacion: {
+        ...validacionBase,
+        codigoRechazo: "PORCENTAJE_REDUCCION_FUERA_RANGO",
+        causa: "El Porcentaje de Reducción debe ser numérico, mayor o igual a 0 y menor que 100 (ej. 10 = 10%).",
+      },
+    };
+  }
+
+  const precioLista = articulo.precioActual;
+  const costo = typeof articulo.costoReposicion === "number" ? articulo.costoReposicion : null;
+  const margenPromedio = precioLista > 0 && costo != null ? (precioLista - costo) / precioLista : null;
+  const margenMinimo = margenPromedio != null && multiplicadorMargen != null ? Math.max(0, margenPromedio * multiplicadorMargen) : null;
+  const redondeo = redondearPrecioComercial(precioLista);
+  const precioRedondeado = redondeo.precioRedondeado;
+  const margenSobrePrecioRedondeado = precioRedondeado != null && precioRedondeado > 0 && costo != null ? 1 - costo / precioRedondeado : null;
+  const costoMinimo = costo != null && margenMinimo != null && margenMinimo >= 0 && margenMinimo < 1 ? costo / (1 - margenMinimo) : null;
+  const fueraDeRango = redondeo.estado === "FUERA_DE_RANGO";
+  const margenNoCumple = !fueraDeRango && margenMinimo != null && margenSobrePrecioRedondeado != null && margenSobrePrecioRedondeado < margenMinimo;
+
+  return {
+    ...base,
+    validacion: {
+      valido: margenMinimo != null && !fueraDeRango && !margenNoCumple,
+      precioActual: precioLista,
+      precioPropuesto: precioLista,
+      precioRedondeado,
+      estadoRedondeo: margenNoCumple ? "ALERTA_MARGEN" : redondeo.estado,
+      bandaRedondeo: redondeo.banda,
+      costoMinimo,
+      margenPromedio,
+      margenSobrePrecioRedondeado,
+      margenMinimo,
+      porcentajeReduccion: porcentaje,
+      factorReduccion,
+      multiplicadorMargen,
+      codigoRechazo: fueraDeRango
+        ? "PRECIO_FUERA_DE_RANGO"
+        : margenNoCumple
+          ? "MARGEN_MINIMO_NO_CUMPLE"
+          : margenMinimo == null
+            ? "DATOS_MARGEN_INVALIDOS"
+            : null,
+      causa: fueraDeRango
+        ? "El precio de lista está fuera del rango comercial de redondeo [0,01 – 100.000,00]."
+        : margenNoCumple
+          ? "MARGEN_MINIMO_NO_CUMPLE: el margen calculado sobre el precio redondeado es menor que el Margen Mínimo resultante."
+          : margenMinimo != null
+            ? null
+            : "No fue posible calcular el margen (precio o costo inválido).",
+    },
+  };
+}
+
+export function construirFilasMayoreodMasivo(
+  codigoGrupo: string,
+  factor: string,
+  tipoVariacion: TipoVariacion,
+  magnitud: number | string,
+): FilaPrecio[] {
+  const grupo = GRUPOS_ARTICULOS[codigoGrupo];
+  const articulos = grupo ? grupo.articulos : [];
+  return articulos.map((codigo, idx) => {
+    const fila = construirFilaCompleta(
+      { fila: idx + 1, codigo, tipoVariacion, variacionPorcentaje: magnitud, valorPropuestoRaw: factor },
+      "factor",
+    );
+    return { ...fila, lista: `${LISTA_BASE_OBJETIVO.nombre} / ${LISTA_BASE_OBJETIVO.nivelPrecio}`, grupoArticulo: codigoGrupo };
+  });
+}
+
+export function construirFilasGestionGlobal(
+  listaCodigo: string,
+  factor: string,
+  tipoVariacion: TipoVariacion,
+  magnitud: number | string,
+): FilaPrecio[] {
+  const codigos = ARTICULOS_POR_LISTA[listaCodigo] || Object.keys(CATALOGO_ARTICULOS);
+  const nombreLista = NOMBRES_LISTA[listaCodigo] || listaCodigo || "Lista seleccionada";
+  return codigos.map((codigo, idx) => {
+    const fila = construirFilaCompleta(
+      { fila: idx + 1, codigo, tipoVariacion, variacionPorcentaje: magnitud, valorPropuestoRaw: factor },
+      "factor",
+    );
+    return { ...fila, listaCodigo, lista: nombreLista };
+  });
+}

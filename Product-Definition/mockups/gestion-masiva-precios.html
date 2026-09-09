@@ -290,16 +290,18 @@ function resolverCompaniaPorCorreo(email) {
    La compañía NO se declara aquí manualmente: se deriva del dominio de correo
    mediante resolverCompaniaPorCorreo, replicando la resolución S2/SS. Debe
    existir al menos un usuario de ejemplo por compañía para poder demostrar
-   el aislamiento de datos entre compañías (multitenant); SILLACA conserva
-   además el par Operador/Aprobador para demostrar el flujo Maker-Checker
-   dentro de una misma compañía.
+   el aislamiento de datos entre compañías (multitenant); SILLACA, COFERSA
+   y FEBECA conservan además el par Operador/Aprobador para demostrar el
+   flujo Maker-Checker dentro de una misma compañía.
    ========================================================================= */
 const IDENTITIES = [
   { email: "jperez@sillaca.com", nombre: "Juan Pérez", rol: "OPERADOR", color: "#2563eb" },
   { email: "mrodriguez@sillaca.com", nombre: "María Rodríguez", rol: "APROBADOR", color: "#7c3aed" },
   { email: "palvarado@beval.com", nombre: "Pedro Alvarado", rol: "OPERADOR", color: "#0d9488" },
   { email: "ljimenez@febeca.com", nombre: "Lucía Jiménez", rol: "APROBADOR", color: "#ea580c" },
+  { email: "rmoreno@febeca.com", nombre: "Ricardo Moreno", rol: "OPERADOR", color: "#f59e0b" },
   { email: "dvargas@cofersa.com", nombre: "Diego Vargas", rol: "OPERADOR", color: "#b45309" },
+  { email: "acastro@cofersa.com", nombre: "Ana Castro", rol: "APROBADOR", color: "#9333ea" },
   { email: "cgomez@sinmapeo.com", nombre: "Carlos Gómez", rol: "SIN_PERMISO", color: "#71717a" },
 ].map(function (identity) {
   return Object.assign({}, identity, { compania: resolverCompaniaPorCorreo(identity.email) });
@@ -332,6 +334,7 @@ function LoginScreen({ onLogin }) {
 
   const selectedIdentity = IDENTITIES.find(function (i) { return i.email === selectedEmail; });
   const sinAcceso = selectedIdentity && selectedIdentity.rol === "SIN_PERMISO";
+  const usuariosDisponibles = IDENTITIES.filter(function (i) { return i.rol !== "SIN_PERMISO"; });
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6 py-10 bg-white">
@@ -350,41 +353,47 @@ function LoginScreen({ onLogin }) {
           {!selectedEmail ? (
             <div className="space-y-5">
               <div className="mb-6">
-                <h2 className="text-lg font-semibold text-zinc-900 mb-1">Iniciar sesión</h2>
-                <p className="text-zinc-500 text-sm">Seleccione su usuario corporativo</p>
+                <h2 className="text-lg font-semibold text-zinc-900 mb-1">Seleccione su cuenta</h2>
+                <p className="text-zinc-500 text-sm">Elija un usuario para continuar</p>
               </div>
 
-              <div>
-                <label htmlFor="user-select" className="block text-sm font-medium text-zinc-700 mb-3">
-                  <Icon name="user" className="w-4 h-4 inline mr-2 text-zinc-600" />
-                  Usuario
-                </label>
-                
-                <div className="relative">
-                  <select
-                    id="user-select"
-                    value={selectedEmail}
-                    onChange={function (e) { setSelectedEmail(e.target.value); }}
-                    className="w-full appearance-none px-4 py-2.5 pr-10 text-sm border border-zinc-300 rounded-lg bg-white text-zinc-900 focus:outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 transition-all cursor-pointer hover:border-zinc-400">
-                    <option value="">-- Seleccione un usuario --</option>
-                    {IDENTITIES.map(function (identity) {
-                      const sinAcceso = identity.rol === "SIN_PERMISO";
-                      return (
-                        <option key={identity.email} value={identity.email} disabled={sinAcceso}>
-                          {identity.nombre} • {identity.rol} • {identity.compania || "—"}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-zinc-400">
-                    <Icon name="chevronDown" className="w-4 h-4" />
-                  </span>
-                </div>
+              {/* Grid de usuarios */}
+              <div className="space-y-2">
+                {usuariosDisponibles.map(function (identity) {
+                  return (
+                    <button
+                      key={identity.email}
+                      type="button"
+                      onClick={function () { setSelectedEmail(identity.email); }}
+                      className="w-full text-left p-3.5 rounded-lg border-2 border-zinc-200 hover:border-zinc-400 hover:bg-zinc-50 transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="avatar w-11 h-11 text-sm font-semibold text-white flex items-center justify-center" style={{ background: identity.color }}>
+                          {initials(identity.nombre)}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-zinc-900">{identity.nombre}</p>
+                          <p className="text-xs text-zinc-500 mono truncate">{identity.email}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="badge badge-outline text-[11px]">{identity.rol}</span>
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Icon name="chevronRight" className="w-4 h-4 text-zinc-400" />
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-3 text-xs text-zinc-600 space-y-1">
-                <p>👤 {IDENTITIES.filter(function (i) { return i.rol !== "SIN_PERMISO"; }).length} usuario(s) disponible(s)</p>
-                <p>🔒 Autenticación corporativa (SSO)</p>
+              {/* Info */}
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-1">
+                <p className="font-medium flex items-center gap-1.5">
+                  <Icon name="info" className="w-3.5 h-3.5" />
+                  {usuariosDisponibles.length} usuario(s) disponible(s)
+                </p>
+                <p className="text-[11px]">🔒 Acceso seguro mediante autenticación corporativa (S2/SS)</p>
               </div>
             </div>
           ) : (
@@ -396,31 +405,31 @@ function LoginScreen({ onLogin }) {
               </div>
 
               {/* Tarjeta de usuario */}
-              <div className="rounded-lg border border-zinc-300 bg-gradient-to-br from-zinc-50 to-white p-4">
-                <div className="flex items-center gap-4 mb-4">
-                  <span className="avatar w-12 h-12 text-lg font-semibold" style={{ background: selectedIdentity.color }}>
+              <div className="rounded-lg border-2 border-zinc-300 bg-gradient-to-br from-zinc-50 to-white p-5">
+                <div className="flex items-center gap-4 mb-5">
+                  <span className="avatar w-14 h-14 text-lg font-semibold text-white flex items-center justify-center" style={{ background: selectedIdentity.color }}>
                     {initials(selectedIdentity.nombre)}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-zinc-900 font-semibold truncate">{selectedIdentity.nombre}</p>
-                    <p className="text-zinc-500 text-sm mono truncate">{selectedIdentity.email}</p>
+                    <p className="text-zinc-900 font-semibold text-sm">{selectedIdentity.nombre}</p>
+                    <p className="text-zinc-500 text-xs mono truncate">{selectedIdentity.email}</p>
                   </div>
                 </div>
                 
-                <div className="space-y-2 border-t border-zinc-200 pt-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-zinc-600">Compañía:</span>
-                    <span className="text-zinc-900 font-medium">{selectedIdentity.compania || "—"}</span>
+                <div className="space-y-2.5 border-t border-zinc-200 pt-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-zinc-600 font-medium">Compañía</span>
+                    <span className="text-sm text-zinc-900 font-semibold">{selectedIdentity.compania || "—"}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-zinc-600">Rol:</span>
-                    <span className={"font-medium " + (selectedIdentity.rol === "OPERADOR" ? "text-blue-600" : selectedIdentity.rol === "APROBADOR" ? "text-purple-600" : "text-red-600")}>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-zinc-600 font-medium">Rol</span>
+                    <span className={"text-sm font-semibold " + (selectedIdentity.rol === "OPERADOR" ? "text-blue-600" : selectedIdentity.rol === "APROBADOR" ? "text-purple-600" : "text-red-600")}>
                       {selectedIdentity.rol}
                     </span>
                   </div>
                   {sinAcceso && (
-                    <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-red-700 text-xs flex items-center gap-1.5">
+                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-red-700 text-xs flex items-center gap-1.5 font-medium">
                         <Icon name="alertTriangle" className="w-3.5 h-3.5 flex-none" />
                         Esta cuenta no tiene permisos para acceder al módulo
                       </p>
@@ -457,7 +466,7 @@ function LoginScreen({ onLogin }) {
         {/* Footer */}
         <div className="mt-6 text-center space-y-1">
           <p className="text-zinc-500 text-xs">
-            🔐 Acceso seguro mediante autenticación corporativa (Softland Security S2/SS)
+            🔐 Cada usuario pertenece a una única compañía, resuelta automáticamente por su dominio de correo
           </p>
         </div>
 
@@ -482,11 +491,11 @@ function LoginScreen({ onLogin }) {
    la regla "código de artículo no existe en el catálogo activo".
    ========================================================================= */
 const CATALOGO_ARTICULOS = {
-  "ART-231": { descripcion: "Refrigeradora 14 pies", precioActual: 10000, costoReposicion: 7200, categoria: "Electrodomésticos", subcategoria: "Refrigeración", grupo: "Línea Blanca", marca: "Mabe", marcaGrupoCompra: "Línea Blanca", bdf: "BDF-001" },
-  "ART-455": { descripcion: "Microondas 1.2 CF", precioActual: 4200, costoReposicion: 2900, categoria: "Electrodomésticos", subcategoria: "Cocción", grupo: "Línea Blanca", marca: "Oster", marcaGrupoCompra: "Línea Blanca", bdf: "BDF-002" },
-  "ART-089": { descripcion: "Ventilador de Torre", precioActual: 9800, costoReposicion: 10450, categoria: "Hogar", subcategoria: "Climatización", grupo: "Hogar", marca: "Black+Decker", marcaGrupoCompra: "Pequeños Electrodomésticos", bdf: "BDF-003" },
-  "ART-120": { descripcion: "Licuadora 600W", precioActual: 3100, costoReposicion: 3300, categoria: "Electrodomésticos", subcategoria: "Preparación de alimentos", grupo: "Hogar", marca: "Oster", marcaGrupoCompra: "Pequeños Electrodomésticos", bdf: "BDF-002" },
-  "ART-344": { descripcion: "Plancha a Vapor", precioActual: 2500, costoReposicion: 1600, categoria: "Hogar", subcategoria: "Cuidado del Hogar", grupo: "Hogar", marca: "Black+Decker", marcaGrupoCompra: "Pequeños Electrodomésticos", bdf: "BDF-003" },
+  "ART-231": { descripcion: "Refrigeradora 14 pies", precioActual: 10000, costoReposicion: 7200, margenUtilidadMin: 0.30, categoria: "Electrodomésticos", subcategoria: "Refrigeración", grupo: "Línea Blanca", marca: "Mabe", marcaGrupoCompra: "Línea Blanca", bdf: "BDF-001" },
+  "ART-455": { descripcion: "Microondas 1.2 CF", precioActual: 4200, costoReposicion: 2900, margenUtilidadMin: 0.25, categoria: "Electrodomésticos", subcategoria: "Cocción", grupo: "Línea Blanca", marca: "Oster", marcaGrupoCompra: "Línea Blanca", bdf: "BDF-002" },
+  "ART-089": { descripcion: "Ventilador de Torre", precioActual: 9800, costoReposicion: 10450, margenUtilidadMin: 0.20, categoria: "Hogar", subcategoria: "Climatización", grupo: "Hogar", marca: "Black+Decker", marcaGrupoCompra: "Pequeños Electrodomésticos", bdf: "BDF-003" },
+  "ART-120": { descripcion: "Licuadora 600W", precioActual: 3100, costoReposicion: 3300, margenUtilidadMin: 0.20, categoria: "Electrodomésticos", subcategoria: "Preparación de alimentos", grupo: "Hogar", marca: "Oster", marcaGrupoCompra: "Pequeños Electrodomésticos", bdf: "BDF-002" },
+  "ART-344": { descripcion: "Plancha a Vapor", precioActual: 2500, costoReposicion: 1600, margenUtilidadMin: 0.35, categoria: "Hogar", subcategoria: "Cuidado del Hogar", grupo: "Hogar", marca: "Black+Decker", marcaGrupoCompra: "Pequeños Electrodomésticos", bdf: "BDF-003" },
   "ART-104": { descripcion: "Cafetera 12 Tazas", precioActual: 6200, costoReposicion: 4400, categoria: "Electrodomésticos", subcategoria: "Preparación de alimentos", grupo: "Línea Blanca", marca: "Hamilton Beach", marcaGrupoCompra: "Línea Blanca", bdf: "BDF-001" },
 };
 
@@ -502,14 +511,121 @@ function fmtMonto(n) {
    para derivar el "Costo Mínimo del Artículo" (Precio Piso). La interfaz
    solo expone ese monto final ya traducido a moneda.
    Fórmula: Costo Mínimo = Costo de Reposición / (1 - Margen Mínimo).
+
+   MARGEN MÍNIMO DINÁMICO POR ARTÍCULO: coherente con el backend
+   (SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO / MARGEN_UTILIDAD_MIN), el margen
+   mínimo se toma del propio artículo (articulo.margenUtilidadMin) cuando está
+   definido y es > 0; en caso contrario se usa el parámetro global de fallback.
    ========================================================================= */
-const MARGEN_MINIMO_ARTICULO = 0.20; // 20% — parámetro interno, no se expone en UI.
+const MARGEN_MINIMO_GLOBAL = 0.20; // 20% — fallback cuando el artículo no define su mínimo.
+
+/* Devuelve el margen mínimo efectivo del artículo (por artículo con fallback). */
+function margenMinimoEfectivo(articulo) {
+  if (articulo && typeof articulo.margenUtilidadMin === "number" && articulo.margenUtilidadMin > 0) {
+    return articulo.margenUtilidadMin;
+  }
+  return MARGEN_MINIMO_GLOBAL;
+}
 
 function calcularCostoMinimoArticulo(articulo) {
   if (!articulo || typeof articulo.costoReposicion !== "number") return null;
-  const margen = MARGEN_MINIMO_ARTICULO;
+  const margen = margenMinimoEfectivo(articulo);
   if (margen <= 0 || margen >= 1) return articulo.costoReposicion;
   return articulo.costoReposicion / (1 - margen);
+}
+
+/* =========================================================================
+   MOTOR DE REDONDEO COMERCIAL (12 bandas contiguas: 0,01 – 100.000,00)
+   Réplica exacta del algoritmo del libro Simulador_redondeo_precios.xlsm
+   verificado contra los 27 casos de prueba oficiales (informe técnico
+   docs/Informe_Reglas_Redondeo_Precios.md).
+
+   Tipos de redondeo:
+   - "exceso"   → CEILING(P / paso) * paso        (bandas 1–4)
+   - "unico"    → precio fijo 4,99                (banda 5)
+   - "terminal" → terminal más cercano por período y offsets (bandas 6–12)
+
+   Regla de desempate: si distancia inferior = distancia superior, gana el
+   terminal SUPERIOR (< estricto en la comparación).
+   Rango: valores fuera de [0,01; 100.000,00] devuelven precioRedondeado null
+   y estado "Fuera de rango".
+   ========================================================================= */
+const BANDAS_REDONDEO = [
+  { numero:  1, desde:    0.01, hasta:      0.50, tipo: "exceso",   paso: 0.01, periodo: null, offsets: null,               precioFijo: null },
+  { numero:  2, desde:    0.51, hasta:      1.00, tipo: "exceso",   paso: 0.05, periodo: null, offsets: null,               precioFijo: null },
+  { numero:  3, desde:    1.01, hasta:      2.50, tipo: "exceso",   paso: 0.10, periodo: null, offsets: null,               precioFijo: null },
+  { numero:  4, desde:    2.51, hasta:      4.75, tipo: "exceso",   paso: 0.25, periodo: null, offsets: null,               precioFijo: null },
+  { numero:  5, desde:    4.76, hasta:      5.15, tipo: "unico",    paso: null, periodo: null, offsets: null,               precioFijo: 4.99 },
+  { numero:  6, desde:    5.16, hasta:     10.15, tipo: "terminal", paso: null, periodo: 1,    offsets: [0.29,0.49,0.69,0.99], precioFijo: null },
+  { numero:  7, desde:   10.16, hasta:     50.24, tipo: "terminal", paso: null, periodo: 1,    offsets: [0.49,0.99],        precioFijo: null },
+  { numero:  8, desde:   50.25, hasta:     99.99, tipo: "terminal", paso: null, periodo: 1,    offsets: [0.99],             precioFijo: null },
+  { numero:  9, desde:  100.00, hasta:    500.00, tipo: "terminal", paso: null, periodo: 10,   offsets: [3,5,7,9],          precioFijo: null },
+  { numero: 10, desde:  501.00, hasta:   1000.00, tipo: "terminal", paso: null, periodo: 10,   offsets: [0,5],              precioFijo: null },
+  { numero: 11, desde: 1001.00, hasta:   5000.00, tipo: "terminal", paso: null, periodo: 100,  offsets: [30,50,70,90],      precioFijo: null },
+  { numero: 12, desde: 5001.00, hasta: 100000.00, tipo: "terminal", paso: null, periodo: 100,  offsets: [50,90],            precioFijo: null },
+];
+const REDONDEO_MIN = 0.01;
+const REDONDEO_MAX = 100000.00;
+
+function clasificarBandaRedondeo(precio) {
+  if (typeof precio !== "number" || isNaN(precio)) return null;
+  if (precio < REDONDEO_MIN || precio > REDONDEO_MAX) return null;
+  let n = 1;
+  for (let i = 0; i < BANDAS_REDONDEO.length - 1; i += 1) {
+    if (precio > BANDAS_REDONDEO[i].hasta) n += 1;
+  }
+  return BANDAS_REDONDEO[n - 1];
+}
+
+function round2(x) { return Math.round(x * 100) / 100; }
+function round6(x) { return Math.round(x * 1000000) / 1000000; }
+
+function redondearPrecioComercial(precio) {
+  const banda = clasificarBandaRedondeo(precio);
+  if (!banda) {
+    return {
+      precioOriginal: precio != null ? precio : null,
+      precioRedondeado: null,
+      estado: "FUERA_DE_RANGO",
+      banda: null,
+      variacion: null,
+      sentido: null,
+    };
+  }
+  let resultado = null;
+  if (banda.tipo === "exceso") {
+    resultado = round2(Math.ceil(round6(precio / banda.paso)) * banda.paso);
+  } else if (banda.tipo === "unico") {
+    resultado = round2(banda.precioFijo);
+  } else { // terminal
+    const D = banda.periodo;
+    const J = Math.floor(precio / D) * D;
+    const inferiores = banda.offsets.map(function (o) { return (J + o) <= precio ? (J + o) : (J - D + o); });
+    const superiores = banda.offsets.map(function (o) { return (J + o) >= precio ? (J + o) : (J + D + o); });
+    const S = Math.max.apply(null, inferiores);
+    const T = Math.min.apply(null, superiores);
+    // Desempate: si distancias iguales, se elige el superior (< estricto).
+    resultado = round2(round6(precio - S) < round6(T - precio) ? S : T);
+  }
+  const variacion = round2(resultado - precio);
+  let sentido = "SIN_CAMBIO";
+  if (variacion > 0) sentido = "POR_EXCESO";
+  else if (variacion < 0) sentido = "POR_DEFECTO";
+  return {
+    precioOriginal: precio,
+    precioRedondeado: resultado,
+    estado: "CALCULADO",
+    banda: {
+      numero: banda.numero,
+      intervalo: banda.desde.toFixed(2) + " – " + banda.hasta.toFixed(2),
+      tipo: banda.tipo,
+      terminales: banda.offsets,
+      paso: banda.paso,
+      periodo: banda.periodo,
+    },
+    variacion: variacion,
+    sentido: sentido,
+  };
 }
 
 /* Convierte una variación porcentual YA CON SIGNO (positiva = Aumento,
@@ -601,6 +717,9 @@ function validarFila(row, modo) {
       valido: false,
       precioActual: null,
       precioPropuesto: null,
+      precioRedondeado: null,
+      estadoRedondeo: null,
+      bandaRedondeo: null,
       costoMinimo: null,
       causa: "El código de artículo no existe en el catálogo activo.",
     };
@@ -617,6 +736,9 @@ function validarFila(row, modo) {
       valido: false,
       precioActual: articulo.precioActual,
       precioPropuesto: null,
+      precioRedondeado: null,
+      estadoRedondeo: null,
+      bandaRedondeo: null,
       costoMinimo: costoMinimo,
       causa: "Formato de celda inválido / valor no numérico.",
     };
@@ -624,42 +746,70 @@ function validarFila(row, modo) {
 
   if (modo === "factor") {
     if (numero <= 0 || numero > 2) {
+      const precioBase = Math.round(articulo.precioActual * numero * 100) / 100;
       return {
         valido: false,
         precioActual: articulo.precioActual,
-        precioPropuesto: Math.round(articulo.precioActual * numero),
+        precioPropuesto: precioBase,
+        precioRedondeado: null,
+        estadoRedondeo: null,
+        bandaRedondeo: null,
         costoMinimo: costoMinimo,
         causa: "El factor aplicado (" + numero + ") está fuera del rango permitido (mayor que 0 y menor o igual a 2).",
       };
     }
   }
 
-  const precioPropuesto = modo === "factor" ? Math.round(articulo.precioActual * numero) : Math.round(numero);
+  // Precio calculado (base) — conserva 2 decimales para alimentar al motor
+  // de redondeo comercial, en línea con el algoritmo del libro Simulador.
+  const precioPropuesto = modo === "factor"
+    ? Math.round(articulo.precioActual * numero * 100) / 100
+    : Math.round(numero * 100) / 100;
 
   if (precioPropuesto <= 0) {
     return {
       valido: false,
       precioActual: articulo.precioActual,
       precioPropuesto: precioPropuesto,
+      precioRedondeado: null,
+      estadoRedondeo: null,
+      bandaRedondeo: null,
       costoMinimo: costoMinimo,
       causa: "El precio propuesto resultante debe ser mayor que cero.",
     };
   }
 
-  /* La validación de piso se realiza contra el Costo Mínimo del Artículo
-     (que ya incorpora el margen mínimo interno sobre el costo de reposición),
-     nunca contra el porcentaje de margen expuesto en pantalla. */
-  if (costoMinimo != null && precioPropuesto < costoMinimo) {
+  /* Motor de redondeo comercial: aplica las 12 bandas y devuelve el precio
+     final que el sistema mostrará al cliente. La validación de margen se
+     evalúa contra el precio REDONDEADO cuando existe (más estricto), y en
+     su ausencia contra el precio calculado (banda fuera de rango). */
+  const redondeo = redondearPrecioComercial(precioPropuesto);
+  const precioParaValidar = redondeo.precioRedondeado != null ? redondeo.precioRedondeado : precioPropuesto;
+  const bandaSerializada = redondeo.banda;
+
+  if (costoMinimo != null && precioParaValidar < costoMinimo) {
     return {
       valido: false,
       precioActual: articulo.precioActual,
       precioPropuesto: precioPropuesto,
+      precioRedondeado: redondeo.precioRedondeado,
+      estadoRedondeo: redondeo.estado === "CALCULADO" ? "ALERTA_MARGEN" : redondeo.estado,
+      bandaRedondeo: bandaSerializada,
       costoMinimo: costoMinimo,
-      causa: "El precio propuesto (" + fmtMonto(precioPropuesto) + ") es menor que el Costo Mínimo del Artículo (" + fmtMonto(costoMinimo) + ").",
+      causa: "El precio final (" + fmtMonto(precioParaValidar) + ") es menor que el Costo Mínimo del Artículo (" + fmtMonto(costoMinimo) + ").",
     };
   }
 
-  return { valido: true, precioActual: articulo.precioActual, precioPropuesto: precioPropuesto, costoMinimo: costoMinimo, causa: null };
+  return {
+    valido: true,
+    precioActual: articulo.precioActual,
+    precioPropuesto: precioPropuesto,
+    precioRedondeado: redondeo.precioRedondeado,
+    estadoRedondeo: redondeo.estado,
+    bandaRedondeo: bandaSerializada,
+    costoMinimo: costoMinimo,
+    causa: null,
+  };
 }
 
 function construirFilaCompleta(row, modo) {
@@ -684,6 +834,9 @@ function construirFilaDesdeVariacion(row, modo) {
         valido: false,
         precioActual: CATALOGO_ARTICULOS[row.codigo].precioActual,
         precioPropuesto: null,
+        precioRedondeado: null,
+        estadoRedondeo: null,
+        bandaRedondeo: null,
         costoMinimo: calcularCostoMinimoArticulo(CATALOGO_ARTICULOS[row.codigo]),
         causa: conversion.causa,
       },
@@ -728,8 +881,14 @@ function codigoListaDesdeArchivo(valor) {
   }) || null;
 }
 
-function construirFilaDescuentoMasivo(row) {
-  const fila = construirFilaDesdeVariacion(row, "factor");
+function construirFilaDescuentoMasivo(row, factorDirecto) {
+  // factorDirecto=true: la plantilla trae el factor multiplicador directo en
+  // valorPropuestoRaw (nueva plantilla sin Tipo de Variacion). En ese caso se
+  // usa construirFilaCompleta (modo "factor"). Cuando es false/omitido se
+  // mantiene el flujo histórico basado en magnitud + tipoVariacion.
+  const fila = factorDirecto
+    ? construirFilaCompleta(row, "factor")
+    : construirFilaDesdeVariacion(row, "factor");
   const listaCodigo = codigoListaDesdeArchivo(row.listaCodigo);
   if (!listaCodigo) {
     return Object.assign({}, fila, {
@@ -744,6 +903,96 @@ function construirFilaDescuentoMasivo(row) {
   return Object.assign({}, fila, { listaCodigo: listaCodigo, lista: NOMBRES_LISTA[listaCodigo] });
 }
 
+/* Factor de reducción general por defecto (Regla de Mayoreo): 10%. El
+   usuario carga el porcentaje 10 y la frontera de carga lo normaliza a 0.10,
+   coincidiendo con el fallback del SP SP_CALCULAR_MARGEN_MINIMO_ARTICULO. */
+const FACTOR_REDUCCION_DEFAULT = 0.10;
+const ENCABEZADO_MARGEN_PORCENTAJE = "Porcentaje Reduccion";
+
+function normalizarEncabezadoExcel(valor) {
+  return String(valor == null ? "" : valor)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+/* Construye una fila de la carga masiva de Margen de Utilidad. Cada fila trae
+   Codigo Articulo + Porcentaje Reduccion ingresado (10 = 10%). La interfaz
+   normaliza una única vez a la fracción interna (10 / 100 = 0.10):
+     Margen Promedio = (Precio - Costo) / Precio
+     Margen Mínimo   = Margen Promedio * (1 - Factor Reduccion normalizado)
+   El resultado es informativo para previsualización; el recálculo definitivo
+   lo realiza el backend (SP_CALCULAR_MARGEN_MINIMO_ARTICULO). */
+function construirFilaMargenMasivo(row) {
+  const articulo = CATALOGO_ARTICULOS[row.codigo];
+  const crudo = String(row.porcentajeReduccionRaw == null ? "" : row.porcentajeReduccionRaw).trim().replace(",", ".");
+  const porcentajeReduccion = parseFloat(crudo);
+  const formatoValido = crudo !== "" && !isNaN(porcentajeReduccion) && /^\d+(\.\d+)?$/.test(crudo);
+  const factorReduccion = formatoValido ? porcentajeReduccion / 100 : null;
+  const multiplicadorMargen = factorReduccion != null ? 1 - factorReduccion : null;
+
+  const base = {
+    fila: row.fila,
+    codigo: row.codigo,
+    descripcion: articulo ? articulo.descripcion : "—",
+    porcentajeReduccion: formatoValido ? porcentajeReduccion : null,
+    factorReduccion: factorReduccion,
+    multiplicadorMargen: multiplicadorMargen,
+  };
+
+  if (!articulo) {
+    return Object.assign({}, base, {
+      validacion: { valido: false, precioActual: null, precioPropuesto: null, precioRedondeado: null, estadoRedondeo: null, bandaRedondeo: null, costoMinimo: null, margenPromedio: null, margenSobrePrecioRedondeado: null, margenMinimo: null, porcentajeReduccion: base.porcentajeReduccion, factorReduccion: base.factorReduccion, multiplicadorMargen: base.multiplicadorMargen, codigoRechazo: "ARTICULO_NO_EXISTE", causa: "El código de artículo no existe en el catálogo activo." },
+    });
+  }
+  if (!formatoValido || porcentajeReduccion < 0 || porcentajeReduccion >= 100) {
+    return Object.assign({}, base, {
+      validacion: { valido: false, precioActual: articulo.precioActual, precioPropuesto: null, precioRedondeado: null, estadoRedondeo: null, bandaRedondeo: null, costoMinimo: null, margenPromedio: null, margenSobrePrecioRedondeado: null, margenMinimo: null, porcentajeReduccion: base.porcentajeReduccion, factorReduccion: base.factorReduccion, multiplicadorMargen: base.multiplicadorMargen, codigoRechazo: "PORCENTAJE_REDUCCION_FUERA_RANGO", causa: "El Porcentaje de Reducción debe ser numérico, mayor o igual a 0 y menor que 100 (ej. 10 = 10%)." },
+    });
+  }
+
+  const precioLista = articulo.precioActual;
+  const costo = typeof articulo.costoReposicion === "number" ? articulo.costoReposicion : null;
+  const margenPromedio = (precioLista > 0 && costo != null) ? (precioLista - costo) / precioLista : null;
+  const margenMinimo = margenPromedio != null ? Math.max(0, margenPromedio * multiplicadorMargen) : null;
+  const redondeo = redondearPrecioComercial(precioLista);
+  const precioRedondeado = redondeo.precioRedondeado;
+  const margenSobrePrecioRedondeado = (precioRedondeado != null && precioRedondeado > 0 && costo != null)
+    ? 1 - (costo / precioRedondeado)
+    : null;
+  const costoMinimo = (costo != null && margenMinimo != null && margenMinimo >= 0 && margenMinimo < 1)
+    ? costo / (1 - margenMinimo)
+    : null;
+  const fueraDeRango = redondeo.estado === "FUERA_DE_RANGO";
+  const margenNoCumple = !fueraDeRango && margenMinimo != null && margenSobrePrecioRedondeado != null && margenSobrePrecioRedondeado < margenMinimo;
+
+  return Object.assign({}, base, {
+    validacion: {
+      valido: margenMinimo != null && !fueraDeRango && !margenNoCumple,
+      precioActual: precioLista,
+      precioPropuesto: precioLista,
+      precioRedondeado: precioRedondeado,
+      estadoRedondeo: margenNoCumple ? "ALERTA_MARGEN" : redondeo.estado,
+      bandaRedondeo: redondeo.banda,
+      costoMinimo: costoMinimo,
+      margenPromedio: margenPromedio,
+      margenSobrePrecioRedondeado: margenSobrePrecioRedondeado,
+      margenMinimo: margenMinimo,
+      porcentajeReduccion: porcentajeReduccion,
+      factorReduccion: factorReduccion,
+      multiplicadorMargen: multiplicadorMargen,
+      codigoRechazo: fueraDeRango ? "PRECIO_FUERA_DE_RANGO" : (margenNoCumple ? "MARGEN_MINIMO_NO_CUMPLE" : (margenMinimo == null ? "DATOS_MARGEN_INVALIDOS" : null)),
+      causa: fueraDeRango
+        ? "El precio de lista está fuera del rango comercial de redondeo [0,01 – 100.000,00]."
+        : margenNoCumple
+          ? "MARGEN_MINIMO_NO_CUMPLE: el margen calculado sobre el precio redondeado es menor que el Margen Mínimo resultante."
+          : margenMinimo != null ? null : "No fue posible calcular el margen (precio o costo inválido).",
+    },
+  });
+}
+
 function parsearArchivoExcel(file, modo, procesoKey) {
   return new Promise(function (resolve, reject) {
     const reader = new FileReader();
@@ -755,23 +1004,50 @@ function parsearArchivoExcel(file, modo, procesoKey) {
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
         const dataRows = rows.slice(1).filter(function (r) { return r && r.length > 0; });
+        // Carga masiva de Margen de Utilidad: Codigo Articulo | Porcentaje Reduccion.
+        if (procesoKey === "MARGEN_UTILIDAD_MASIVO") {
+          const encabezado = rows[0] || [];
+          const encabezadoValido = normalizarEncabezadoExcel(encabezado[0]) === "codigo articulo"
+            && normalizarEncabezadoExcel(encabezado[1]) === "porcentaje reduccion";
+          if (!encabezadoValido) {
+            throw new Error("Plantilla de margen inválida: use las columnas 'Codigo Articulo' y '" + ENCABEZADO_MARGEN_PORCENTAJE + "'. Las plantillas anteriores con 'Factor Reduccion' no son compatibles.");
+          }
+          const parsedMargen = dataRows.map(function (r, idx) {
+            return construirFilaMargenMasivo({
+              fila: idx + 2,
+              codigo: r[0] !== undefined ? String(r[0]).trim() : "",
+              porcentajeReduccionRaw: r[1] !== undefined ? String(r[1]).trim() : "",
+            });
+          });
+          resolve(parsedMargen);
+          return;
+        }
         const esDescuentoMasivo = procesoKey === "DESCUENTO_LISTA_PRECIO";
+        // Plantilla SIN "Tipo de Variacion": la última columna es el Factor
+        // Multiplicador directo (0.95 / 1.10). Se pasa como valorPropuestoRaw
+        // en modo "factor"; el signo ya está incorporado en el propio factor,
+        // por lo que tipoVariacion se fija a "AUMENTO" (neutro para el signo).
         const parsed = dataRows.map(function (r, idx) {
           const filaArchivo = esDescuentoMasivo ? {
             fila: idx + 1,
             listaCodigo: r[0] !== undefined ? String(r[0]).trim() : null,
             codigo: r[1] !== undefined ? String(r[1]).trim() : "",
-            tipoVariacion: normalizarTipoVariacion(r[2]),
-            variacionPorcentaje: r[3] !== undefined ? r[3] : "",
-            valorPropuestoRaw: r[3] !== undefined ? r[3] : "",
+            tipoVariacion: "AUMENTO",
+            variacionPorcentaje: "",
+            valorPropuestoRaw: r[2] !== undefined ? String(r[2]).trim() : "",
           } : {
             fila: idx + 1,
             codigo: r[0] !== undefined ? String(r[0]).trim() : "",
-            tipoVariacion: normalizarTipoVariacion(r[1]),
-            variacionPorcentaje: r[2] !== undefined ? r[2] : "",
-            valorPropuestoRaw: r[2] !== undefined ? r[2] : "",
+            tipoVariacion: "AUMENTO",
+            variacionPorcentaje: "",
+            valorPropuestoRaw: r[1] !== undefined ? String(r[1]).trim() : "",
           };
-          return esDescuentoMasivo ? construirFilaDescuentoMasivo(filaArchivo) : construirFilaDesdeVariacion(filaArchivo, modo);
+          // En ambas pestañas el Excel trae el factor multiplicador directo,
+          // por lo que se procesa con construirFilaCompleta (modo "factor"),
+          // que valida factor en (0, 2] y aplica redondeo + margen mínimo.
+          return esDescuentoMasivo
+            ? construirFilaDescuentoMasivo(Object.assign({}, filaArchivo), true)
+            : construirFilaCompleta(filaArchivo, modo);
         });
         resolve(parsed);
       } catch (err) {
@@ -782,21 +1058,34 @@ function parsearArchivoExcel(file, modo, procesoKey) {
   });
 }
 
-/* Plantilla oficial descargable para la carga masiva de descuento por lista y
-   artículo. Ya no incluye una columna de Índice de Fila; en su lugar exige
-   la columna obligatoria "Tipo de Variacion" (Aumento/Disminucion), que
-   define el signo aplicado sobre el Factor % (siempre una magnitud >= 0)
-   antes de evaluar la fórmula Precio Destino = Precio Base × Factor. */
+/* Plantilla oficial descargable. Los procesos de precio conservan el FACTOR
+   MULTIPLICADOR directo (0.95 = -5%, 1.10 = +10%). La carga de margen es
+   distinta: recibe el PORCENTAJE DE REDUCCIÓN (10 = 10%) y lo normaliza a
+   factor interno únicamente en la frontera de carga.
+     - Margen de utilidad:                         Codigo Articulo | Porcentaje Reduccion
+     - Carga Masiva (por atributos/lista):         Codigo Articulo | Factor Multiplicador
+     - Por Artículo (descuento por lista):          Lista de Precio | Codigo Articulo | Factor Multiplicador */
 function descargarPlantillaExcel(procesoKey) {
+  // Carga masiva de Margen de Utilidad: Codigo Articulo | Porcentaje Reduccion.
+  if (procesoKey === "MARGEN_UTILIDAD_MASIVO") {
+    const encabezadoMargen = ["Codigo Articulo", ENCABEZADO_MARGEN_PORCENTAJE];
+    const filasMargen = [["ART-231", 10], ["ART-455", 15]];
+    const hojaM = XLSX.utils.aoa_to_sheet([encabezadoMargen].concat(filasMargen));
+    hojaM["!cols"] = [{ wch: 18 }, { wch: 24 }];
+    const libroM = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libroM, hojaM, "Plantilla");
+    XLSX.writeFile(libroM, "plantilla-" + procesoKey.toLowerCase() + ".xlsx");
+    return;
+  }
   const esDescuentoMasivo = procesoKey === "DESCUENTO_LISTA_PRECIO";
   const encabezado = esDescuentoMasivo
-    ? ["Lista de Precio", "Codigo Articulo", "Tipo de Variacion", "Factor %"]
-    : ["Codigo Articulo", "Tipo de Variacion", "Factor %"];
+    ? ["Lista de Precio", "Codigo Articulo", "Factor Multiplicador"]
+    : ["Codigo Articulo", "Factor Multiplicador"];
   const filasEjemplo = esDescuentoMasivo
-    ? [["MAYOREOB", "ART-231", "Aumento", "10"], ["LPV1", "ART-455", "Disminucion", "5"]]
-    : [["ART-231", "Aumento", "10"], ["ART-455", "Disminucion", "10"]];
+    ? [["MAYOREOB", "ART-231", "1.10"], ["LPV1", "ART-455", "0.95"]]
+    : [["ART-231", "1.10"], ["ART-455", "0.95"]];
   const hoja = XLSX.utils.aoa_to_sheet([encabezado].concat(filasEjemplo));
-  hoja["!cols"] = esDescuentoMasivo ? [{ wch: 20 }, { wch: 18 }, { wch: 16 }, { wch: 12 }] : [{ wch: 18 }, { wch: 16 }, { wch: 12 }];
+  hoja["!cols"] = esDescuentoMasivo ? [{ wch: 20 }, { wch: 18 }, { wch: 20 }] : [{ wch: 18 }, { wch: 20 }];
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, "Plantilla");
   XLSX.writeFile(libro, "plantilla-" + procesoKey.toLowerCase() + ".xlsx");
@@ -833,6 +1122,12 @@ const PROCESOS = {
     desc: "Configuración manual o masiva de descuentos por lista y artículo autorizado.",
     ejecucion: "Actualización automatizada autorizada",
     modo: "factor",
+  },
+  MARGEN_UTILIDAD_MASIVO: {
+    label: "Carga Masiva de Margen de Utilidad",
+    desc: "Carga masiva del porcentaje de reducción por artículo para recalcular el Margen Mínimo de Utilidad (Regla de Mayoreo).",
+    ejecucion: "Recalculo de margen mínimo autorizado",
+    modo: "margen",
   },
 };
 
@@ -954,17 +1249,47 @@ function nombreArchivoS3(prefijo, ext) {
 /* =========================================================================
    GENERACIÓN DE CSV / EXCEL DE DESCARGA (reporte completo y filas fallidas)
    ========================================================================= */
+function esFilaMargenUtilidad(fila) {
+  return !!(fila && fila.validacion && Object.prototype.hasOwnProperty.call(fila.validacion, "factorReduccion"));
+}
+
 function filasADataCsv(filas) {
-  const header = ["Codigo_Articulo", "Descripcion", "Tipo_Variacion", "Factor_Porcentaje", "Factor_Aplicado", "Precio_Actual", "Precio_Propuesto", "Resultado", "Causa"];
+  const esCargaMargen = filas.length > 0 && filas.every(esFilaMargenUtilidad);
+  const header = esCargaMargen
+    ? ["Codigo_Articulo", "Descripcion", "Porcentaje_Reduccion_Ingresado", "Factor_Reduccion_Normalizado", "Multiplicador_Margen", "Precio_Lista", "Precio_Redondeado", "Banda_Redondeo", "Estado_Redondeo", "Margen_Promedio", "Margen_Sobre_Precio_Redondeado", "Margen_Minimo_Resultante", "Costo_Minimo_Articulo", "Resultado", "Codigo_Rechazo", "Causa"]
+    : ["Codigo_Articulo", "Descripcion", "Tipo_Variacion", "Factor_Porcentaje", "Factor_Aplicado", "Precio_Actual", "Precio_Calculado_Base", "Precio_Redondeado", "Banda_Redondeo", "Estado_Redondeo", "Costo_Minimo_Articulo", "Resultado", "Causa"];
   const lines = filas.map(function (f) {
     const v = f.validacion;
-    return [
-      f.codigo, f.descripcion, f.tipoVariacion ? TIPOS_VARIACION[f.tipoVariacion] : "", f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
-      v.precioActual != null ? v.precioActual : "",
-      v.precioPropuesto != null ? v.precioPropuesto : "",
-      v.valido ? "OK" : "ERROR",
-      v.causa ? v.causa.replace(/"/g, "'") : "",
-    ].map(function (val) { return '"' + String(val).replace(/"/g, "'") + '"'; }).join(",");
+    const valores = esCargaMargen
+      ? [
+          f.codigo, f.descripcion,
+          v.porcentajeReduccion != null ? v.porcentajeReduccion : "",
+          v.factorReduccion != null ? v.factorReduccion : "",
+          v.multiplicadorMargen != null ? v.multiplicadorMargen : "",
+          v.precioActual != null ? v.precioActual : "",
+          v.precioRedondeado != null ? v.precioRedondeado : "",
+          v.bandaRedondeo ? "Banda " + v.bandaRedondeo.numero + " (" + v.bandaRedondeo.intervalo + ")" : "",
+          v.estadoRedondeo || "",
+          v.margenPromedio != null ? v.margenPromedio : "",
+          v.margenSobrePrecioRedondeado != null ? v.margenSobrePrecioRedondeado : "",
+          v.margenMinimo != null ? v.margenMinimo : "",
+          v.costoMinimo != null ? v.costoMinimo : "",
+          v.valido ? "OK" : "ERROR",
+          v.codigoRechazo || "",
+          v.causa || "",
+        ]
+      : [
+          f.codigo, f.descripcion, f.tipoVariacion ? TIPOS_VARIACION[f.tipoVariacion] : "", f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
+          v.precioActual != null ? v.precioActual : "",
+          v.precioPropuesto != null ? v.precioPropuesto : "",
+          v.precioRedondeado != null ? v.precioRedondeado : "",
+          v.bandaRedondeo ? "Banda " + v.bandaRedondeo.numero + " (" + v.bandaRedondeo.intervalo + ")" : "",
+          v.estadoRedondeo || "",
+          v.costoMinimo != null ? v.costoMinimo : "",
+          v.valido ? "OK" : "ERROR",
+          v.causa || "",
+        ];
+    return valores.map(function (val) { return '"' + String(val).replace(/"/g, "'") + '"'; }).join(",");
   });
   return [header.join(",")].concat(lines).join("\n");
 }
@@ -984,20 +1309,45 @@ function descargarTexto(nombre, contenido, mime) {
 /* Exportación real a .xlsx (no CSV) para las filas con error, usando la
    misma librería SheetJS ya cargada para la lectura de plantillas. */
 function descargarExcelFilas(nombre, filas) {
-  const encabezado = ["Codigo_Articulo", "Descripcion", "Tipo_Variacion", "Factor_Porcentaje", "Factor_Aplicado", "Precio_Anterior", "Precio_Nuevo_Procesado", "Estado", "Causa_Error"];
+  const esCargaMargen = filas.length > 0 && filas.every(esFilaMargenUtilidad);
+  const encabezado = esCargaMargen
+    ? ["Codigo_Articulo", "Descripcion", "Porcentaje_Reduccion_Ingresado", "Factor_Reduccion_Normalizado", "Multiplicador_Margen", "Precio_Lista", "Precio_Redondeado", "Banda_Redondeo", "Estado_Redondeo", "Margen_Promedio", "Margen_Sobre_Precio_Redondeado", "Margen_Minimo_Resultante", "Costo_Minimo_Articulo", "Estado", "Codigo_Rechazo", "Causa_Error"]
+    : ["Codigo_Articulo", "Descripcion", "Tipo_Variacion", "Factor_Porcentaje", "Factor_Aplicado", "Precio_Anterior", "Precio_Calculado_Base", "Precio_Redondeado", "Banda_Redondeo", "Estado_Redondeo", "Costo_Minimo_Articulo", "Estado", "Causa_Error"];
   const datos = filas.map(function (f) {
     const v = f.validacion;
-    return [
-      f.codigo, f.descripcion, f.tipoVariacion ? TIPOS_VARIACION[f.tipoVariacion] : "", f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
-      v.precioActual != null ? v.precioActual : "",
-      v.precioPropuesto != null ? v.precioPropuesto : "",
-      v.valido ? "Exitoso" : "Error",
-      v.causa || "",
-    ];
+    return esCargaMargen
+      ? [
+          f.codigo, f.descripcion,
+          v.porcentajeReduccion != null ? v.porcentajeReduccion : "",
+          v.factorReduccion != null ? v.factorReduccion : "",
+          v.multiplicadorMargen != null ? v.multiplicadorMargen : "",
+          v.precioActual != null ? v.precioActual : "",
+          v.precioRedondeado != null ? v.precioRedondeado : "",
+          v.bandaRedondeo ? "Banda " + v.bandaRedondeo.numero + " (" + v.bandaRedondeo.intervalo + ")" : "",
+          v.estadoRedondeo || "",
+          v.margenPromedio != null ? v.margenPromedio : "",
+          v.margenSobrePrecioRedondeado != null ? v.margenSobrePrecioRedondeado : "",
+          v.margenMinimo != null ? v.margenMinimo : "",
+          v.costoMinimo != null ? v.costoMinimo : "",
+          v.valido ? "Exitoso" : "Error",
+          v.codigoRechazo || "",
+          v.causa || "",
+        ]
+      : [
+          f.codigo, f.descripcion, f.tipoVariacion ? TIPOS_VARIACION[f.tipoVariacion] : "", f.variacionPorcentaje != null ? f.variacionPorcentaje : "", f.valorPropuestoRaw,
+          v.precioActual != null ? v.precioActual : "",
+          v.precioPropuesto != null ? v.precioPropuesto : "",
+          v.precioRedondeado != null ? v.precioRedondeado : "",
+          v.bandaRedondeo ? "Banda " + v.bandaRedondeo.numero + " (" + v.bandaRedondeo.intervalo + ")" : "",
+          v.estadoRedondeo || "",
+          v.costoMinimo != null ? v.costoMinimo : "",
+          v.valido ? "Exitoso" : "Error",
+          v.causa || "",
+        ];
   });
   const hoja = XLSX.utils.aoa_to_sheet([encabezado].concat(datos));
   const libro = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(libro, hoja, "Filas con error");
+  XLSX.utils.book_append_sheet(libro, hoja, esCargaMargen ? "Resultado de margen" : "Filas con error");
   XLSX.writeFile(libro, nombre);
 }
 
@@ -1112,14 +1462,116 @@ function Vista403({ user }) {
 }
 
 /* =========================================================================
+   BADGE DE ESTADO DE REDONDEO — traduce el enum {CALCULADO, FUERA_DE_RANGO,
+   ALERTA_MARGEN} en un badge con color y texto legible, para reflejar
+   visualmente el resultado del motor de redondeo comercial en la tabla de
+   previsualización y en las exportaciones.
+   ========================================================================= */
+function EstadoRedondeoBadge({ estado, banda, precioRedondeado }) {
+  if (estado === "FUERA_DE_RANGO") {
+    return <span className="badge badge-costo" title="Precio fuera del rango [0,01 – 100.000,00]"><Icon name="alertTriangle" className="w-3 h-3" /> Fuera de rango</span>;
+  }
+  if (estado === "ALERTA_MARGEN") {
+    return <span className="badge badge-costo" title="El precio redondeado quedó por debajo del Costo Mínimo del Artículo"><Icon name="alertTriangle" className="w-3 h-3" /> Alerta de Margen</span>;
+  }
+  if (estado === "CALCULADO") {
+    const tituloBanda = banda ? "Banda " + banda.numero + " · " + banda.intervalo : "";
+    return <span className="badge badge-ok" title={tituloBanda}><Icon name="check" className="w-3 h-3" /> Calculado</span>;
+  }
+  return <span className="badge badge-outline">—</span>;
+}
+
+/* =========================================================================
    TABLA DE PREVISUALIZACIÓN — compartida entre Operador y Aprobador
    Columnas: Código Artículo | Lista | Descripción | Precio Actual |
-   Tipo de Variación | Factor % | Factor aplicado | Precio Propuesto |
-   Costo Mínimo del Artículo | Validación.
-   Ya no incluye "Fila Excel" (Índice de Fila) ni el porcentaje/monto de
-   margen: el margen mínimo es un parámetro interno que solo se traduce al
-   monto final "Costo Mínimo del Artículo" en moneda.
+   Tipo de Variación | Factor % | Factor aplicado | Precio Calculado (Base)
+   | Precio Redondeado | Costo Mínimo del Artículo | Estado Redondeo |
+   Validación.
+   El "Margen Mínimo" no se muestra como porcentaje: se refleja como el
+   monto "Costo Mínimo del Artículo" (piso comercial ya calculado). El
+   Precio Redondeado aplica las 12 bandas del motor de redondeo comercial.
    ========================================================================= */
+
+/* =========================================================================
+   TABLA DE PREVISUALIZACIÓN — CARGA MASIVA DE MARGEN DE UTILIDAD
+   Muestra el porcentaje ingresado, el factor normalizado y el multiplicador
+   aplicado al margen, además del redondeo comercial y el resultado final.
+   Fórmula: Margen Mínimo = Margen Promedio × (1 − Factor normalizado).
+   ========================================================================= */
+function fmtPct(x) {
+  if (typeof x !== "number" || isNaN(x)) return "—";
+  return (x * 100).toFixed(2) + "%";
+}
+
+function fmtFactor(x) {
+  if (typeof x !== "number" || isNaN(x)) return "—";
+  return x.toFixed(4);
+}
+
+function TablaMargenMinimo({ filas }) {
+  const conError = filas.filter(function (f) { return !f.validacion.valido; }).length;
+  const hallazgos = filas.filter(function (f) { return !f.validacion.valido; });
+  return (
+    <div>
+      <p className="text-xs text-zinc-500 mb-2">
+        {filas.length} artículo(s) evaluado(s){conError > 0 ? " · " + conError + " con hallazgo" : " · cálculo y redondeo comercial verificados"}
+      </p>
+      <div className="card overflow-hidden overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs text-zinc-500">
+            <tr>
+              <th className="text-left font-medium px-3 py-2">Código Artículo</th>
+              <th className="text-left font-medium px-3 py-2">Descripción</th>
+              <th className="text-right font-medium px-3 py-2">% Reducción ingresado</th>
+              <th className="text-right font-medium px-3 py-2">Factor normalizado</th>
+              <th className="text-right font-medium px-3 py-2">Multiplicador margen</th>
+              <th className="text-right font-medium px-3 py-2">Precio Lista</th>
+              <th className="text-right font-medium px-3 py-2">Precio Redondeado</th>
+              <th className="text-left font-medium px-3 py-2">Banda / Estado</th>
+              <th className="text-right font-medium px-3 py-2">Margen Promedio</th>
+              <th className="text-right font-medium px-3 py-2">Margen Mínimo Resultante</th>
+              <th className="text-left font-medium px-3 py-2">Validación</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {filas.map(function (f) {
+              const v = f.validacion;
+              const tituloRedondeo = v.bandaRedondeo ? "Banda " + v.bandaRedondeo.numero + " · " + v.bandaRedondeo.intervalo : "";
+              return (
+                <tr key={f.fila + "-" + f.codigo} className={!v.valido ? "row-alert" : ""}>
+                  <td className="px-3 py-2 mono">{f.codigo}</td>
+                  <td className="px-3 py-2">{f.descripcion || "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{v.porcentajeReduccion != null ? v.porcentajeReduccion.toFixed(2) + "%" : "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtFactor(v.factorReduccion)}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtFactor(v.multiplicadorMargen)}</td>
+                  <td className="px-3 py-2 text-right mono">{v.precioActual != null ? fmtMonto(v.precioActual) : "—"}</td>
+                  <td className="px-3 py-2 text-right mono" title={tituloRedondeo}>{v.precioRedondeado != null ? <b>{fmtMonto(v.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-3 py-2"><EstadoRedondeoBadge estado={v.estadoRedondeo} banda={v.bandaRedondeo} precioRedondeado={v.precioRedondeado} /></td>
+                  <td className="px-3 py-2 text-right mono">{v.margenPromedio != null ? fmtPct(v.margenPromedio) : "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{v.margenMinimo != null ? <b>{fmtPct(v.margenMinimo)}</b> : <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-3 py-2">
+                    {v.valido
+                      ? <span className="badge badge-ok"><Icon name="check" className="w-3 h-3" /> Válida</span>
+                      : <span className="badge badge-costo" title={v.causa}><Icon name="alertTriangle" className="w-3 h-3" /> Con hallazgo</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {hallazgos.length > 0 && (
+        <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+          <p className="text-xs font-semibold text-red-800 mb-1.5">Detalle de hallazgos encontrados en la previsualización:</p>
+          <ul className="text-xs text-red-700 space-y-1">
+            {hallazgos.map(function (f) { return <li key={f.fila}>[{f.codigo}]{f.validacion.codigoRechazo ? " [" + f.validacion.codigoRechazo + "]" : ""}: {f.validacion.causa}</li>; })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TablaPrevisualizacion({ filas, compacta }) {
   const UMBRAL_PAGINACION = 5000;
   const FILAS_POR_PAGINA = 100;
@@ -1159,14 +1611,19 @@ function TablaPrevisualizacion({ filas, compacta }) {
               <th className="text-left font-medium px-3 py-2">Tipo de Variación</th>
               <th className="text-right font-medium px-3 py-2">Factor %</th>
               <th className="text-right font-medium px-3 py-2">Factor aplicado</th>
-              <th className="text-right font-medium px-3 py-2">Precio Propuesto</th>
+              <th className="text-right font-medium px-3 py-2" title="Precio antes de aplicar el redondeo comercial">Precio Calculado (Base)</th>
+              <th className="text-right font-medium px-3 py-2" title="Precio final tras aplicar la banda de redondeo comercial correspondiente">Precio Redondeado</th>
               <th className="text-right font-medium px-3 py-2">Costo Mínimo del Artículo</th>
+              <th className="text-left font-medium px-3 py-2">Estado Redondeo</th>
               <th className="text-left font-medium px-3 py-2">Validación</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
             {filasVisibles.map(function (f) {
               const v = f.validacion;
+              const tituloRedondeado = v.bandaRedondeo
+                ? "Banda " + v.bandaRedondeo.numero + " · " + v.bandaRedondeo.intervalo + (v.bandaRedondeo.tipo === "exceso" ? " · Por exceso" : v.bandaRedondeo.tipo === "unico" ? " · Precio único" : " · Terminal más cercano")
+                : "";
               return (
                 <tr key={f.fila + "-" + f.codigo} className={!v.valido ? "row-alert" : ""}>
                   <td className="px-3 py-2 mono">{f.codigo}</td>
@@ -1181,7 +1638,13 @@ function TablaPrevisualizacion({ filas, compacta }) {
                   <td className="px-3 py-2 text-right mono">{f.variacionPorcentaje != null && f.variacionPorcentaje !== "" ? f.variacionPorcentaje : "—"}</td>
                   <td className="px-3 py-2 text-right mono">{f.valorPropuestoRaw || "—"}</td>
                   <td className="px-3 py-2 text-right mono">{v.precioPropuesto != null ? fmtMonto(v.precioPropuesto) : "—"}</td>
+                  <td className="px-3 py-2 text-right mono" title={tituloRedondeado}>
+                    {v.precioRedondeado != null ? <b>{fmtMonto(v.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}
+                  </td>
                   <td className="px-3 py-2 text-right mono">{v.costoMinimo != null ? fmtMonto(v.costoMinimo) : "—"}</td>
+                  <td className="px-3 py-2">
+                    <EstadoRedondeoBadge estado={v.estadoRedondeo} banda={v.bandaRedondeo} precioRedondeado={v.precioRedondeado} />
+                  </td>
                   <td className="px-3 py-2">
                     {v.valido
                       ? <span className="badge badge-ok"><Icon name="check" className="w-3 h-3" /> Válida</span>
@@ -1429,6 +1892,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
   const esDescuentoArticulo = tab === "DESCUENTO_LISTA_PRECIO";
   const esListaBase = tab === "MAYOREOD_MASIVO";
   const esGestionGlobal = tab === "FACTOR_PRECIO";
+  const esMargenMasivo = tab === "MARGEN_UTILIDAD_MASIVO";
   const articuloSeleccionado = esDescuentoArticulo ? CATALOGO_ARTICULOS[codigoArticulo] : null;
   const grupoSeleccionado = esListaBase ? GRUPOS_ARTICULOS[grupoArticulo] : null;
   // En Descuento por Artículo, la clave funcional es Artículo + Lista de
@@ -1444,7 +1908,10 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
   });
 
   function agregarItem() {
-    const conversionItem = calcularVariacion(tipoVariacion, factor);
+    // En captura manual de Descuento por Artículo, el tipo de variación es
+    // siempre AUMENTO. La opción Aumento/Disminución solo está disponible en
+    // la carga masiva por plantilla Excel (una columna del archivo).
+    const conversionItem = calcularVariacion("AUMENTO", factor);
     const claveArticuloLista = codigoArticulo + "|" + nivel;
     if (!codigoArticulo || !nivel || factorInvalido || factor === "") return;
     if (articulosListaYaAgregados.indexOf(claveArticuloLista) !== -1) {
@@ -1458,7 +1925,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
         codigo: codigoArticulo,
         listaCodigo: nivel,
         lista: NOMBRES_LISTA[nivel] || nivel,
-        tipoVariacion: tipoVariacion,
+        tipoVariacion: "AUMENTO",
         variacionPorcentaje: conversionItem.porcentaje,
         valorPropuestoRaw: textoFactorCalculado(conversionItem.factor),
       }]);
@@ -1481,6 +1948,10 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
   }
 
   function camposCompletos() {
+    // Carga masiva de Margen de Utilidad: requiere archivo cargado y sin errores.
+    if (esMargenMasivo) {
+      return !!filasExcel && filasExcel.length > 0 && conteoErroresExcel === 0 && !!compania;
+    }
     if (modalidad === "excel" && permiteExcel) {
       return !!filasExcel && filasExcel.length > 0 && conteoErroresExcel === 0 && !filasExcelFueraDeAmbito && !!compania;
     }
@@ -1493,7 +1964,9 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
 
   function handleSimular() {
     if (!camposCompletos()) return;
-    if (modalidad === "manual") {
+    // El margen masivo ya tiene sus filas cargadas desde el Excel (uploader);
+    // simular solo confirma la previsualización, no reconstruye filas.
+    if (modalidad === "manual" && !esMargenMasivo) {
       if (esListaBase) {
         setFilasExcel(construirFilasMayoreodMasivo(grupoArticulo, textoFactorCalculado(factorMultiplicador), "AUMENTO", conversionFactor.magnitud));
       } else if (esDescuentoArticulo) {
@@ -1699,20 +2172,17 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
               <p className="text-[11px] text-zinc-400 mt-2">{articuloOpts.length} artículo(s) coinciden con los filtros aplicados.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-start">
-              <div className="md:col-span-2">
+              <div className="md:col-span-3">
                 <label className="block text-xs font-medium text-zinc-500 mb-1.5">Código de Artículo</label>
                 <Combobox id="codigo-articulo" value={codigoArticulo} onChange={function (o) { setCodigoArticulo(o.value); setErrorItem(null); }} options={articuloOpts} placeholder="Buscar artículo..." disabled={readOnly} />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-zinc-500 mb-1.5">Tipo de Variación</label>
-                <TipoVariacionSelect value={tipoVariacion} onChange={setTipoVariacion} disabled={readOnly} />
-              </div>
-              <div>
                 <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
                 <input type="number" step="0.01" min="0" value={factor} disabled={readOnly}
                   onChange={function (e) { setFactor(e.target.value); }}
                   placeholder="Ej. 10"
                   className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 disabled:bg-zinc-50 disabled:text-zinc-400" />
+                <p className="text-[11px] text-zinc-400 mt-1">Se aplica como Aumento. La opción Aumento/Disminución está disponible solo en la carga masiva por plantilla Excel.</p>
               </div>
               <div className="pt-5">
                 <button type="button" className="btn btn-outline w-full" disabled={readOnly || !nivel || !codigoArticulo || factorInvalido || factor === ""}
@@ -1722,14 +2192,43 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
               </div>
             </div>
 
-            {articuloSeleccionado && (
-              <div className="grid grid-cols-4 gap-3 mt-3">
-                <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Descripción</p><p className="text-xs font-medium">{articuloSeleccionado.descripcion}</p></div>
-                <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Precio Actual</p><p className="text-xs font-medium mono">{fmtMonto(articuloSeleccionado.precioActual)}</p></div>
-                <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Precio Propuesto</p><p className="text-xs font-medium mono">{!factorInvalido && factor !== "" ? fmtMonto(Math.round(articuloSeleccionado.precioActual * factorMultiplicador)) : "—"}</p></div>
-                <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Costo Mínimo del Artículo</p><p className="text-xs font-medium mono">{fmtMonto(calcularCostoMinimoArticulo(articuloSeleccionado))}</p></div>
-              </div>
-            )}
+            {articuloSeleccionado && (function () {
+              const precioCalculadoBase = !factorInvalido && factor !== ""
+                ? Math.round(articuloSeleccionado.precioActual * factorMultiplicador * 100) / 100
+                : null;
+              const previewRedondeo = precioCalculadoBase != null ? redondearPrecioComercial(precioCalculadoBase) : null;
+              const costoMinimoArticulo = calcularCostoMinimoArticulo(articuloSeleccionado);
+              const precioFinalRedondeado = previewRedondeo && previewRedondeo.precioRedondeado != null ? previewRedondeo.precioRedondeado : null;
+              let estadoPreview = null;
+              if (previewRedondeo) {
+                if (previewRedondeo.estado === "FUERA_DE_RANGO") estadoPreview = "FUERA_DE_RANGO";
+                else if (costoMinimoArticulo != null && precioFinalRedondeado != null && precioFinalRedondeado < costoMinimoArticulo) estadoPreview = "ALERTA_MARGEN";
+                else estadoPreview = "CALCULADO";
+              }
+              return (
+                <div className="space-y-3 mt-3">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Descripción</p><p className="text-xs font-medium">{articuloSeleccionado.descripcion}</p></div>
+                    <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Precio Actual</p><p className="text-xs font-medium mono">{fmtMonto(articuloSeleccionado.precioActual)}</p></div>
+                    <div className="card p-2.5" title="Precio antes de aplicar el redondeo comercial"><p className="text-[10px] text-zinc-400">Precio Calculado (Base)</p><p className="text-xs font-medium mono">{precioCalculadoBase != null ? fmtMonto(precioCalculadoBase) : "—"}</p></div>
+                    <div className="card p-2.5" title={previewRedondeo && previewRedondeo.banda ? "Banda " + previewRedondeo.banda.numero + " · " + previewRedondeo.banda.intervalo : "Precio comercial final tras las 12 bandas"}>
+                      <p className="text-[10px] text-zinc-400">Precio Redondeado</p>
+                      <p className="text-xs font-semibold mono text-zinc-900">{precioFinalRedondeado != null ? fmtMonto(precioFinalRedondeado) : "—"}</p>
+                    </div>
+                    <div className="card p-2.5"><p className="text-[10px] text-zinc-400">Costo Mínimo del Artículo</p><p className="text-xs font-medium mono">{fmtMonto(costoMinimoArticulo)}</p></div>
+                  </div>
+                  {estadoPreview && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-zinc-500">Estado del redondeo:</span>
+                      <EstadoRedondeoBadge estado={estadoPreview} banda={previewRedondeo ? previewRedondeo.banda : null} precioRedondeado={precioFinalRedondeado} />
+                      {previewRedondeo && previewRedondeo.banda && (
+                        <span className="text-[11px] text-zinc-400">Banda {previewRedondeo.banda.numero} · {previewRedondeo.banda.intervalo}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {!factorInvalido && factor !== "" && <p className="text-[11px] text-zinc-500 mt-2">Factor calculado: <b className="mono">{textoFactorCalculado(factorMultiplicador)}</b></p>}
             {factorInvalido && <p className="text-[11px] text-red-600 mt-2 flex items-center gap-1"><Icon name="alertTriangle" className="w-3 h-3" /> {conversionFactor.causa}</p>}
@@ -1747,7 +2246,6 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
                       <th className="text-left font-medium px-3 py-2">Código</th>
                       <th className="text-left font-medium px-3 py-2">Lista de Precio</th>
                       <th className="text-left font-medium px-3 py-2">Descripción</th>
-                      <th className="text-left font-medium px-3 py-2">Tipo de Variación</th>
                       <th className="text-right font-medium px-3 py-2">Factor %</th>
                       <th className="text-right font-medium px-3 py-2">Factor aplicado</th>
                       <th className="text-right font-medium px-3 py-2">Quitar</th>
@@ -1762,9 +2260,6 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
                           <td className="px-3 py-2 mono">{it.codigo}</td>
                           <td className="px-3 py-2 mono">{it.lista || "—"}</td>
                           <td className="px-3 py-2">{art ? art.descripcion : "—"}</td>
-                          <td className="px-3 py-2">
-                            <span className={"badge " + (it.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok")}>{TIPOS_VARIACION[it.tipoVariacion] || "—"}</span>
-                          </td>
                           <td className="px-3 py-2 text-right mono">{it.variacionPorcentaje}</td>
                           <td className="px-3 py-2 text-right mono">{it.valorPropuestoRaw}</td>
                           <td className="px-3 py-2 text-right">
@@ -1824,7 +2319,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
           <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
             <p className="text-xs text-zinc-600 flex items-center gap-1.5">
               <Icon name="fileSpreadsheet" className="w-3.5 h-3.5 text-zinc-400" />
-              ¿Aún no tiene el archivo? Descargue la plantilla oficial con Lista de Precio, Código de Artículo, Tipo de Variación (Aumento/Disminución) y Factor %. El sistema traduce Aumento en (+) y Disminución en (-) sobre la magnitud capturada, la convierte a multiplicador y valida cada fila antes de permitir el envío.
+              ¿Aún no tiene el archivo? Descargue la plantilla oficial. El usuario ingresa directamente el Factor Multiplicador (0.95 = -5%, 1.10 = +10%); el motor aplica el factor global y el redondeo comercial de 12 bandas, y valida el margen mínimo por artículo antes de permitir el envío. La columna "Tipo de Variación" ya no existe: el signo está en el propio factor.
             </p>
             <button type="button" className="btn btn-outline" onClick={function () { descargarPlantillaExcel(tab); }}>
               <Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla ({PROCESOS[tab].label})
@@ -1840,9 +2335,34 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
         </div>
       )}
 
+      {esMargenMasivo && (
+        <div className="space-y-4 mb-4">
+          <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-3 text-sm text-indigo-900">
+            <p className="font-semibold flex items-center gap-1.5"><Icon name="fileSpreadsheet" className="w-4 h-4" /> Carga masiva del porcentaje de reducción de margen (Regla de Mayoreo)</p>
+            <p className="text-xs mt-1 text-indigo-800">Cargue por artículo el <b>Porcentaje de Reducción</b> (ej. <b>10 = 10%</b>). El aplicativo lo normaliza a <b>0.10</b> y aplica el multiplicador <b>0.90</b> sobre el margen promedio. El <b>Margen Mínimo de Utilidad</b> resultante se persiste en <span className="mono">ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN</span>. Los artículos sin fila usan el 10% general por defecto.</p>
+          </div>
+          <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
+            <p className="text-xs text-zinc-600 flex items-center gap-1.5">
+              <Icon name="fileSpreadsheet" className="w-3.5 h-3.5 text-zinc-400" />
+              Descargue la plantilla con las columnas <b>Codigo Articulo</b> y <b>Porcentaje Reduccion</b>. Ingrese valores desde <b>0</b> hasta antes de <b>100</b> (ej. 10, 20 o 10.5). Las plantillas anteriores con <b>Factor Reduccion</b> no son compatibles.
+            </p>
+            <button type="button" className="btn btn-outline" onClick={function () { descargarPlantillaExcel(tab); }}>
+              <Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla ({PROCESOS[tab].label})
+            </button>
+          </div>
+          <ExcelUploader disabled={readOnly} modo={modo} procesoKey={tab} onParsed={handleArchivoParsed} onError={setErrorCarga} />
+          {errorCarga && <p className="text-[11px] text-red-600">{errorCarga}</p>}
+          {conteoErroresExcel > 0 && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+              La carga contiene {conteoErroresExcel} fila(s) inválida(s). Corrija los porcentajes de reducción fuera de rango, vacíos o no numéricos y cargue nuevamente el archivo.
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
         <button className="btn btn-outline" disabled={readOnly || !camposCompletos()} onClick={handleSimular}>
-          <Icon name="search" className="w-3.5 h-3.5" /> {modalidad === "excel" && permiteExcel ? "Precalcular impacto" : "Simular impacto"}
+          <Icon name="search" className="w-3.5 h-3.5" /> {(modalidad === "excel" && permiteExcel) || esMargenMasivo ? "Precalcular impacto" : "Simular impacto"}
         </button>
         <button
           className={"btn " + (esListaBase ? "btn-destructive" : "btn-default")}
@@ -1851,7 +2371,7 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
         >
           {sending ? (<><Icon name="loader" className="w-3.5 h-3.5" spin /> Enviando…</>)
             : sent ? (<><Icon name="check" className="w-3.5 h-3.5" /> Enviado</>)
-            : "Enviar a Aprobación"}
+            : esMargenMasivo ? "Enviar recálculo a Aprobación" : "Enviar a Aprobación"}
         </button>
       </div>
 
@@ -1865,7 +2385,9 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
             <Icon name="check" className="w-3.5 h-3.5" />
             ✅ Simulación completada sobre una muestra representativa / filas del archivo. Revise los valores resultantes antes de continuar.
           </div>
-          <TablaPrevisualizacion filas={filasExcel} compacta={false} />
+          {esMargenMasivo
+            ? <TablaMargenMinimo filas={filasExcel} />
+            : <TablaPrevisualizacion filas={filasExcel} compacta={false} />}
         </div>
       )}
     </div>
@@ -2110,13 +2632,14 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
 
   if (!solicitud) return null;
 
-  const filasOriginales = solicitud.filas && solicitud.filas.length > 0 ? solicitud.filas : filasEjemploExcel(PROCESOS[solicitud.proceso].modo);
+  const filasOriginales = solicitud.filas && solicitud.filas.length > 0 ? solicitud.filas : [];
   const filas = filasSimuladasComoSolicitante || filasOriginales;
   const parametros = solicitud.parametros || {};
+  const esCargaMargen = solicitud.proceso === "MARGEN_UTILIDAD_MASIVO";
   const esActualizacionListaBase = solicitud.proceso === "MAYOREOD_MASIVO";
   const grupoArticulo = esActualizacionListaBase ? GRUPOS_ARTICULOS[parametros.grupoArticulos] : null;
   const puedeDecidir = currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
-  const puedeAprobar = puedeDecidir && simulacionConfirmada;
+  const puedeAprobar = puedeDecidir && simulacionConfirmada && filas.length > 0;
   const filasConHallazgo = filas.filter(function (f) { return !f.validacion.valido; });
   const estaEnProceso = solicitud.estado === "EN_PROCESO";
   const resultado = solicitud.resultado || null;
@@ -2128,16 +2651,23 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
 
   function simularComoSolicitante() {
     if (!puedeDecidir) return;
-    const simulacion = filasOriginales.map(function (fila) {
-      const recalculada = construirFilaCompleta({
-        fila: fila.fila,
-        codigo: fila.codigo,
-        tipoVariacion: fila.tipoVariacion,
-        variacionPorcentaje: fila.variacionPorcentaje,
-        valorPropuestoRaw: fila.valorPropuestoRaw,
-      }, PROCESOS[solicitud.proceso].modo);
-      return Object.assign({}, fila, recalculada);
-    });
+    // La carga de margen conserva su snapshot calculado al cargar el archivo.
+    // No se reconstruye como ajuste de precio: esa ruta carece de un factor de
+    // precio y provocaba falsos "valores no numéricos" durante la aprobación.
+    const simulacion = esCargaMargen
+      ? filasOriginales.map(function (fila) {
+          return Object.assign({}, fila, { validacion: Object.assign({}, fila.validacion) });
+        })
+      : filasOriginales.map(function (fila) {
+          const recalculada = construirFilaCompleta({
+            fila: fila.fila,
+            codigo: fila.codigo,
+            tipoVariacion: fila.tipoVariacion,
+            variacionPorcentaje: fila.variacionPorcentaje,
+            valorPropuestoRaw: fila.valorPropuestoRaw,
+          }, PROCESOS[solicitud.proceso].modo);
+          return Object.assign({}, fila, recalculada);
+        });
     setFilasSimuladasComoSolicitante(simulacion);
     setSimulacionConfirmada(true);
     if (onSimularSolicitud) onSimularSolicitud(solicitud.id);
@@ -2228,7 +2758,15 @@ function RevisionModal({ solicitud, currentUser, onClose, onRechazar, onIniciarE
             </div>
           )}
 
-          <TablaPrevisualizacion filas={filas} compacta={false} />
+          {filas.length === 0 ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
+              Esta solicitud no conserva el detalle del archivo cargado. No se sustituyen filas reales por ejemplos; solicite una nueva carga antes de autorizarla.
+            </div>
+          ) : esCargaMargen ? (
+            <TablaMargenMinimo filas={filas} />
+          ) : (
+            <TablaPrevisualizacion filas={filas} compacta={false} />
+          )}
 
           {resultado && (
             <React.Fragment>
