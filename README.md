@@ -1,273 +1,152 @@
-# 🏗️ Template Base IA-DLC con Kiro — INTELIX
+# MV26020 — Gestión y Cálculo de Listas de Precio
 
-Plantilla inicial para nuevos proyectos de desarrollo que implementan la metodología **AI-Driven Lifecycle (IA-DLC)** usando **Kiro** como entorno de desarrollo asistido por IA.
+Portal interno para controlar cambios en listas de precio de Softland. La solución aplica un flujo **maker-checker**: un usuario prepara y simula un cambio; otro usuario autorizado lo revisa y aprueba; solo entonces se ejecuta el procedimiento almacenado correspondiente y se conserva la trazabilidad del resultado.
 
-Al clonar este repositorio, obtienes toda la estructura de carpetas, steering files, skills y reglas necesarias para arrancar un proyecto desde cero con el flujo IA-DLC listo para usar.
+El proyecto busca reducir el riesgo de actualizaciones directas de precio al incorporar simulación previa, segregación de funciones, validaciones comerciales, auditoría y ejecución controlada por compañía.
 
----
+## Qué hace la solución
 
-## ¿Qué incluye esta plantilla?
+- Gestiona solicitudes de cambio de precio por compañía y lista.
+- Permite simulación antes de enviar una solicitud a aprobación.
+- Soporta gestión global por lista, actualización/carga masiva, cambios por artículo y carga masiva de margen mínimo.
+- Implementa roles de **Operador** y **Aprobador**, con bloqueo de autoaprobación.
+- Ejecuta cambios productivos únicamente después de una aprobación válida.
+- Conserva solicitudes, resultados de ejecución y eventos de auditoría.
+- Calcula y valida redondeo comercial mediante 12 bandas, incluyendo terminales comerciales y desempate al valor superior.
+- Opera en modo demostración sin base de datos o contra SQL Server/Softland por compañía.
 
-| Carpeta / Archivo | Descripción |
+## Estado actual y cambio de alcance analizado
+
+La aplicación web está en construcción y el flujo maker-checker ya está implementado. El cálculo actual en TypeScript usa factores multiplicadores y redondeo comercial; la integración real ejecuta procedimientos almacenados de Softland solo al aprobar.
+
+Se analizó un cambio de alcance para conservar un **precio técnico/original** antes del redondeo comercial y reconstruir los precios publicados desde dicho valor. El cambio incorpora descuento porcentual encadenado a 8 decimales, listas dependientes, idempotencia y un job diario.
+
+Existe una implementación SQL de referencia en `docs/implementacion_redondeo_articulo_precio_v2/` con:
+
+- Columna `U_PRECIO_TECNICO` en `COFER.ARTICULO_PRECIO` y migración inicial.
+- Función `COFER.FN_REDONDEAR_PRECIO` con 12 bandas, terminales por bloque y pruebas de aceptación.
+- Procedimiento `COFER.SP_GESTION_LISTAS_PRECIOS_FULL_QA_V2` con simulación, validaciones de costo/margen, transacción e idempotencia.
+
+Ese motor SQL está preparado para QA, pero la aplicación todavía debe alinearse con su contrato y el job diario/orquestador por dependencia de listas sigue pendiente. Consulte los informes de impacto antes de implementar ese cambio.
+
+## Arquitectura
+
+```text
+Usuario interno
+  → Portal web Next.js (React + Server Actions)
+    → Solicitud, simulación, revisión y auditoría
+      → SQL Server / Softland por compañía
+        → Procedimientos almacenados y ARTICULO_PRECIO
+```
+
+### Componentes principales
+
+| Componente | Responsabilidad |
 |---|---|
-| `.kiro/steering/` | Archivos de dirección (steering files) que guían el comportamiento del agente Kiro durante todo el ciclo de desarrollo. |
-| `.kiro/aws-aidlc-rule-details/` | Reglas detalladas del workflow IA-DLC: fases de Inception, Construction y Operations. |
-| `.kiro/skills/requirements-matrix-excel/` | **Skill INTELIX**: Genera la Matriz de Identificación de Requerimientos en formato Excel (.xlsx) con formato corporativo. |
-| `.kiro/skills/requirements-matrix-pdf/` | **Skill INTELIX**: Genera la Matriz de Identificación de Requerimientos en formato PDF con formato corporativo. |
-| `.kiro/skills/project-docs-html/` | **Skill INTELIX**: Genera documentación HTML del proyecto con Swagger UI embebido para las APIs del backend. |
-| `docs/` | Carpeta para documentación técnica del proyecto (estándares, arquitectura, etc.). |
+| `app-web/` | Aplicación full-stack Next.js: interfaz React, Server Actions y Route Handlers. |
+| `app-web/src/lib/` | Reglas de dominio: factores, validaciones de margen y redondeo comercial. |
+| `app-web/src/server/` | Persistencia del portal, modo demo, conexiones `mssql` y ejecución de SPs. |
+| `docs/` | Especificaciones funcionales, análisis de datos y paquete SQL de redondeo v2. |
+| `aidlc-docs/` | Requisitos, planes e informes de análisis e impacto IA-DLC. |
 
----
+### Persistencia y ejecución
 
-## Skills disponibles (INTELIX)
+La solución separa los datos de gobernanza de la operación de precios:
 
-### 1. Matriz de Requerimientos — Excel
-Genera un archivo `.xlsx` con la Matriz de Identificación de Requerimientos siguiendo el formato corporativo INTELIX.
+- **Portal de precios:** solicitudes, detalle simulado, estados, aprobaciones y auditoría.
+- **Softland por compañía:** artículos, listas, precios, márgenes, UDF y procedimientos almacenados operativos.
 
-> Activación en Kiro: Pedir "generar matriz de requerimientos en Excel"
+En modo real, la aplicación no actualiza precios directamente. Al aprobar una solicitud, invoca el SP configurado para la compañía activa. Para margen puede actualizar primero la UDF `U_FACTOR_REDUCCION_MARGEN` y luego ejecutar el SP de cálculo de margen.
 
-### 2. Matriz de Requerimientos — PDF
-Genera un PDF con la misma matriz, alineado visualmente al formato del Excel.
+## Flujos funcionales
 
-> Activación en Kiro: Pedir "generar matriz de requerimientos en PDF"
+1. **Crear y simular:** el Operador selecciona compañía/proceso, ingresa factores o carga un archivo Excel y revisa el resultado de la simulación.
+2. **Enviar a aprobación:** la solicitud queda pendiente con su evidencia de simulación.
+3. **Revisar:** el Aprobador consulta impacto, registros válidos/no válidos y datos relevantes del cambio.
+4. **Aprobar o rechazar:** se bloquea que el solicitante apruebe su propia solicitud; un rechazo exige motivo.
+5. **Ejecutar:** la solicitud pasa a proceso y, fuera de modo demo, se ejecuta el SP de Softland autorizado.
+6. **Auditar:** se registra envío, revisión, aprobación/rechazo, ejecución y resultado final.
 
-### 3. Documentación de Proyecto — HTML
-Genera documentación HTML completa del proyecto incluyendo Swagger UI embebido para documentar las APIs.
+## Reglas de negocio implementadas
 
-> Activación en Kiro: Pedir "generar documentación del proyecto en HTML"
-
----
-
-## Primeros pasos: Crear un nuevo proyecto a partir de esta plantilla
-
-### Opción A — Desde GitLab (recomendado)
-
-1. **Clonar la plantilla:**
-   ```bash
-   git clone https://git.intelix.biz/grupomayoreo/template_base.git mi-nuevo-proyecto
-   ```
-
-2. **Entrar al directorio:**
-   ```bash
-   cd mi-nuevo-proyecto
-   ```
-
-3. **Desvincular del repositorio plantilla:**
-   ```bash
-   git remote remove origin
-   ```
-
-4. **Crear tu nuevo repositorio en GitLab** (desde la interfaz web o CLI).
-
-5. **Vincular al nuevo repositorio:**
-   ```bash
-   git remote add origin https://git.intelix.biz/grupomayoreo/mi-nuevo-proyecto.git
-   ```
-
-6. **Subir la estructura inicial:**
-   ```bash
-   git branch -M main
-   git push -uf origin main
-   ```
-
-7. **Instalar los skills** (ver sección [Instalación de Skills](#instalación-de-skills-post-clonado)):
-   ```bash
-   # Linux/macOS
-   chmod +x install-skills.sh && ./install-skills.sh
-
-   # Windows
-   install-skills.bat
-   ```
-
-8. **Abrir en Kiro** y comenzar el flujo IA-DLC.
-
-### Opción B — Desde la terminal (sin GitLab previo)
-
-1. **Clonar y renombrar:**
-   ```bash
-   git clone https://git.intelix.biz/grupomayoreo/template_base.git nombre-de-mi-proyecto
-   cd nombre-de-mi-proyecto
-   ```
-
-2. **Limpiar historial (opcional, para empezar limpio):**
-   ```bash
-   rm -rf .git
-   git init
-   git add .
-   git commit -m "feat: scaffold inicial desde template_base IA-DLC"
-   ```
-
-3. **Conectar a tu repositorio remoto:**
-   ```bash
-   git remote add origin <URL_DE_TU_REPO>
-   git push -u origin main
-   ```
-
-4. **Instalar los skills:**
-   ```bash
-   # Linux/macOS
-   chmod +x install-skills.sh && ./install-skills.sh
-
-   # Windows
-   install-skills.bat
-   ```
-
----
-
-## Estructura resultante después de clonar
-
-```
-mi-nuevo-proyecto/
-├── .kiro/
-│   ├── aws-aidlc-rule-details/   # Reglas del workflow IA-DLC
-│   │   ├── common/               # Reglas comunes (validación, formatos, sesión)
-│   │   ├── inception/            # Fases de incepción
-│   │   ├── construction/         # Fases de construcción
-│   │   ├── extensions/           # Extensiones (seguridad, resiliencia, testing)
-│   │   └── operations/           # Fases de operaciones
-│   ├── skills/                   # Skills personalizados INTELIX
-│   │   ├── project-docs-html/
-│   │   ├── requirements-matrix-excel/
-│   │   └── requirements-matrix-pdf/
-│   └── steering/                 # Archivos de dirección para Kiro
-│       ├── aws-aidlc-rules/
-│       ├── 01-prototype-guardrails.md
-│       ├── 02-mockup-workflow.md
-│       ├── compactar.md
-│       ├── entregables_tareas_iadlc.md
-│       └── infraestructura_estimacion_iadlc.md
-├── docs/
-│   ├── arquitectura/
-│   └── estandares-desarrollo-intelix.md
-└── README.md
-```
-
----
-
-## Instalación de Skills (Post-Clonado)
-
-Después de clonar el repositorio y antes de usar los skills en Kiro, ejecuta el instalador interactivo que detecta/instala Python y configura las dependencias de cada skill.
-
-### Ejecutar el instalador
-
-**Linux / macOS:**
-```bash
-chmod +x install-skills.sh
-./install-skills.sh
-```
-
-**Windows (CMD o doble clic):**
-```cmd
-install-skills.bat
-```
-
-### Flujo del instalador (4 fases)
-
-#### Fase 1 — Verificación e instalación de Python
-
-El script escanea el sistema buscando **todas las versiones de Python instaladas** (PATH, rutas comunes, pyenv, uv) y las clasifica como compatibles o incompatibles. También detecta si tienes **pyenv** o **uv** instalados.
-
-Independientemente de si ya tienes una versión compatible, el script te presenta estas opciones para que decidas cómo trabajar:
-
-| Opción | Descripción |
-|--------|-------------|
-| **Usar versión existente** | Selecciona entre las versiones compatibles detectadas (sistema, pyenv o uv) |
-| **pyenv** (Linux/macOS) | Gestiona múltiples versiones de Python lado a lado. Si ya lo tienes, muestra tus versiones; si no, lo instala. Ideal para proyectos con requisitos distintos. |
-| **uv** (todas las plataformas) | Gestor moderno todo-en-uno: instala Python, crea entornos y resuelve dependencias 10-100x más rápido. Si ya lo tienes, muestra tus versiones; si no, lo instala. |
-| **Global** (gestor del sistema) | `apt`/`dnf`/`brew` en Linux/macOS o descarga desde python.org en Windows. Simple y directo para una sola versión. |
-
-> **¿Por qué pyenv o uv?** Permiten instalar múltiples versiones de Python sin conflicto. Puedes tener 3.11, 3.12 y 3.13 simultáneamente y elegir la correcta por proyecto. Si ya tienen versiones instaladas, el script las detecta y te las ofrece directamente.
-
-#### Fase 2 — Selección de Skills
-
-Te presenta los skills disponibles y eliges cuáles instalar:
-
-- `[1]` project-docs-html — Documentación HTML con Swagger UI
-- `[2]` requirements-matrix-excel — Matriz de Requerimientos Excel
-- `[3]` requirements-matrix-pdf — Matriz de Requerimientos PDF
-- `[A]` Instalar todos
-
-#### Fase 3 — Método de instalación de dependencias
-
-| Método | Descripción | Cuándo usarlo |
-|--------|-------------|---------------|
-| **Global** | `pip install` directo en el Python seleccionado | Proyectos simples o entornos ya aislados (contenedores, CI) |
-| **venv** | Crea un `.venv/` independiente por cada skill con `python -m venv` | Opción estándar para aislar dependencias por skill |
-| **uv** | Crea un `.venv/` por skill usando [uv](https://docs.astral.sh/uv/) (ultra-rápido) | Si prefieres velocidad y gestión moderna de paquetes |
-
-Si eliges `uv` y no está instalado, el script lo instala automáticamente.
-
-#### Fase 4 — Instalación
-
-Instala las dependencias de cada skill seleccionado en el entorno correspondiente usando el Python elegido en la Fase 1.
-
-### Estructura resultante (con entornos virtuales)
-
-```
-.kiro/skills/
-├── project-docs-html/
-│   ├── .venv/              ← Entorno aislado del skill
-│   ├── requirements.txt
-│   └── ...
-├── requirements-matrix-excel/
-│   ├── .venv/
-│   ├── requirements.txt
-│   └── ...
-└── requirements-matrix-pdf/
-    ├── .venv/
-    ├── requirements.txt
-    └── ...
-```
-
-### Activar manualmente un entorno de skill (opcional)
-
-Si necesitas ejecutar scripts de un skill fuera de Kiro:
-
-```bash
-# Linux/macOS
-source .kiro/skills/project-docs-html/.venv/bin/activate
-
-# Windows
-.kiro\skills\project-docs-html\.venv\Scripts\activate.bat
-```
-
----
-
-## Cómo iniciar el flujo IA-DLC en Kiro
-
-Una vez clonado y abierto el proyecto en Kiro:
-
-1. **Inicia una conversación** describiendo el proyecto que vas a desarrollar.
-2. Kiro detectará automáticamente los steering files y las reglas IA-DLC.
-3. El workflow adaptativo evaluará qué fases son necesarias (Requirements, Design, Code Generation, etc.).
-4. Los skills estarán disponibles en cualquier momento para generar entregables corporativos.
-
-### Comando útil: COMPACTAR
-Escribe `COMPACTAR` en el chat para que Kiro resuma toda la sesión en 5-7 viñetas autocontenidas, útil para continuar el trabajo en una nueva sesión.
-
----
-
-## Personalización de la plantilla
-
-Después de clonar, considera ajustar:
-
-- **`.kiro/steering/infraestructura_estimacion_iadlc.md`** — Actualizar con los datos de infraestructura de tu proyecto específico.
-- **`.kiro/steering/entregables_tareas_iadlc.md`** — Reemplazar con el plan de tareas y módulos de tu proyecto.
-- **`docs/estandares-desarrollo-intelix.md`** — Revisar y adaptar estándares si tu proyecto tiene particularidades.
-
----
+- Factores de precio permitidos en el rango `(0, 2]` para los procesos actuales de la app.
+- Porcentaje de reducción de margen en `[0, 100)`: por ejemplo, `10` representa 10 % y se normaliza a `0.10`.
+- Margen mínimo validado contra el precio comercial redondeado.
+- Redondeo comercial en 12 bandas entre `0,01` y `100.000,00`, con estado calculado, fuera de rango o alerta de margen.
+- Las solicitudes pendientes no ejecutan cambios productivos.
+- La ejecución productiva se habilita exclusivamente tras la aprobación de un usuario con rol Aprobador.
 
 ## Requisitos
 
-- [Kiro IDE](https://kiro.dev) instalado
-- Git
-- Python 3.11+ (el instalador de skills te ayuda a instalarlo si no lo tienes)
-- (Opcional) [uv](https://docs.astral.sh/uv/) — gestor moderno de paquetes y versiones de Python
-- (Opcional) [pyenv](https://github.com/pyenv/pyenv) — gestión de múltiples versiones de Python (Linux/macOS)
-- Acceso al GitLab corporativo INTELIX
+- Node.js 18.18+ o 20+.
+- npm.
+- Opcional para modo real: SQL Server accesible y objetos Softland configurados por compañía.
 
----
+> En Windows, si PowerShell bloquea `npm`, ejecute `npm.cmd` en lugar de `npm`.
 
-## Mantenido por
+## Inicio rápido
 
-**Equipo de Desarrollo — INTELIX / Grupo Mayoreo**
+```powershell
+Set-Location app-web
+npm install
+Copy-Item .env.example .env.local
+npm run dev
+```
+
+Abra `http://localhost:3000`.
+
+Scripts disponibles dentro de `app-web/`:
+
+| Comando | Propósito |
+|---|---|
+| `npm run dev` | Ejecuta el entorno de desarrollo. |
+| `npm run build` | Genera la compilación de producción. |
+| `npm start` | Sirve la compilación de producción. |
+| `npm run typecheck` | Ejecuta TypeScript sin emitir archivos. |
+
+## Configuración de ejecución
+
+### Modo demostración
+
+`DEMO_MODE=true` es el modo predeterminado. No requiere SQL Server: usa datos y solicitudes en memoria para probar el flujo completo sin modificar sistemas productivos.
+
+### Modo SQL Server
+
+Para operar contra Softland, configure `DEMO_MODE=false` y `COMPANIES_CONFIG` en `app-web/.env.local`. La configuración define la conexión, esquema, objetos SQL y parámetros de cada compañía. Use `.env.example` como referencia y no incluya credenciales en el repositorio.
+
+## Documentación relevante
+
+| Documento | Contenido |
+|---|---|
+| `app-web/README.md` | Configuración técnica detallada de la aplicación, modo demo/real y objetos SQL configurables. |
+| `docs/Requerimiento_ precio original y redondeo de listas 2026-09-10.md` | Requerimiento de precio técnico/original, redondeo e idempotencia. |
+| `docs/implementacion_redondeo_articulo_precio_v2/` | DDL, función, SP y análisis de referencia para QA. |
+| `aidlc-docs/inception/requirements/requirements.md` | Requisitos funcionales y no funcionales aprobados para el portal. |
+| `aidlc-docs/inception/reverse-engineering/impacto-precio-original-y-redondeo.md` | Informe general de impacto del cambio de precio técnico y redondeo. |
+| `aidlc-docs/inception/reverse-engineering/impacto-bd-precio-original-y-redondeo.md` | Impacto específico en base de datos y Softland. |
+| `aidlc-docs/inception/reverse-engineering/impacto-app-precio-original-y-redondeo.md` | Impacto específico en la aplicación Next.js. |
+
+## Estructura del repositorio
+
+```text
+MV26020-Calculo-de-listas-de-precio/
+├── app-web/                         # Portal Next.js
+│   ├── src/app/                     # Rutas, acciones de servidor y API
+│   ├── src/components/              # Interfaz del portal
+│   ├── src/lib/                     # Cálculo, redondeo y tipos de dominio
+│   └── src/server/                  # SQL Server, repositorios y modo demo
+├── docs/                            # Requerimientos y paquete SQL v2
+├── aidlc-docs/                      # Requisitos, planes e informes IA-DLC
+└── README.md
+```
+
+## Alcance pendiente del cambio de precio técnico
+
+Antes de integrar el cambio de precio original/técnico en producción se deben resolver, entre otros, los siguientes puntos:
+
+- Unificar el nombre `U_PRECIO_ORIGINAL` vs. `U_PRECIO_TECNICO`.
+- Confirmar la llave real de `ARTICULO_PRECIO`, el tipo de `ESQUEMA_TRABAJO` y la moneda utilizada para validar costos/márgenes.
+- Aprobar la política para precios superiores a 100.000 y la extensión opcional de terminales `50/90`.
+- Definir el tratamiento de EPA y `MARGEN_MULR`.
+- Implementar el job diario/orquestador que respete la dependencia entre listas y no se ejecute simultáneamente con el proceso actual.
+- Alinear la simulación TypeScript y el contrato de integración con `SP_GESTION_LISTAS_PRECIOS_FULL_QA_V2`.
