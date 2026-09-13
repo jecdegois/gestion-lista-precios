@@ -29,15 +29,9 @@ export default function Header({
 
         {user.rol !== "SIN_PERMISO" && (
           <nav className="flex items-center gap-1 flex-wrap">
-            <span className={"nav-link" + (activeNav === "nueva" ? " active" : "")} onClick={() => onNav("nueva")}>
-              Nueva Solicitud
-            </span>
-            <span className={"nav-link" + (activeNav === "bandeja" ? " active" : "")} onClick={() => onNav("bandeja")}>
-              Bandeja de Aprobación
-            </span>
-            <span className={"nav-link" + (activeNav === "auditoria" ? " active" : "")} onClick={() => onNav("auditoria")}>
-              Auditoría
-            </span>
+            <span className={"nav-link" + (activeNav === "nueva" ? " active" : "")} onClick={() => onNav("nueva")}>Nueva Solicitud</span>
+            <span className={"nav-link" + (activeNav === "bandeja" ? " active" : "")} onClick={() => onNav("bandeja")}>Bandeja de Aprobación</span>
+            <span className={"nav-link" + (activeNav === "auditoria" ? " active" : "")} onClick={() => onNav("auditoria")}>Auditoría</span>
           </nav>
         )}
 

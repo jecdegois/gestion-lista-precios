@@ -23,8 +23,8 @@ La primera liberación debe incluir gestión global por lista, carga masiva de p
 | ID | Requisito |
 |---|---|
 | RF-01 | El sistema debe ofrecer los tres procesos: gestión global por lista, actualización masiva por archivo Excel y gestión individual por artículo/lista/factor. |
-| RF-02 | El sistema debe permitir gestionar solicitudes en los ámbitos de compañía, lista o categoría autorizados para el usuario. |
-| RF-03 | El backend y la interfaz deben impedir operar fuera del ámbito funcional asignado a cada usuario. |
+| RF-02 | El sistema debe permitir gestionar solicitudes dentro de la compañía y los roles autorizados para el usuario. La lista objetivo y la categoría son datos funcionales de la solicitud y deben validarse contra los maestros y reglas de Softland. |
+| RF-03 | El backend y la interfaz deben impedir operar fuera del ámbito de compañía y rol asignado a cada usuario; además deben validar la lista y categoría como datos funcionales de la solicitud. |
 
 ### 3.2 Gestión global por lista
 
@@ -114,7 +114,7 @@ La primera liberación debe incluir gestión global por lista, carga masiva de p
 | RNF-03 | El portal interno debe entregar la identidad del usuario a la aplicación mediante un mecanismo firmado o tokenizado de corta duración, validado por el backend. |
 | RNF-04 | La aplicación debe validar la existencia del usuario, su identidad, roles y ámbitos antes de conceder acceso. |
 | RNF-05 | Los roles Solicitante y Aprobador deben estar separados y el backend debe impedir la autoaprobación. |
-| RNF-06 | El control de ámbito por compañía, lista o categoría debe aplicarse tanto en la interfaz como en el backend. |
+| RNF-06 | El control de ámbito por compañía y rol debe aplicarse tanto en la interfaz como en el backend. Las listas y categorías de las solicitudes deben validarse contra Softland y las reglas funcionales, pero no forman parte del ámbito de autorización del usuario. |
 | RNF-07 | La aplicación debe implementar las restricciones de la línea base de seguridad para solución productiva. |
 
 ## 8. Resiliencia, observabilidad y calidad

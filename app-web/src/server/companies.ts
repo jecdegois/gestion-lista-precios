@@ -2,15 +2,9 @@ import "server-only";
 import type { CompaniaInfo } from "@/lib/types";
 
 /**
- * Configuracion multiempresa (arquitectura multibase de datos Softland).
- * Se lee de la variable de entorno COMPANIES_CONFIG (JSON). Nunca se codifica
- * una compania fija ni credenciales en el codigo.
- *
- * Ademas de la CONEXION, cada compania puede mapear sus OBJETOS SQL: nombre y
- * esquema del SP de margen, del SP de gestion de listas y de la UDF
- * U_FACTOR_REDUCCION_MARGEN, junto con los nombres de columnas/parametros. Asi,
- * si una compania nombra distinto sus objetos o columnas, solo cambia la
- * configuracion; el codigo de la aplicacion no se toca.
+ * Configuración lógica de compañías sobre una base SQL Server compartida.
+ * Se lee de COMPANIES_CONFIG y únicamente define esquema y nombres de objetos;
+ * la conexión única se toma de las variables PORTAL_DB_*.
  */
 
 /** Nombres de objetos SQL configurables por compania (con defaults). */
@@ -23,6 +17,7 @@ export interface SqlObjetos {
   udfFactorReduccion: string;
   // Tablas maestras de Softland para listas y artículos.
   tablaNivelPrecio: string;
+  tablaVersionNivel: string;
   tablaArticuloPrecio: string;
   tablaArticulo: string;
   // Columnas de la UDF (por si difieren entre companias).
@@ -40,11 +35,7 @@ export interface SqlObjetos {
 export interface CompaniaConfig {
   codigo: string;
   label: string;
-  server: string;
-  database: string;
-  schema: string; // esquema OPERATIVO de la empresa (COFER, EMP1, …)
-  user: string;
-  password: string;
+  schema: string; // esquema operativo de la empresa (FEBECA, COFER, …)
   sql: SqlObjetos;
 }
 
@@ -69,6 +60,7 @@ function defaultsSql(): SqlObjetos {
     spGestionListas: "SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO",
     udfFactorReduccion: "U_FACTOR_REDUCCION_MARGEN",
     tablaNivelPrecio: "NIVEL_PRECIO",
+    tablaVersionNivel: "VERSION_NIVEL",
     tablaArticuloPrecio: "ARTICULO_PRECIO",
     tablaArticulo: "ARTICULO",
     colUdfCodigo: "U_CODIGO",
@@ -84,11 +76,7 @@ function defaultsSql(): SqlObjetos {
 
 type CompaniaConfigRaw = {
   label?: string;
-  server: string;
-  database: string;
   schema?: string;
-  user: string;
-  password: string;
   sql?: Partial<SqlObjetos>;
 };
 
@@ -105,11 +93,7 @@ function parseConfig(): Record<string, CompaniaConfig> {
         result[codigo.toUpperCase()] = {
           codigo: codigo.toUpperCase(),
           label: cfg.label ?? codigo,
-          server: cfg.server,
-          database: cfg.database,
           schema: cfg.schema ?? codigo.toUpperCase(),
-          user: cfg.user,
-          password: cfg.password,
           sql: { ...defaultsSql(), ...(cfg.sql ?? {}) },
         };
       }
@@ -117,15 +101,11 @@ function parseConfig(): Record<string, CompaniaConfig> {
       console.error("COMPANIES_CONFIG invalido; no es JSON valido.", err);
     }
   }
-  if (Object.keys(result).length === 0) {
+  if (Object.keys(result).length === 0 && esModoDemo()) {
     result.COFER = {
       codigo: "COFER",
       label: "COFERSA",
-      server: "localhost",
-      database: "SOFTLAND_COFER",
       schema: "COFER",
-      user: "app_user",
-      password: "",
       sql: defaultsSql(),
     };
   }
@@ -161,5 +141,23 @@ export function nombreSql(compania: string, clave: keyof SqlObjetos): string {
 }
 
 export function esModoDemo(): boolean {
-  return (process.env.DEMO_MODE ?? "true").toLowerCase() === "true";
+  return (process.env.DEMO_MODE ?? "false").trim().toLowerCase() === "true";
+}
+
+/**
+ * Bloqueo de seguridad para pruebas contra datos reales. El valor por defecto
+ * es solo lectura para evitar escrituras accidentales si falta la variable.
+ */
+export function esModoSoloLectura(): boolean {
+  return (process.env.READ_ONLY_MODE ?? "true").trim().toLowerCase() === "true";
+}
+
+export function esModoSoloPortal(): boolean {
+  return (process.env.PORTAL_ONLY_MODE ?? "false").trim().toLowerCase() === "true";
+}
+
+export function assertEscrituraHabilitada(): void {
+  if (esModoSoloLectura()) {
+    throw new Error("PORTAL_READ_ONLY: el sistema está configurado únicamente para lectura.");
+  }
 }

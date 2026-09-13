@@ -14,6 +14,7 @@ import { esFilaMargen } from "@/lib/domain-types";
 import type {
   FilaResultado,
   ArticuloCatalogo,
+  Identidad,
   ParametrosSolicitud,
   ProcesoKey,
   Rol,
@@ -22,7 +23,7 @@ import type {
 } from "@/lib/domain-types";
 import type { NivelPrecio } from "@/lib/types";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
-import { esModoDemo } from "@/server/companies";
+import { esModoDemo, esModoSoloLectura, objetoPortal } from "@/server/companies";
 import { listarCatalogo, listarNivelesPrecio } from "@/server/pricing-repository";
 import {
   ejecutarSpGestionListas,
@@ -38,10 +39,54 @@ import {
   registrarEvento,
   siguienteCodigoSolicitud,
 } from "@/server/portal-repository";
+import { getPortalPool } from "@/server/db";
 
 const ENCABEZADO_CODIGO = "codigo articulo";
 const ENCABEZADO_PORCENTAJE = "porcentaje reduccion";
 const ENCABEZADO_LEGADO = "factor reduccion";
+
+/**
+ * Resuelve una identidad activa desde el Portal usando únicamente SELECT.
+ * No actualiza fecha de acceso ni crea sesiones: el SSO real aún debe
+ * integrarse antes de habilitar operaciones de escritura.
+ */
+export async function resolverIdentidad(email: string, compania?: string): Promise<Identidad | undefined> {
+  const normalizado = email.trim().toLowerCase();
+  if (!normalizado) return undefined;
+  const pool = await getPortalPool();
+  const mssql = await import("mssql");
+  const q = await pool
+    .request()
+    .input("email", mssql.VarChar(120), normalizado)
+    .query(
+      `SELECT TOP (1)
+              U.IDP_SUBJECT,
+              U.EMAIL,
+              U.NOMBRE,
+              U.ROL_GLOBAL
+         FROM ${objetoPortal("USUARIO")} U
+        WHERE LOWER(U.EMAIL) = @email
+          AND U.ROL_GLOBAL IN ('OPERADOR', 'APROBADOR')
+        ORDER BY U.ROL_GLOBAL`,
+    );
+  const r = q.recordset[0] as Record<string, unknown> | undefined;
+  if (!r) return undefined;
+  const rol = String(r.ROL_GLOBAL ?? "");
+  const companiaNormalizada = (compania ?? "").trim().toUpperCase();
+  if (!companiaNormalizada) return undefined;
+  if (rol !== "OPERADOR" && rol !== "APROBADOR") return undefined;
+  return {
+    email: String(r.EMAIL),
+    nombre: String(r.NOMBRE),
+    rol: rol as Identidad["rol"],
+    color: String(r.COLOR ?? "#52525b"),
+    compania: companiaNormalizada,
+  };
+}
+
+function errorSoloLectura(): { ok: false; error: string } {
+  return { ok: false, error: "El sistema está en modo solo lectura. No se permiten cambios ni ejecuciones." };
+}
 
 function normalizarEncabezado(v: unknown): string {
   return String(v ?? "")
@@ -53,19 +98,29 @@ function normalizarEncabezado(v: unknown): string {
 }
 
 function convertirArticuloMaestro(articulo: Awaited<ReturnType<typeof listarCatalogo>>[number]): ArticuloCatalogo {
-  const grupo = articulo.linea || articulo.categoria || "Sin grupo";
+  const clasificaciones = [
+    articulo.clasificacion1,
+    articulo.clasificacion2,
+    articulo.clasificacion3,
+    articulo.clasificacion4,
+    articulo.clasificacion5,
+  ]
+    .map((clasificacion) => clasificacion?.trim())
+    .filter((clasificacion): clasificacion is string => Boolean(clasificacion));
+  const grupo = clasificaciones.length > 0 ? clasificaciones.join(" › ") : "Sin clasificación";
+
   return {
     codigo: articulo.codigo,
     descripcion: articulo.descripcion,
     precioActual: articulo.precioLista,
     costoReposicion: articulo.costoPromedio,
     margenUtilidadMin: undefined,
-    categoria: articulo.categoria ?? "",
-    subcategoria: "",
+    categoria: articulo.clasificacion1 ?? "",
+    subcategoria: articulo.clasificacion2 ?? "",
     grupo,
-    marca: "",
-    marcaGrupoCompra: "",
-    bdf: "",
+    marca: articulo.clasificacion3 ?? "",
+    marcaGrupoCompra: articulo.clasificacion4 ?? "",
+    bdf: articulo.clasificacion5 ?? "",
   };
 }
 
@@ -126,8 +181,8 @@ export async function obtenerCatalogoSolicitud(compania: string, nivelPrecio?: s
 // ---------------------------------------------------------------------------
 // Consultas (lectura de estado del flujo)
 // ---------------------------------------------------------------------------
-export async function obtenerSolicitudes(): Promise<Solicitud[]> {
-  return await listarSolicitudes();
+export async function obtenerSolicitudes(compania?: string): Promise<Solicitud[]> {
+  return await listarSolicitudes(compania);
 }
 
 export async function obtenerAuditoria(compania?: string) {
@@ -303,9 +358,10 @@ export interface EnviarSolicitudInput {
 }
 
 export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boolean; error?: string; solicitud?: Solicitud }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
   // Revalidacion defensiva de ambito (equivalente a la del backend real).
-  if (!estaEnAmbito(input.compania, input.compania, null)) {
-    return { ok: false, error: "Esta solicitud está fuera de su ámbito autorizado (compañía o lista). No puede enviarse." };
+  if (!estaEnAmbito(input.compania, input.compania)) {
+    return { ok: false, error: "Esta solicitud está fuera de su ámbito autorizado por compañía. No puede enviarse." };
   }
 
   const niveles = await listarNivelesPrecio(input.compania);
@@ -365,11 +421,13 @@ export async function registrarRevision(
   usuarioNombre: string,
   usuarioRol: Rol,
   compania: string,
-): Promise<void> {
+): Promise<{ ok: boolean; error?: string }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
   const s = await obtenerSolicitud(solicitudId);
   if (s && s.estado === "PENDIENTE") {
     await registrarEvento("SIMULACION_REVISADA", usuarioNombre, usuarioRol, compania, solicitudId, null);
   }
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -381,6 +439,7 @@ export async function rechazarSolicitud(
   usuarioNombre: string,
   usuarioRol: Rol,
 ): Promise<{ ok: boolean; error?: string }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
   const s = await obtenerSolicitud(solicitudId);
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
   if (!motivo || motivo.trim().length === 0) return { ok: false, error: "El motivo de rechazo es obligatorio." };
@@ -400,6 +459,7 @@ export interface AprobarInput {
 }
 
 export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; error?: string; idProcesoSP?: string }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
   const s = await obtenerSolicitud(input.solicitudId);
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
   if (s.estado !== "PENDIENTE") return { ok: false, error: "La solicitud no está pendiente de aprobación." };
@@ -410,7 +470,7 @@ export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boole
   if (input.aprobadorRol !== "APROBADOR") {
     return { ok: false, error: "Solo un Aprobador puede autorizar la ejecución." };
   }
-  if (!estaEnAmbito(s.compania, s.compania, null)) {
+  if (!estaEnAmbito(s.compania, s.compania)) {
     return { ok: false, error: "La solicitud está fuera de su ámbito autorizado." };
   }
 
@@ -500,6 +560,7 @@ async function simularProcesamientoDemo(solicitudId: string): Promise<void> {
 }
 
 async function finalizarProcesamiento(solicitudId: string, filas: FilaResultado[], fallidos: number, aprobador: string): Promise<void> {
+  if (esModoSoloLectura()) return;
   const s = await obtenerSolicitud(solicitudId);
   if (!s) return;
   const total = filas.length;

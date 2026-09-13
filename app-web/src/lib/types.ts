@@ -8,9 +8,11 @@ export interface Articulo {
   costoPromedio: number;
   nivelPrecio?: string;
   version?: number;
-  categoria?: string;
-  linea?: string;
-  proveedor?: string;
+  clasificacion1?: string;
+  clasificacion2?: string;
+  clasificacion3?: string;
+  clasificacion4?: string;
+  clasificacion5?: string;
 }
 
 /** Nivel/lista de precio maestro de Softland. */

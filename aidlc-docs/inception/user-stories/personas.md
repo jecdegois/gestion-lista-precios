@@ -56,7 +56,7 @@ Representar los roles humanos de la primera liberación y delimitar objetivos, p
 
 ## Reglas transversales de persona
 - La autenticación, autorización, control de ámbito y separación de funciones se validan en el backend para cada operación; ocultar controles en la interfaz no sustituye la validación server-side.
-- Los datos de solicitud, simulación, validación y resultado se restringen por compañía, lista o categoría autorizada; cualquier referencia por identificador se valida contra el ámbito del actor para prevenir acceso indirecto no autorizado.
+- Los datos de solicitud, simulación, validación y resultado se restringen por la compañía y el rol autorizado; las listas y categorías se validan como datos funcionales contra Softland y las reglas del proceso. Cualquier referencia por identificador se valida contra la compañía del actor para prevenir acceso indirecto no autorizado.
 - Las entradas se validan en interfaz y backend: tipo, rango, formato, tamaño de archivo, estructura de plantilla y autorización aplicable.
 - Los mensajes para usuarios y registros funcionales no exponen secretos, credenciales, tokens, datos de conexión, rutas internas, trazas ni detalles sensibles.
 - La solicitud individual aprobada se ejecuta una sola vez automáticamente. Un reproceso posterior es excepcional, exige autorización explícita del Aprobador, motivo, nueva correlación y preservación de la ejecución original.

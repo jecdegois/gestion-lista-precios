@@ -1,6 +1,6 @@
 import "server-only";
 import type { EventoAuditoria, EventoTipo, Rol, Solicitud } from "@/lib/domain-types";
-import { esModoDemo, objetoPortal } from "./companies";
+import { assertEscrituraHabilitada, esModoDemo, objetoPortal } from "./companies";
 import {
   agregarSolicitud as demoAgregar,
   actualizarSolicitud as demoActualizar,
@@ -21,13 +21,29 @@ import { getPortalPool } from "./db";
  * ambos modos de forma uniforme.
  */
 
-export async function listarSolicitudes(): Promise<Solicitud[]> {
-  if (esModoDemo()) return demoListarSolicitudes();
+export async function listarSolicitudes(compania?: string): Promise<Solicitud[]> {
+  const companiaNormalizada = compania?.trim().toUpperCase();
+  if (esModoDemo()) {
+    return demoListarSolicitudes().filter((solicitud) => !companiaNormalizada || solicitud.compania === companiaNormalizada);
+  }
+
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD_PRECIO");
-  const spd = objetoPortal("SOLICITUD_PRECIO_DETALLE");
-  const cab = await pool.request().query(`SELECT * FROM ${sp} ORDER BY FECHA_ENVIO DESC`);
-  const det = await pool.request().query(`SELECT * FROM ${spd}`);
+  const sp = objetoPortal("SOLICITUD");
+  const spd = objetoPortal("SOLICITUD_DETALLE");
+  const mssql = await import("mssql");
+  const cab = companiaNormalizada
+    ? await pool
+      .request()
+      .input("comp", mssql.VarChar(20), companiaNormalizada)
+      .query(`SELECT * FROM ${sp} WHERE COMPANIA = @comp ORDER BY FECHA_ENVIO DESC`)
+    : await pool.request().query(`SELECT * FROM ${sp} ORDER BY FECHA_ENVIO DESC`);
+  const det = companiaNormalizada
+    ? await pool
+      .request()
+      .input("comp", mssql.VarChar(20), companiaNormalizada)
+      .query(`SELECT D.* FROM ${spd} D INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp`)
+    : await pool.request().query(`SELECT * FROM ${spd}`);
+
   return cab.recordset.map((r: Record<string, unknown>) =>
     mapSolicitud(r, det.recordset.filter((d: Record<string, unknown>) => d.ID_SOLICITUD === r.ID_SOLICITUD)),
   );
@@ -36,8 +52,8 @@ export async function listarSolicitudes(): Promise<Solicitud[]> {
 export async function obtenerSolicitud(codigo: string): Promise<Solicitud | undefined> {
   if (esModoDemo()) return demoObtener(codigo);
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD_PRECIO");
-  const spd = objetoPortal("SOLICITUD_PRECIO_DETALLE");
+  const sp = objetoPortal("SOLICITUD");
+  const spd = objetoPortal("SOLICITUD_DETALLE");
   const mssql = await import("mssql");
   const cab = await pool.request().input("cod", mssql.VarChar(20), codigo).query(`SELECT * FROM ${sp} WHERE CODIGO_SOLICITUD = @cod`);
   const r = cab.recordset[0];
@@ -47,21 +63,22 @@ export async function obtenerSolicitud(codigo: string): Promise<Solicitud | unde
 }
 
 export async function siguienteCodigoSolicitud(): Promise<string> {
+  assertEscrituraHabilitada();
   if (esModoDemo()) return "SOL-" + (10450 + demoSeq());
   const pool = await getPortalPool();
-  const seq = objetoPortal("SEQ_SOLICITUD").replace(/^\[|\]$/g, "");
   const q = await pool.request().query(`SELECT NEXT VALUE FOR ${objetoPortal("SEQ_SOLICITUD")} AS n`);
   return "SOL-" + q.recordset[0].n;
 }
 
 export async function agregarSolicitud(s: Solicitud): Promise<void> {
+  assertEscrituraHabilitada();
   if (esModoDemo()) {
     demoAgregar(s);
     return;
   }
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD_PRECIO");
-  const spd = objetoPortal("SOLICITUD_PRECIO_DETALLE");
+  const sp = objetoPortal("SOLICITUD");
+  const spd = objetoPortal("SOLICITUD_DETALLE");
   const mssql = await import("mssql");
   const req = pool
     .request()
@@ -87,12 +104,13 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
 }
 
 export async function actualizarSolicitud(codigo: string, patch: Partial<Solicitud>): Promise<void> {
+  assertEscrituraHabilitada();
   if (esModoDemo()) {
     demoActualizar(codigo, patch);
     return;
   }
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD_PRECIO");
+  const sp = objetoPortal("SOLICITUD");
   const mssql = await import("mssql");
   const sets: string[] = ["FECHA_ULT_ESTADO = GETDATE()"];
   const req = pool.request().input("cod", mssql.VarChar(20), codigo);
@@ -120,6 +138,7 @@ export async function registrarEvento(
   idProcesoSP: string | null,
   usuarioEmail = "",
 ): Promise<void> {
+  assertEscrituraHabilitada();
   if (esModoDemo()) {
     demoRegistrarEvento(evento, usuario, rol, compania, solicitudId, idProcesoSP);
     return;
@@ -145,21 +164,43 @@ export async function registrarEvento(
 export async function listarEventos(compania?: string): Promise<EventoAuditoria[]> {
   if (esModoDemo()) return demoListarEventos(compania);
   const pool = await getPortalPool();
-  const ae = objetoPortal("AUDITORIA_EVENTOS");
+  const ae = objetoPortal("AUDITORIA_PRECIOS");
   const mssql = await import("mssql");
+  const columnas = "ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO";
   const q = compania
-    ? await pool.request().input("comp", mssql.VarChar(20), compania).query(`SELECT TOP (200) * FROM ${ae} WHERE COMPANIA = @comp ORDER BY FECHA DESC`)
-    : await pool.request().query(`SELECT TOP (200) * FROM ${ae} ORDER BY FECHA DESC`);
-  return q.recordset.map((r: Record<string, unknown>) => ({
-    id: String(r.ID_EVENTO),
-    fecha: new Date(r.FECHA as string).toLocaleString("es-CR", { hour12: false }),
-    usuario: String(r.USUARIO_NOMBRE ?? r.USUARIO_EMAIL ?? ""),
-    rol: (r.ROL as Rol) ?? "OPERADOR",
-    evento: r.EVENTO as EventoTipo,
-    solicitudId: (r.CODIGO_SOLICITUD as string) ?? null,
-    idProcesoSP: (r.ID_PROCESO_SP as string) ?? null,
-    compania: String(r.COMPANIA ?? ""),
-  }));
+    ? await pool
+      .request()
+      .input("comp", mssql.VarChar(20), compania)
+      .query(
+        `SELECT TOP (200) ${columnas}
+           FROM ${ae}
+          WHERE ISJSON(PAYLOAD_JSON) = 1
+            AND JSON_VALUE(PAYLOAD_JSON, '$.compania') = @comp
+          ORDER BY FECHA_EVENTO DESC`,
+      )
+    : await pool.request().query(`SELECT TOP (200) ${columnas} FROM ${ae} ORDER BY FECHA_EVENTO DESC`);
+
+  return q.recordset.map((r: Record<string, unknown>) => {
+    let payload: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(String(r.PAYLOAD_JSON ?? "{}"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
+    } catch {
+      // Un registro histórico con JSON inválido aún debe poder visualizarse.
+    }
+
+    const rol = r.ROL === "APROBADOR" || r.ROL === "OPERADOR" ? r.ROL : "OPERADOR";
+    return {
+      id: String(r.ID_AUDITORIA),
+      fecha: new Date(r.FECHA_EVENTO as string).toLocaleString("es-CR", { hour12: false }),
+      usuario: typeof payload.usuario === "string" ? payload.usuario : String(r.IDP_SUBJECT ?? ""),
+      rol: rol as Rol,
+      evento: r.EVENTO as EventoTipo,
+      solicitudId: typeof payload.solicitudId === "string" ? payload.solicitudId : null,
+      idProcesoSP: (r.ID_PROCESO as string) ?? null,
+      compania: typeof payload.compania === "string" ? payload.compania : (compania ?? ""),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
