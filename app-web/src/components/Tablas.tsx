@@ -8,14 +8,62 @@ import { TIPOS_VARIACION } from "@/lib/catalog";
 import { esFilaMargen } from "@/lib/domain-types";
 import type { FilaMargen, FilaPrecio, FilaResultado } from "@/lib/domain-types";
 
+function esHallazgoDeNegocio(fila: FilaResultado): boolean {
+  const validacion = fila.validacion;
+  return !validacion.valido && validacion.estadoRedondeo === "ALERTA_MARGEN" && Boolean(validacion.causa);
+}
+
+function EtiquetaValidacion({ fila }: { fila: FilaResultado }) {
+  const validacion = fila.validacion;
+  if (validacion.valido) {
+    return <span className="badge badge-ok"><Icon name="check" className="w-3 h-3" /> Válida</span>;
+  }
+  if (esHallazgoDeNegocio(fila)) {
+    return <span className="badge badge-costo" title={validacion.causa ?? ""}><Icon name="alertTriangle" className="w-3 h-3" /> Con hallazgo</span>;
+  }
+  return <span className="badge badge-rechazado" title={validacion.causa ?? ""}><Icon name="alertTriangle" className="w-3 h-3" /> Dato por corregir</span>;
+}
+
+function ResumenValidaciones({ filas }: { filas: FilaResultado[] }) {
+  const hallazgos = filas.filter(esHallazgoDeNegocio);
+  const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila));
+
+  return (
+    <>
+      {hallazgos.length > 0 && (
+        <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+          <p className="text-xs font-semibold text-red-800 mb-1.5">Hallazgos de margen:</p>
+          <ul className="text-xs text-red-700 space-y-1">
+            {hallazgos.map((fila) => (
+              <li key={`hallazgo-${fila.fila}-${fila.codigo}`}>[{fila.codigo}]: {fila.validacion.causa}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {datosPorCorregir.length > 0 && (
+        <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+          <p className="text-xs font-semibold text-amber-800 mb-1.5">Datos por corregir:</p>
+          <ul className="text-xs text-amber-700 space-y-1">
+            {datosPorCorregir.map((fila) => (
+              <li key={`dato-${fila.fila}-${fila.codigo}`}>[{fila.codigo}]: {fila.validacion.causa ?? "No fue posible validar la fila."}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function TablaMargenMinimo({ filas }: { filas: FilaMargen[] }) {
-  const conError = filas.filter((f) => !f.validacion.valido).length;
-  const hallazgos = filas.filter((f) => !f.validacion.valido);
+  const hallazgos = filas.filter(esHallazgoDeNegocio).length;
+  const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila)).length;
   return (
     <div>
       <p className="text-xs text-zinc-500 mb-2">
         {filas.length} artículo(s) evaluado(s)
-        {conError > 0 ? " · " + conError + " con hallazgo" : " · cálculo y redondeo comercial verificados"}
+        {hallazgos > 0 ? ` · ${hallazgos} con hallazgo` : ""}
+        {datosPorCorregir > 0 ? ` · ${datosPorCorregir} dato(s) por corregir` : ""}
+        {hallazgos === 0 && datosPorCorregir === 0 ? " · cálculo y redondeo comercial verificados" : ""}
       </p>
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
@@ -35,45 +83,28 @@ export function TablaMargenMinimo({ filas }: { filas: FilaMargen[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {filas.map((f) => {
-              const v = f.validacion;
+            {filas.map((fila) => {
+              const validacion = fila.validacion;
               return (
-                <tr key={`${f.fila}-${f.codigo}`} className={!v.valido ? "row-alert" : ""}>
-                  <td className="px-3 py-2 mono">{f.codigo}</td>
-                  <td className="px-3 py-2">{f.descripcion || "—"}</td>
-                  <td className="px-3 py-2 text-right mono">{v.porcentajeReduccion != null ? v.porcentajeReduccion.toFixed(2) + "%" : "—"}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtFactor(v.factorReduccion)}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtFactor(v.multiplicadorMargen)}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtMonto(v.precioActual)}</td>
-                  <td className="px-3 py-2 text-right mono">{v.precioRedondeado != null ? <b>{fmtMonto(v.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
-                  <td className="px-3 py-2"><EstadoRedondeoBadge estado={v.estadoRedondeo} banda={v.bandaRedondeo} /></td>
-                  <td className="px-3 py-2 text-right mono">{fmtPct(v.margenPromedio)}</td>
-                  <td className="px-3 py-2 text-right mono">{v.margenMinimo != null ? <b>{fmtPct(v.margenMinimo)}</b> : <span className="text-zinc-400">—</span>}</td>
-                  <td className="px-3 py-2">
-                    {v.valido ? (
-                      <span className="badge badge-ok"><Icon name="check" className="w-3 h-3" /> Válida</span>
-                    ) : (
-                      <span className="badge badge-costo" title={v.causa ?? ""}><Icon name="alertTriangle" className="w-3 h-3" /> Con hallazgo</span>
-                    )}
-                  </td>
+                <tr key={`${fila.fila}-${fila.codigo}`} className={esHallazgoDeNegocio(fila) ? "row-alert" : ""}>
+                  <td className="px-3 py-2 mono">{fila.codigo}</td>
+                  <td className="px-3 py-2">{fila.descripcion || "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{validacion.porcentajeReduccion != null ? `${validacion.porcentajeReduccion.toFixed(2)}%` : "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtFactor(validacion.factorReduccion)}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtFactor(validacion.multiplicadorMargen)}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioActual)}</td>
+                  <td className="px-3 py-2 text-right mono">{validacion.precioRedondeado != null ? <b>{fmtMonto(validacion.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-3 py-2"><EstadoRedondeoBadge estado={validacion.estadoRedondeo} banda={validacion.bandaRedondeo} /></td>
+                  <td className="px-3 py-2 text-right mono">{fmtPct(validacion.margenPromedio)}</td>
+                  <td className="px-3 py-2 text-right mono">{validacion.margenMinimo != null ? <b>{fmtPct(validacion.margenMinimo)}</b> : <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-3 py-2"><EtiquetaValidacion fila={fila} /></td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      {hallazgos.length > 0 && (
-        <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
-          <p className="text-xs font-semibold text-red-800 mb-1.5">Detalle de hallazgos encontrados en la previsualización:</p>
-          <ul className="text-xs text-red-700 space-y-1">
-            {hallazgos.map((f) => (
-              <li key={`h-${f.fila}`}>
-                [{f.codigo}]{f.validacion.codigoRechazo ? " [" + f.validacion.codigoRechazo + "]" : ""}: {f.validacion.causa}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <ResumenValidaciones filas={filas} />
     </div>
   );
 }
@@ -83,7 +114,8 @@ const FILAS_POR_PAGINA = 100;
 
 export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
   const [pagina, setPagina] = useState(1);
-  const conError = filas.filter((f) => !f.validacion.valido).length;
+  const hallazgos = filas.filter(esHallazgoDeNegocio).length;
+  const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila)).length;
   const usaPaginacion = filas.length > UMBRAL_PAGINACION;
   const totalPaginas = usaPaginacion ? Math.ceil(filas.length / FILAS_POR_PAGINA) : 1;
   const paginaSegura = Math.min(pagina, totalPaginas);
@@ -98,7 +130,9 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
   return (
     <div>
       <p className="text-xs text-zinc-500 mb-2">
-        {filas.length} fila(s) evaluada(s){conError > 0 ? " · " + conError + " con hallazgo" : ""}
+        {filas.length} fila(s) evaluada(s)
+        {hallazgos > 0 ? ` · ${hallazgos} con hallazgo` : ""}
+        {datosPorCorregir > 0 ? ` · ${datosPorCorregir} dato(s) por corregir` : ""}
         {usaPaginacion ? " · Vista paginada" : ""}
       </p>
       <div className="card overflow-x-auto">
@@ -119,30 +153,22 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {visibles.map((f) => {
-              const v = f.validacion;
-              const tv = f.tipoVariacion ? TIPOS_VARIACION[f.tipoVariacion] : "—";
+            {visibles.map((fila) => {
+              const validacion = fila.validacion;
+              const tipoVariacion = fila.tipoVariacion ? TIPOS_VARIACION[fila.tipoVariacion] : "—";
               return (
-                <tr key={`${f.fila}-${f.codigo}-${f.listaCodigo ?? ""}`} className={!v.valido ? "row-alert" : ""}>
-                  <td className="px-3 py-2 mono">{f.codigo}</td>
-                  <td className="px-3 py-2">{f.lista ?? "—"}</td>
-                  <td className="px-3 py-2">{f.descripcion}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtMonto(v.precioActual)}</td>
-                  <td className="px-3 py-2">
-                    <span className={"badge " + (f.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok")}>{tv}</span>
-                  </td>
-                  <td className="px-3 py-2 text-right mono">{f.valorPropuestoRaw ?? "—"}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtMonto(v.precioPropuesto)}</td>
-                  <td className="px-3 py-2 text-right mono">{v.precioRedondeado != null ? <b>{fmtMonto(v.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtMonto(v.costoMinimo)}</td>
-                  <td className="px-3 py-2"><EstadoRedondeoBadge estado={v.estadoRedondeo} banda={v.bandaRedondeo} /></td>
-                  <td className="px-3 py-2">
-                    {v.valido ? (
-                      <span className="badge badge-ok"><Icon name="check" className="w-3 h-3" /> Válida</span>
-                    ) : (
-                      <span className="badge badge-costo" title={v.causa ?? ""}><Icon name="alertTriangle" className="w-3 h-3" /> Con hallazgo</span>
-                    )}
-                  </td>
+                <tr key={`${fila.fila}-${fila.codigo}-${fila.listaCodigo ?? ""}`} className={esHallazgoDeNegocio(fila) ? "row-alert" : ""}>
+                  <td className="px-3 py-2 mono">{fila.codigo}</td>
+                  <td className="px-3 py-2">{fila.lista ?? "—"}</td>
+                  <td className="px-3 py-2">{fila.descripcion}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioActual)}</td>
+                  <td className="px-3 py-2"><span className={`badge ${fila.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok"}`}>{tipoVariacion}</span></td>
+                  <td className="px-3 py-2 text-right mono">{fila.valorPropuestoRaw ?? "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioPropuesto)}</td>
+                  <td className="px-3 py-2 text-right mono">{validacion.precioRedondeado != null ? <b>{fmtMonto(validacion.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.costoMinimo)}</td>
+                  <td className="px-3 py-2"><EstadoRedondeoBadge estado={validacion.estadoRedondeo} banda={validacion.bandaRedondeo} /></td>
+                  <td className="px-3 py-2"><EtiquetaValidacion fila={fila} /></td>
                 </tr>
               );
             })}
@@ -153,26 +179,16 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
         <div className="flex items-center justify-between mt-2 text-xs text-zinc-500">
           <span>Página {paginaSegura} de {totalPaginas} · {FILAS_POR_PAGINA} registros por página</span>
           <div className="flex gap-2">
-            <button className="btn btn-outline" disabled={paginaSegura <= 1} onClick={() => setPagina((p) => p - 1)}>Anterior</button>
-            <button className="btn btn-outline" disabled={paginaSegura >= totalPaginas} onClick={() => setPagina((p) => p + 1)}>Siguiente</button>
+            <button className="btn btn-outline" disabled={paginaSegura <= 1} onClick={() => setPagina((valor) => valor - 1)}>Anterior</button>
+            <button className="btn btn-outline" disabled={paginaSegura >= totalPaginas} onClick={() => setPagina((valor) => valor + 1)}>Siguiente</button>
           </div>
         </div>
       )}
-      {conError > 0 && (
-        <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
-          <p className="text-xs font-semibold text-red-800 mb-1.5">Detalle de hallazgos:</p>
-          <ul className="text-xs text-red-700 space-y-1">
-            {filas.filter((f) => !f.validacion.valido).map((f) => (
-              <li key={`he-${f.fila}-${f.codigo}`}>[{f.codigo}]: {f.validacion.causa}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <ResumenValidaciones filas={filas} />
     </div>
   );
 }
 
-/** Selector que renderiza la tabla correcta según el tipo de filas. */
 export function TablaResultado({ filas }: { filas: FilaResultado[] }) {
   if (filas.length > 0 && filas.every(esFilaMargen)) {
     return <TablaMargenMinimo filas={filas as FilaMargen[]} />;

@@ -1,0 +1,87 @@
+USE [SOFTLANDQA]
+GO
+
+/****** Object:  StoredProcedure [FEBECA].[SP_GESTION_LISTAS_PRECIOS_FULL]    Script Date: 13/9/2026 2:19:32 p. m. ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE procedure [FEBECA].[SP_GESTION_LISTAS_PRECIOS_FULL]
+    @p_nivel_precio VARCHAR(50),
+    @p_fecha_inicio DATE,
+    @p_fecha_fin DATE,
+    @p_nivel_precio_base VARCHAR(50),
+    @p_factor_multiplicador DECIMAL(28,8),
+    @p_version INTEGER
+	AS
+    BEGIN
+        -- INSERT PRECIOS NUEVOS QUE ESTAN EN LA BASE Y DEBE CARGARSE A NIVEL_PRECIO
+        INSERT
+        INTO
+            FEBECA.ARTICULO_PRECIO
+            (NIVEL_PRECIO,MONEDA,VERSION,ARTICULO,VERSION_ARTICULO,PRECIO,ESQUEMA_TRABAJO,MARGEN_MULR,MARGEN_UTILIDAD,FECHA_INICIO,FECHA_FIN,FECHA_ULT_MODIF,USUARIO_ULT_MODIF,MARGEN_UTILIDAD_MIN)
+        SELECT
+            @p_nivel_precio,
+            AP.MONEDA,
+            @p_version,
+            AP.ARTICULO,
+            AP.VERSION_ARTICULO,
+            AP.PRECIO,
+            AP.ESQUEMA_TRABAJO,
+            AP.MARGEN_MULR,
+            AP.MARGEN_UTILIDAD,
+            @p_fecha_inicio,
+            @p_fecha_fin,
+            GETDATE(),
+            'SD',
+            AP.MARGEN_UTILIDAD_MIN
+        FROM FEBECA.ARTICULO_PRECIO AP (NOLOCK)
+        INNER JOIN FEBECA.VERSION_NIVEL VN (NOLOCK) ON AP.NIVEL_PRECIO = VN.NIVEL_PRECIO AND AP.VERSION = VN.VERSION
+        WHERE AP.NIVEL_PRECIO = @p_nivel_precio_base
+        AND VN.ESTADO = 'A' 
+        AND AP.ARTICULO NOT IN
+            (SELECT AP2.ARTICULO
+                FROM FEBECA.ARTICULO_PRECIO AP2 (NOLOCK)
+                INNER JOIN FEBECA.VERSION_NIVEL VN2 (NOLOCK) ON AP2.NIVEL_PRECIO = VN2.NIVEL_PRECIO AND AP2.VERSION = VN2.VERSION
+                WHERE AP2.NIVEL_PRECIO = @p_nivel_precio AND VN2.ESTADO = 'A' AND AP2.VERSION = @p_version);
+
+		-- INSERTA PRECIOS BASE EN TEMPORAL
+		SELECT
+			AP.ARTICULO, AP.PRECIO, AP.MARGEN_MULR, AP.MARGEN_UTILIDAD
+		INTO #temporal_factor_lista
+		FROM FEBECA.ARTICULO_PRECIO AP (NOLOCK)
+		INNER JOIN FEBECA.VERSION_NIVEL VN (NOLOCK) ON AP.NIVEL_PRECIO = VN.NIVEL_PRECIO AND AP.VERSION = VN.VERSION
+		WHERE AP.NIVEL_PRECIO = @p_nivel_precio_base
+		AND VN.ESTADO = 'A';
+
+		-- INSERTA FACTOR ARTICULO EN TEMPORAL
+		SELECT
+			UFA.U_ARTICULO, UFA.U_FACTOR
+		INTO #temporal_factor_articulo
+		FROM FEBECA.U_FACTOR_ARTICULO UFA (NOLOCK)
+        WHERE @p_nivel_precio_base IN ('MAYOREOD','MAYOREO') AND @p_nivel_precio NOT IN ('MAYOREOD','MAYOREO');
+        -- Solo se aplica el factor sobre listas derivadas directamente de MAYOREO y MAYOREOD, también se protege MAYOREO y MAYOREOD ya que son inmutables.
+		
+		
+		-- ACTUALIZA LISTA PRECIOS p_nivel_precio CON EL FACTOR MULTIPLICADOR
+		UPDATE AP
+		SET AP.PRECIO = (TFL.PRECIO * (@p_factor_multiplicador * COALESCE(TFA.U_FACTOR,1))),
+			AP.MARGEN_UTILIDAD = 1 - A.COSTO_PROM_DOL / (TFL.PRECIO *  (@p_factor_multiplicador * COALESCE(TFA.U_FACTOR,1))),
+			AP.MARGEN_MULR = 1 - A.COSTO_PROM_DOL / (TFL.PRECIO /  (@p_factor_multiplicador * COALESCE(TFA.U_FACTOR,1)))
+		FROM FEBECA.ARTICULO_PRECIO AP
+		INNER JOIN FEBECA.ARTICULO A ON AP.ARTICULO = A.ARTICULO
+		INNER JOIN #temporal_factor_lista TFL ON AP.ARTICULO = TFL.ARTICULO
+		INNER JOIN FEBECA.VERSION_NIVEL VN ON AP.NIVEL_PRECIO = VN.NIVEL_PRECIO AND AP.VERSION = VN.VERSION
+        LEFT JOIN #temporal_factor_articulo TFA ON AP.ARTICULO = TFA.U_ARTICULO
+		WHERE AP.NIVEL_PRECIO = @p_nivel_precio AND VN.ESTADO = 'A' AND AP.VERSION = @p_version;
+		
+		-- Elimina las tablas temporales
+		DROP TABLE #temporal_factor_lista;
+        DROP TABLE #temporal_factor_articulo;
+END;
+GO
+
+

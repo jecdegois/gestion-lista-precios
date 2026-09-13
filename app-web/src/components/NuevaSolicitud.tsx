@@ -9,18 +9,12 @@ import { TablaResultado } from "./Tablas";
 import { fmtMonto } from "@/lib/format";
 import {
   PROCESOS,
-  NOMBRES_LISTA,
-  LISTAS_POR_COMPANIA,
-  ARTICULOS_POR_LISTA,
-  CATALOGO_ARTICULOS,
-  GRUPOS_ARTICULOS,
-  LISTA_BASE_OBJETIVO,
-  estaEnAmbito,
   calcularCostoMinimoArticulo,
 } from "@/lib/catalog";
 import { calcularVariacion, redondeoPreview } from "@/lib/preview";
-import { simularManual, enviarSolicitud } from "@/app/actions";
-import type { FilaResultado, Identidad, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
+import { simularManual, enviarSolicitud, obtenerCatalogoSolicitud } from "@/app/actions";
+import type { ArticuloCatalogo, FilaResultado, Identidad, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
+import type { NivelPrecio } from "@/lib/types";
 
 interface ItemManual {
   fila: number;
@@ -66,6 +60,10 @@ export default function NuevaSolicitud({
   const [archivoNombre, setArchivoNombre] = useState<string | null>(null);
   const [archivoS3Key, setArchivoS3Key] = useState<string | null>(null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [nivelesPrecio, setNivelesPrecio] = useState<NivelPrecio[]>([]);
+  const [articulosMaestros, setArticulosMaestros] = useState<ArticuloCatalogo[]>([]);
+  const [gruposMaestros, setGruposMaestros] = useState<{ codigo: string; nombre: string; cantidad: number }[]>([]);
+  const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
 
   const proceso = PROCESOS[tab];
   const esDescuento = tab === "DESCUENTO_LISTA_PRECIO";
@@ -74,24 +72,24 @@ export default function NuevaSolicitud({
   const esMargen = tab === "MARGEN_UTILIDAD_MASIVO";
   const permiteExcel = esDescuento;
 
-  const listasDeCompania = LISTAS_POR_COMPANIA[compania] || [];
-  const nivelOpts: ComboOption[] = listasDeCompania
-    .filter((c) => c !== "mayoreod")
-    .map((c) => ({ value: c, label: NOMBRES_LISTA[c] || c }));
-  const articuloOpts: ComboOption[] = Object.values(CATALOGO_ARTICULOS).map((a) => ({
-    value: a.codigo,
-    label: `${a.codigo} — ${a.descripcion}`,
+  const nivelOpts: ComboOption[] = nivelesPrecio
+    .filter((nivel) => esListaBase || nivel.codigo.toUpperCase() !== "MAYOREOD")
+    .map((nivel) => ({ value: nivel.codigo, label: nivel.nombre || nivel.codigo }));
+  const articuloOpts: ComboOption[] = articulosMaestros.map((articulo) => ({
+    value: articulo.codigo,
+    label: `${articulo.codigo} — ${articulo.descripcion}`,
   }));
-  const grupoOpts: ComboOption[] = Object.entries(GRUPOS_ARTICULOS).map(([k, g]) => ({
-    value: k,
-    label: `${g.label} (${g.articulos.length} artículos)`,
+  const grupoOpts: ComboOption[] = gruposMaestros.map((grupo) => ({
+    value: grupo.codigo,
+    label: `${grupo.nombre} (${grupo.cantidad} artículos)`,
   }));
 
+  const nombreNivel = (codigo: string) => nivelesPrecio.find((nivel) => nivel.codigo === codigo)?.nombre || codigo;
   const conversion = useMemo(() => calcularVariacion("AUMENTO", factor), [factor]);
   const factorInvalido = factor !== "" && !conversion.valido;
-  const listaFueraDeAmbito = !!nivel && !estaEnAmbito(compania, null, nivel);
+  const listaFueraDeAmbito = !!nivel && !nivelesPrecio.some((item) => item.codigo === nivel);
 
-  const articuloSel = codigoArticulo ? CATALOGO_ARTICULOS[codigoArticulo] : undefined;
+  const articuloSel = codigoArticulo ? articulosMaestros.find((articulo) => articulo.codigo === codigoArticulo) : undefined;
   const previewArticulo = articuloSel && conversion.valido && conversion.factor != null
     ? redondeoPreview(articuloSel.precioActual * conversion.factor)
     : null;
@@ -114,6 +112,36 @@ export default function NuevaSolicitud({
     setErrorCarga(null);
   }, [tab]);
 
+  useEffect(() => {
+    let vigente = true;
+    setCargandoCatalogo(true);
+    void obtenerCatalogoSolicitud(compania, nivel || undefined)
+      .then((catalogo) => {
+        if (!vigente) return;
+        setNivelesPrecio(catalogo.niveles);
+        if (nivel) {
+          setArticulosMaestros(catalogo.articulos);
+          setGruposMaestros(catalogo.grupos);
+        }
+      })
+      .catch((error) => {
+        if (vigente) setErrorItem((error as Error).message || "No fue posible consultar los maestros de Softland.");
+      })
+      .finally(() => {
+        if (vigente) setCargandoCatalogo(false);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [compania, nivel]);
+
+  useEffect(() => {
+    if ((esListaBase || esMargen) && !nivel && nivelesPrecio.length > 0) {
+      const base = nivelesPrecio.find((item) => item.codigo.toUpperCase() === "MAYOREOD") ?? nivelesPrecio[0];
+      setNivel(base.codigo);
+    }
+  }, [esListaBase, esMargen, nivel, nivelesPrecio]);
+
   // Cualquier cambio de parámetros invalida la simulación previa (manual).
   useEffect(() => {
     setSimulado(false);
@@ -125,7 +153,7 @@ export default function NuevaSolicitud({
     if (!nivel || !codigoArticulo || factorInvalido || factor === "") return;
     const clave = codigoArticulo + "|" + nivel;
     if (itemsManual.some((it) => it.codigo + "|" + it.listaCodigo === clave)) {
-      setErrorItem(`El artículo ${codigoArticulo} ya fue agregado para la lista ${NOMBRES_LISTA[nivel]}.`);
+      setErrorItem(`El artículo ${codigoArticulo} ya fue agregado para la lista ${nombreNivel(nivel)}.`);
       return;
     }
     setErrorItem(null);
@@ -135,7 +163,7 @@ export default function NuevaSolicitud({
           fila: prev.length + 1,
           codigo: codigoArticulo,
           listaCodigo: nivel,
-          lista: NOMBRES_LISTA[nivel],
+          lista: nombreNivel(nivel),
           tipoVariacion: "AUMENTO",
           variacionPorcentaje: factor,
         },
@@ -175,13 +203,22 @@ export default function NuevaSolicitud({
     }
     const input = {
       proceso: tab,
+      compania,
       nivel,
+      nivelBase: esListaBase ? nivel : undefined,
       factor,
       tipoVariacion: "AUMENTO" as TipoVariacion,
       grupoArticulos: grupoArticulo,
       items: esDescuento ? itemsManual.map((it) => ({ codigo: it.codigo, listaCodigo: it.listaCodigo, tipoVariacion: it.tipoVariacion, variacionPorcentaje: it.variacionPorcentaje })) : undefined,
     };
     const res = await simularManual(input);
+    if (!res.ok) {
+      setErrorItem("La compañía, lista o artículo no coincide con los maestros de Softland.");
+      setFilas([]);
+      setSimulado(false);
+      return;
+    }
+    setErrorItem(null);
     setFilas(res.filas);
     setSimulado(true);
   }
@@ -190,11 +227,11 @@ export default function NuevaSolicitud({
     // Marca inválidas filas de descuento con lista base o fuera de ámbito.
     const ajustadas = fs.map((f) => {
       const lc = (f as { listaCodigo?: string | null }).listaCodigo;
-      if (esDescuento && lc === "mayoreod") {
+      if (esDescuento && lc?.trim().toLowerCase() === "mayoreod") {
         return { ...f, validacion: { ...f.validacion, valido: false, causa: "La Lista Base (MAYOREOD) no se gestiona desde Descuento por Artículo." } };
       }
-      if (esDescuento && lc && !estaEnAmbito(compania, null, lc)) {
-        return { ...f, validacion: { ...f.validacion, valido: false, causa: "La lista no está dentro de su ámbito autorizado." } };
+      if (esDescuento && lc && !nivelesPrecio.some((item) => item.codigo.toLowerCase() === lc.toLowerCase())) {
+        return { ...f, validacion: { ...f.validacion, valido: false, causa: "La lista no existe en los maestros de Softland." } };
       }
       return f;
     });
@@ -209,8 +246,8 @@ export default function NuevaSolicitud({
 
   async function handleEnviar() {
     if (!puedeEnviar()) return;
-    if (!estaEnAmbito(compania, compania, esDescuento && modalidad === "manual" ? nivel : null)) {
-      setErrorItem("Esta solicitud está fuera de su ámbito autorizado (compañía o lista). No puede enviarse.");
+    if (esDescuento && modalidad === "manual" && nivel && !nivelesPrecio.some((item) => item.codigo === nivel)) {
+      setErrorItem("La lista seleccionada no existe en los maestros de Softland.");
       return;
     }
     setSending(true);
@@ -219,8 +256,8 @@ export default function NuevaSolicitud({
       factor,
       tipoVariacion: "AUMENTO" as TipoVariacion,
       variacionPorcentaje: factor,
-      listaBase: esListaBase ? LISTA_BASE_OBJETIVO.codigo : undefined,
-      nivelPrecio: esListaBase ? LISTA_BASE_OBJETIVO.nivelPrecio : undefined,
+      listaBase: esListaBase ? nivel : undefined,
+      nivelPrecio: nivel || undefined,
       grupoArticulos: esListaBase ? grupoArticulo : undefined,
       articulos: esDescuento ? filas ?? [] : undefined,
     };
@@ -374,7 +411,7 @@ export default function NuevaSolicitud({
       {esListaBase && (
         <div className="space-y-4 mb-4">
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
-            <p className="font-semibold">⚠️ Atención: esta actualización aplicará cambios sobre la Lista Base ({LISTA_BASE_OBJETIVO.nombre} / {LISTA_BASE_OBJETIVO.codigo}) cuando sea autorizada.</p>
+            <p className="font-semibold">⚠️ Atención: esta actualización aplicará cambios sobre la lista {nombreNivel(nivel)} cuando sea autorizada.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
             <div>
@@ -389,7 +426,7 @@ export default function NuevaSolicitud({
           </div>
           <label className="flex items-start gap-3 rounded-lg border border-zinc-200 p-3 cursor-pointer select-none max-w-xl">
             <input type="checkbox" checked={ack} disabled={readOnly} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 h-4 w-4" />
-            <span className="text-sm">Entiendo que esta solicitud aplicará cambios sobre {LISTA_BASE_OBJETIVO.nombre} / {LISTA_BASE_OBJETIVO.nivelPrecio} para el grupo seleccionado cuando un aprobador la autorice.</span>
+            <span className="text-sm">Entiendo que esta solicitud aplicará cambios sobre la lista {nombreNivel(nivel)} para el grupo seleccionado cuando un aprobador la autorice.</span>
           </label>
         </div>
       )}
@@ -398,10 +435,10 @@ export default function NuevaSolicitud({
       {esDescuento && modalidad === "excel" && (
         <div className="space-y-4 mb-4">
           <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
-            <p className="text-xs text-zinc-600">El usuario ingresa el Factor Multiplicador directo (0.95 = -5%, 1.10 = +10%). La columna "Tipo de Variación" ya no existe.</p>
-            <a href="/api/plantilla" className="btn btn-outline"><Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla</a>
+            <p className="text-xs text-zinc-600">Use las columnas Lista de Precio, Código Artículo y Factor Multiplicador.</p>
+            <a href="/api/plantilla?proceso=DESCUENTO_LISTA_PRECIO" className="btn btn-outline"><Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla</a>
           </div>
-          <ExcelUploader disabled={readOnly} procesoKey={tab} onParsed={handleArchivoParsed} onError={setErrorCarga} />
+          <ExcelUploader disabled={readOnly} procesoKey={tab} compania={compania} nivelPrecio={nivel} onParsed={handleArchivoParsed} onError={setErrorCarga} />
           {errorCarga && <p className="text-[11px] text-red-600">{errorCarga}</p>}
           {conteoErrores > 0 && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">La carga contiene {conteoErrores} fila(s) inválida(s). Corrija y cargue nuevamente.</div>
@@ -417,10 +454,9 @@ export default function NuevaSolicitud({
             <p className="text-xs mt-1 text-indigo-800">Cargue por artículo el <b>Porcentaje de Reducción</b> (ej. <b>10 = 10%</b>). El aplicativo normaliza a <b>0.10</b>, aplica el multiplicador <b>0.90</b> y persiste el Margen Mínimo en <span className="mono">ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN</span> al aprobar.</p>
           </div>
           <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
-            <p className="text-xs text-zinc-600">Columnas <b>Codigo Articulo</b> y <b>Porcentaje Reduccion</b>. Las plantillas con <b>Factor Reduccion</b> se rechazan.</p>
             <a href="/api/plantilla" className="btn btn-outline"><Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla</a>
           </div>
-          <ExcelUploader disabled={readOnly} procesoKey={tab} onParsed={handleArchivoParsed} onError={setErrorCarga} />
+          <ExcelUploader disabled={readOnly} procesoKey={tab} compania={compania} nivelPrecio={nivel} onParsed={handleArchivoParsed} onError={setErrorCarga} />
           {errorCarga && <p className="text-[11px] text-red-600">{errorCarga}</p>}
           {conteoErrores > 0 && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">La carga contiene {conteoErrores} fila(s) inválida(s). Corrija los porcentajes y cargue nuevamente.</div>
@@ -443,7 +479,7 @@ export default function NuevaSolicitud({
         <div className="mt-6 pt-5 border-t border-zinc-100">
           <div className="flex items-center gap-2 mb-2">
             <Icon name="search" className="w-4 h-4 text-zinc-500" />
-            <h3 className="text-sm font-semibold">🔍 Previsualización de Impacto (Muestra Representativa / Diff)</h3>
+            <h3 className="text-sm font-semibold">Resultado de la simulación</h3>
           </div>
           <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-xs text-green-800 mb-3 flex items-center gap-2">
             <Icon name="check" className="w-3.5 h-3.5" /> Simulación completada. Revise los valores resultantes antes de continuar.

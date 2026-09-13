@@ -1,5 +1,5 @@
 import "server-only";
-import type { Articulo } from "@/lib/types";
+import type { Articulo, NivelPrecio } from "@/lib/types";
 
 /**
  * Catalogo en memoria por compania para DEMO_MODE. Permite ejecutar el portal
@@ -45,4 +45,16 @@ export function upsertUdfDemo(compania: string, codigo: string, porcentaje: numb
   const clave = compania.toUpperCase();
   if (!EXCEPCIONES_UDF[clave]) EXCEPCIONES_UDF[clave] = {};
   EXCEPCIONES_UDF[clave][codigo.trim().toUpperCase()] = porcentaje;
+}
+
+const NIVELES_DEMO: NivelPrecio[] = [
+  { codigo: "MAYOREOB", nombre: "MAYOREOB" },
+  { codigo: "LPARAGUA", nombre: "LPARAGUA" },
+  { codigo: "GRUPOPICO", nombre: "GRUPOPICO" },
+  { codigo: "LARAB", nombre: "LARAB" },
+  { codigo: "MAYOREOD", nombre: "MAYOREOD" },
+];
+
+export function nivelesPrecioDemo(_compania: string): NivelPrecio[] {
+  return NIVELES_DEMO.map((nivel) => ({ ...nivel }));
 }

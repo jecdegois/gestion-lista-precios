@@ -1,34 +1,19 @@
-/** Datos maestros del dominio, portados literalmente del mockup MV26020. */
+/** Datos maestros de la aplicación, portados literalmente del mockup MV26020. */
 
 import type { ArticuloCatalogo, Identidad, ProcesoDef, ProcesoKey } from "./domain-types";
 
-export const DOMINIO_A_COMPANIA_S2SS: Record<string, string> = {
-  "sillaca.com": "SILLACA",
-  "beval.com": "BEVAL",
-  "febeca.com": "FEBECA",
-  "cofersa.com": "COFERSA",
-};
-
-export function resolverCompaniaPorCorreo(email: string): string | null {
-  const dominio = String(email || "").split("@")[1] || "";
-  return DOMINIO_A_COMPANIA_S2SS[dominio.toLowerCase()] || null;
-}
-
-const IDENTIDADES_BASE: Omit<Identidad, "compania">[] = [
-  { email: "jperez@sillaca.com", nombre: "Juan Pérez", rol: "OPERADOR", color: "#2563eb" },
-  { email: "mrodriguez@sillaca.com", nombre: "María Rodríguez", rol: "APROBADOR", color: "#7c3aed" },
-  { email: "palvarado@beval.com", nombre: "Pedro Alvarado", rol: "OPERADOR", color: "#0d9488" },
-  { email: "ljimenez@febeca.com", nombre: "Lucía Jiménez", rol: "APROBADOR", color: "#ea580c" },
-  { email: "rmoreno@febeca.com", nombre: "Ricardo Moreno", rol: "OPERADOR", color: "#f59e0b" },
-  { email: "dvargas@cofersa.com", nombre: "Diego Vargas", rol: "OPERADOR", color: "#b45309" },
-  { email: "acastro@cofersa.com", nombre: "Ana Castro", rol: "APROBADOR", color: "#9333ea" },
-  { email: "cgomez@sinmapeo.com", nombre: "Carlos Gómez", rol: "SIN_PERMISO", color: "#71717a" },
+// La compañía es una asignación explícita de autorización; nunca se infiere
+// desde el dominio de correo, porque un mismo dominio puede cubrir varias compañías.
+export const IDENTIDADES: Identidad[] = [
+  { email: "jperez@sillaca.com", nombre: "Juan Pérez", rol: "OPERADOR", color: "#2563eb", compania: "SILLACA" },
+  { email: "mrodriguez@sillaca.com", nombre: "María Rodríguez", rol: "APROBADOR", color: "#7c3aed", compania: "SILLACA" },
+  { email: "palvarado@beval.com", nombre: "Pedro Alvarado", rol: "OPERADOR", color: "#0d9488", compania: "BEVAL" },
+  { email: "ljimenez@febeca.com", nombre: "Lucía Jiménez", rol: "APROBADOR", color: "#ea580c", compania: "FEBECA" },
+  { email: "rmoreno@febeca.com", nombre: "Ricardo Moreno", rol: "OPERADOR", color: "#f59e0b", compania: "FEBECA" },
+  { email: "dvargas@cofersa.com", nombre: "Diego Vargas", rol: "OPERADOR", color: "#b45309", compania: "COFERSA" },
+  { email: "acastro@cofersa.com", nombre: "Ana Castro", rol: "APROBADOR", color: "#9333ea", compania: "COFERSA" },
+  { email: "cgomez@sinmapeo.com", nombre: "Carlos Gómez", rol: "SIN_PERMISO", color: "#71717a", compania: null },
 ];
-
-export const IDENTIDADES: Identidad[] = IDENTIDADES_BASE.map((i) => ({
-  ...i,
-  compania: resolverCompaniaPorCorreo(i.email),
-}));
 
 export function buscarIdentidad(email: string): Identidad | undefined {
   return IDENTIDADES.find((i) => i.email === email);
@@ -53,27 +38,6 @@ export const NOMBRES_LISTA: Record<string, string> = (() => {
   for (let i = 1; i <= 18; i++) m[`lpv${i}`] = `LPV${i}`;
   return m;
 })();
-
-export const ARTICULOS_POR_LISTA: Record<string, string[]> = {
-  mayoreod: ["ART-231", "ART-455", "ART-120", "ART-344"],
-  mayoreob: ["ART-231", "ART-089", "ART-120", "ART-104"],
-  lparagua: ["ART-231", "ART-455", "ART-344", "ART-104"],
-  grupopico: ["ART-089", "ART-120", "ART-344"],
-  larab: ["ART-231", "ART-455", "ART-104"],
-  lpv1: ["ART-231", "ART-455"], lpv2: ["ART-089", "ART-120"], lpv3: ["ART-344", "ART-104"],
-  lpv4: ["ART-231", "ART-089"], lpv5: ["ART-455", "ART-120"], lpv6: ["ART-344", "ART-104"],
-  lpv7: ["ART-231", "ART-120"], lpv8: ["ART-455", "ART-344"], lpv9: ["ART-089", "ART-104"],
-  lpv10: ["ART-231", "ART-344"], lpv11: ["ART-455", "ART-104"], lpv12: ["ART-089", "ART-120"],
-  lpv13: ["ART-231", "ART-104"], lpv14: ["ART-455", "ART-089"], lpv15: ["ART-120", "ART-344"],
-  lpv16: ["ART-231", "ART-455"], lpv17: ["ART-089", "ART-120"], lpv18: ["ART-344", "ART-104"],
-};
-
-export const LISTAS_POR_COMPANIA: Record<string, string[]> = {
-  SILLACA: LISTAS_FIJAS,
-  BEVAL: LISTAS_FIJAS,
-  FEBECA: LISTAS_FIJAS,
-  COFERSA: Array.from({ length: 18 }, (_, i) => `lpv${i + 1}`),
-};
 
 export const GRUPOS_ARTICULOS: Record<string, { label: string; articulos: string[] }> = {
   linea_blanca: { label: "Línea Blanca", articulos: ["ART-231", "ART-455", "ART-104"] },
@@ -129,10 +93,14 @@ export function estaEnAmbito(
   compania: string | null | undefined,
   companiaSolicitud: string | null | undefined,
   listaCodigo: string | null | undefined,
+  nivelesAutorizados?: readonly string[],
 ): boolean {
   if (!compania) return false;
   if (companiaSolicitud && companiaSolicitud !== compania) return false;
-  if (listaCodigo && (LISTAS_POR_COMPANIA[compania] || []).indexOf(listaCodigo) === -1) return false;
+  // La lista maestra no se resuelve con datos fijos del frontend. La acción
+  // server-side valida el código contra NIVEL_PRECIO y, si aplica, contra el
+  // ámbito persistido del usuario.
+  if (listaCodigo && nivelesAutorizados && !nivelesAutorizados.includes(listaCodigo)) return false;
   return true;
 }
 

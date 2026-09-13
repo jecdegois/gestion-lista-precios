@@ -1,9 +1,10 @@
 import "server-only";
-import type { Articulo } from "@/lib/types";
+import type { Articulo, NivelPrecio } from "@/lib/types";
 import { esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "./companies";
 import {
   buscarArticuloDemo,
   catalogoDemo,
+  nivelesPrecioDemo,
   porcentajeUdfDemo,
   upsertUdfDemo,
 } from "./demo-catalog";
@@ -23,24 +24,69 @@ export interface ResultadoSpMargen {
   origenFactor: "EXCEPCION_UDF" | "DEFAULT_10PCT";
 }
 
-export async function listarCatalogo(compania: string): Promise<Articulo[]> {
+export async function listarNivelesPrecio(compania: string): Promise<NivelPrecio[]> {
+  if (esModoDemo()) return nivelesPrecioDemo(compania);
+
+  const pool = await getPool(compania);
+  const tabla = objetoCalificado(compania, "tablaNivelPrecio");
+  const q = await pool.request().query(
+    `SELECT DISTINCT NP.NIVEL_PRECIO AS codigo
+       FROM ${tabla} NP
+      WHERE NP.NIVEL_PRECIO IS NOT NULL
+      ORDER BY NP.NIVEL_PRECIO`,
+  );
+  return q.recordset.map((r: Record<string, unknown>) => {
+    const codigo = String(r.codigo).trim();
+    return { codigo, nombre: codigo };
+  });
+}
+
+export async function listarCatalogo(compania: string, nivelPrecio?: string): Promise<Articulo[]> {
   if (esModoDemo()) return catalogoDemo(compania);
 
   const pool = await getPool(compania);
   const ap = objetoCalificado(compania, "tablaArticuloPrecio");
   const art = objetoCalificado(compania, "tablaArticulo");
-  const q = await pool.request().query(
-    `SELECT TOP (500) AP.ARTICULO AS codigo, A.DESCRIPCION AS descripcion,
-            CAST(AP.PRECIO AS FLOAT) AS precioLista,
-            CAST(A.COSTO_PROM_DOL AS FLOAT) AS costoPromedio
-       FROM ${ap} AP
-       INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO`,
+  const mssql = await import("mssql");
+  const request = pool.request();
+  let filtroNivel = "";
+  if (nivelPrecio?.trim()) {
+    request.input("nivelPrecio", mssql.VarChar(50), nivelPrecio.trim());
+    filtroNivel = "WHERE AP.NIVEL_PRECIO = @nivelPrecio";
+  }
+  const q = await request.query(
+    `WITH PRECIOS AS
+     (
+       SELECT AP.ARTICULO AS codigo,
+              A.DESCRIPCION AS descripcion,
+              CAST(AP.PRECIO AS FLOAT) AS precioLista,
+              CAST(A.COSTO_PROM_DOL AS FLOAT) AS costoPromedio,
+              AP.NIVEL_PRECIO AS nivelPrecio,
+              AP.VERSION AS version,
+              A.CATEGORIA AS categoria,
+              A.LINEA AS linea,
+              A.PROVEEDOR AS proveedor,
+              ROW_NUMBER() OVER (PARTITION BY AP.ARTICULO ORDER BY AP.VERSION DESC) AS rn
+         FROM ${ap} AP
+         INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
+         ${filtroNivel}
+     )
+     SELECT codigo, descripcion, precioLista, costoPromedio, nivelPrecio, version,
+            categoria, linea, proveedor
+       FROM PRECIOS
+      WHERE rn = 1
+      ORDER BY codigo`,
   );
   return q.recordset.map((r: Record<string, unknown>) => ({
     codigo: String(r.codigo),
     descripcion: String(r.descripcion ?? ""),
     precioLista: Number(r.precioLista ?? 0),
     costoPromedio: Number(r.costoPromedio ?? 0),
+    nivelPrecio: r.nivelPrecio == null ? undefined : String(r.nivelPrecio),
+    version: r.version == null ? undefined : Number(r.version),
+    categoria: r.categoria == null ? undefined : String(r.categoria),
+    linea: r.linea == null ? undefined : String(r.linea),
+    proveedor: r.proveedor == null ? undefined : String(r.proveedor),
   }));
 }
 

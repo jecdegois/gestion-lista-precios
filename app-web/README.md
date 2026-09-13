@@ -73,9 +73,9 @@ En `DEMO_MODE=true` todo se simula en memoria con un retardo perceptible, sin co
 
 ### Arquitectura de dos esquemas
 
-La persistencia se divide en dos esquemas con responsabilidades independientes (DDL en `backend/sql/PORTAL_PRECIOS_Y_OPERACION.sql`):
+La persistencia se divide en dos esquemas con responsabilidades independientes. DDL vigente en `backend/sql/portal/01_esquema_y_catalogos.sql` → `02_usuarios_y_ambitos.sql` → `03_solicitudes.sql` → `04_aprobaciones_y_ejecucion.sql` (ejecutar en ese orden; `backend/sql/PORTAL_PRECIOS_Y_OPERACION.sql` quedó obsoleto y solo se conserva como referencia histórica):
 
-- **`[PORTAL_PRECIOS]`** — exclusivo de la app web (multiempresa, un solo destino). Tablas: `USUARIO`, `USUARIO_ROL_COMPANIA`, `SOLICITUD_PRECIO`, `SOLICITUD_PRECIO_DETALLE`, `AUDITORIA_EVENTOS` (+ `SEQ_SOLICITUD`). Guarda borradores, solicitudes, staging de líneas, estado maker-checker y auditoría. **No toca Softland.** Se configura con `PORTAL_SCHEMA` y `PORTAL_DB_*`.
+- **`[PORTAL_PRECIOS]`** — exclusivo de la app web (multiempresa, un solo destino). Tablas: `COMPANIA`, `LISTA_PRECIO`, `USUARIO`, `USUARIO_AMBITO`, `SOLICITUD_PRECIO`, `SOLICITUD_PRECIO_DETALLE`, `AUDITORIA_EVENTOS` (+ `SEQ_SOLICITUD`). Guarda borradores, solicitudes, staging de líneas, estado maker-checker, decisión de aprobación y auditoría. **No toca Softland.** Se configura con `PORTAL_SCHEMA` y `PORTAL_DB_*`.
 - **`[{ESQUEMA_EMPRESA}]`** (COFER, EMP1, EMP2…) — operativo por empresa. Tablas/objetos: `U_FACTOR_REDUCCION_MARGEN`, `V_ARTICULO_PRECIO_COSTO`, `SP_CALCULAR_MARGEN_MINIMO_ARTICULO` y lectura de `ARTICULO_PRECIO`. **Solo se toca al aprobar.**
 
 Ruteo: las consultas de solicitudes/detalle/auditoría apuntan siempre a `[PORTAL_PRECIOS]`; el esquema de empresa se sustituye dinámicamente según la compañía activa. El DDL es parametrizable por SQLCMD (`DB_PORTAL`, `DB_EMPRESA`, `ESQUEMA_EMPRESA`); la sección del portal se ejecuta una vez y la de empresa se repite por compañía.

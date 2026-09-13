@@ -4,7 +4,7 @@ import { useState } from "react";
 import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
 import { TablaResultado } from "./Tablas";
-import { PROCESOS, LISTA_BASE_OBJETIVO } from "@/lib/catalog";
+import { PROCESOS } from "@/lib/catalog";
 import { textoResultadoAuditoria } from "@/lib/events";
 import type { Identidad, Solicitud } from "@/lib/domain-types";
 
@@ -60,6 +60,10 @@ export default function RevisionModal({
   const enProceso = solicitud.estado === "EN_PROCESO";
   const resultado = solicitud.resultado;
   const esActualizacionListaBase = solicitud.proceso === "MAYOREOD_MASIVO";
+  const nivelListaBase = solicitud.parametros.nivelPrecio
+    ?? solicitud.parametros.listaBase
+    ?? solicitud.parametros.nivel
+    ?? "—";
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -90,7 +94,7 @@ export default function RevisionModal({
 
         {esActualizacionListaBase && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-xs text-red-800 mb-4">
-            Impacto directo sobre la Lista Base {LISTA_BASE_OBJETIVO.nombre} / {LISTA_BASE_OBJETIVO.nivelPrecio}.
+            Impacto directo sobre la lista maestra {nivelListaBase}.
           </div>
         )}
 

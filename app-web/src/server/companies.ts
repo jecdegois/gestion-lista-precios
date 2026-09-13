@@ -21,7 +21,8 @@ export interface SqlObjetos {
   spGestionListas: string;
   // Tabla/UDF de excepciones de factor de reduccion.
   udfFactorReduccion: string;
-  // Tablas base para lecturas de catalogo.
+  // Tablas maestras de Softland para listas y artículos.
+  tablaNivelPrecio: string;
   tablaArticuloPrecio: string;
   tablaArticulo: string;
   // Columnas de la UDF (por si difieren entre companias).
@@ -67,6 +68,7 @@ function defaultsSql(): SqlObjetos {
     spMargen: "SP_CALCULAR_MARGEN_MINIMO_ARTICULO",
     spGestionListas: "SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO",
     udfFactorReduccion: "U_FACTOR_REDUCCION_MARGEN",
+    tablaNivelPrecio: "NIVEL_PRECIO",
     tablaArticuloPrecio: "ARTICULO_PRECIO",
     tablaArticulo: "ARTICULO",
     colUdfCodigo: "U_CODIGO",

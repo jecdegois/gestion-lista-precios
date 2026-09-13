@@ -18,7 +18,7 @@ function seedSolicitudes(): Solicitud[] {
     { fila: 2, codigo: "ART-455", tipoVariacion: "AUMENTO" as const, valorPropuestoRaw: "1.10", variacionPorcentaje: 10 },
   ].map((r) => construirFilaCompleta(r, "factor"));
 
-  const filasMayoreod = construirFilasMayoreodMasivo("linea_blanca", "1.10", "AUMENTO", 10);
+  const filasMayoreod = construirFilasMayoreodMasivo("linea_blanca", "AUMENTO", 10);
 
   const filasDescuentoMasivo = [
     { fila: 1, listaCodigo: "mayoreob", codigo: "ART-231", tipoVariacion: "AUMENTO" as const, variacionPorcentaje: 10 },

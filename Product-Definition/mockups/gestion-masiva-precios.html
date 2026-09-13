@@ -2342,10 +2342,6 @@ function NuevaSolicitud({ readOnly, currentUser, onSubmit }) {
             <p className="text-xs mt-1 text-indigo-800">Cargue por artículo el <b>Porcentaje de Reducción</b> (ej. <b>10 = 10%</b>). El aplicativo lo normaliza a <b>0.10</b> y aplica el multiplicador <b>0.90</b> sobre el margen promedio. El <b>Margen Mínimo de Utilidad</b> resultante se persiste en <span className="mono">ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN</span>. Los artículos sin fila usan el 10% general por defecto.</p>
           </div>
           <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
-            <p className="text-xs text-zinc-600 flex items-center gap-1.5">
-              <Icon name="fileSpreadsheet" className="w-3.5 h-3.5 text-zinc-400" />
-              Descargue la plantilla con las columnas <b>Codigo Articulo</b> y <b>Porcentaje Reduccion</b>. Ingrese valores desde <b>0</b> hasta antes de <b>100</b> (ej. 10, 20 o 10.5). Las plantillas anteriores con <b>Factor Reduccion</b> no son compatibles.
-            </p>
             <button type="button" className="btn btn-outline" onClick={function () { descargarPlantillaExcel(tab); }}>
               <Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla ({PROCESOS[tab].label})
             </button>

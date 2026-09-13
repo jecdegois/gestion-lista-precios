@@ -143,7 +143,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (i: Identidad) => vo
 
         <div className="mt-6 text-center space-y-1">
           <p className="text-zinc-500 text-xs">
-            🔐 Cada usuario pertenece a una única compañía, resuelta automáticamente por su dominio de correo
+            🔐 La compañía se asigna explícitamente según los permisos de cada usuario
           </p>
         </div>
 

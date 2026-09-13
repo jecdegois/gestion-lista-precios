@@ -57,7 +57,7 @@ export async function getPortalPool(): Promise<MssqlConnectionPool> {
   const mssql = await import("mssql");
   const pool = new mssql.ConnectionPool({
     server: process.env.PORTAL_DB_SERVER ?? "localhost",
-    database: process.env.PORTAL_DB_NAME ?? "SOFTLANDPRD",
+    database: process.env.PORTAL_DB_NAME ?? "SOFTLANDQA",
     user: process.env.PORTAL_DB_USER ?? "app_user",
     password: process.env.PORTAL_DB_PASSWORD ?? "",
     port: Number(process.env.SQL_PORT ?? 1433),

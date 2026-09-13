@@ -6,6 +6,17 @@ export interface Articulo {
   descripcion: string;
   precioLista: number;
   costoPromedio: number;
+  nivelPrecio?: string;
+  version?: number;
+  categoria?: string;
+  linea?: string;
+  proveedor?: string;
+}
+
+/** Nivel/lista de precio maestro de Softland. */
+export interface NivelPrecio {
+  codigo: string;
+  nombre: string;
 }
 
 /** Resultado de evaluar una fila de la carga masiva de margen. */

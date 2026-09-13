@@ -393,3 +393,56 @@ essa es la tabla udf asi se llama y todo"
 **Context**: Construcción — Implementación de UDF real y arquitectura multiempresa
 
 ---
+## Continuidad y corrección de maestros Softland
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "[SYSTEM NOTE: context compacted - resume from the summary and recent messages above.]"
+**AI Response**: "Se retomó la integración de maestros Softland por compañía, se corrigieron los errores de TypeScript, se reforzó la validación server-side de niveles y artículos, y se verificó el build y el servidor local."
+**Context**: Construcción - Continuidad de trabajo sobre consultas por esquema de compañía.
+
+---
+
+## Corrección de consultas y vistas por compañía
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "Continuar la tarea pendiente de obtener listas desde NIVEL_PRECIO y artículos/precios desde ARTICULO y ARTICULO_PRECIO por esquema de compañía, eliminando catálogos fijos como fuente productiva."
+**AI Response**: "Se corrigió la inferencia de tipos en actions.ts y la desestructuración de props en ExcelUploader.tsx. Se normalizaron niveles contra NIVEL_PRECIO antes de consultar ARTICULO_PRECIO y ARTICULO; se validaron niveles y códigos de artículo al simular y enviar solicitudes; se actualizó la ejecución para usar el nivel seleccionado; y RevisionModal dejó de mostrar una lista fija."
+**Context**: Construcción - Código y validación de la unidad de integración de maestros.
+
+---
+
+## Validación de compilación y smoke test
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "Validar compilación y revisar que las vistas consulten correctamente por compañía/nivel."
+**AI Response**: "next build terminó correctamente con compilación optimizada, linting y verificación de tipos, generación de páginas y rutas. El servidor de desarrollo fue reiniciado después del build y responde HTTP 200 en http://localhost:3000. No se ejecutaron consultas contra una base Softland real."
+**Context**: Construcción - Build, validación de tipos y smoke test local.
+
+---
+## Retiro de autorización basada en listas fijas
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "Eliminar referencias restantes que pudieran usar catálogos fijos como fuente productiva."
+**AI Response**: "Se eliminó el mapa fijo de artículos por lista y el mapa fijo de listas por compañía. `estaEnAmbito` ya no valida contra esos catálogos; la validación de listas se realiza contra los niveles obtenidos de Softland en las acciones server-side. El catálogo mock permanece únicamente como fallback del motor y DEMO_MODE."
+**Context**: Construcción - Corrección final de fuentes maestras y autorización.
+
+---
+
+## Validación posterior al ajuste final
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "Verificar que el ajuste final no rompa la aplicación."
+**AI Response**: "El segundo `next build` terminó correctamente con compilación, verificación de tipos, generación de páginas y rutas. Se reinició el servidor de desarrollo y el smoke test local respondió HTTP 200 en http://localhost:3000."
+**Context**: Construcción - Validación final.
+
+---
+## Corrección de leyenda en carga de márgenes
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "Quita de la carga de margenes Codigo Articulo y Porcentaje Reduccion. Ingrese valores desde 0 hasta antes de 100 (ej. 10, 20 o 10.5). Las plantillas anteriores con Factor Reduccion no son compatibles. corrige"
+**AI Response**: "Se retiró únicamente la leyenda visible de la carga de márgenes en la aplicación Next y en el mockup. Se conservaron los encabezados de la plantilla y sus validaciones porque siguen siendo necesarios para procesar el archivo."
+**Context**: Construcción - Ajuste de presentación de carga masiva de márgenes.
+
+---
+
+## Validación de la corrección de márgenes
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "Validar que no queden las leyendas y ejecutar build o typecheck."
+**AI Response**: "La búsqueda de la leyenda no encontró coincidencias en las interfaces afectadas. `next build` terminó correctamente con compilación, verificación de tipos, generación de páginas y rutas."
+**Context**: Construcción - Validación final.
+
+---

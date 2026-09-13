@@ -1,27 +1,24 @@
 import * as XLSX from "xlsx";
 
-/**
- * Genera y descarga la plantilla oficial de carga masiva de margen con los
- * encabezados vigentes: "Codigo Articulo" y "Porcentaje Reduccion" (10 = 10%).
- * No incluye la columna legada "Factor Reduccion".
- */
-export async function GET() {
-  const encabezado = ["Codigo Articulo", "Porcentaje Reduccion"];
-  const ejemplos = [
-    ["ART-231", 10],
-    ["ART-455", 15],
-  ];
-  const sheet = XLSX.utils.aoa_to_sheet([encabezado, ...ejemplos]);
-  sheet["!cols"] = [{ wch: 18 }, { wch: 24 }];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, sheet, "Plantilla");
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+export async function GET(request: Request) {
+  const proceso = new URL(request.url).searchParams.get("proceso");
+  const esDescuento = proceso === "DESCUENTO_LISTA_PRECIO";
+  const encabezado = esDescuento
+    ? ["Lista de Precio", "Codigo Articulo", "Factor Multiplicador"]
+    : ["Codigo Articulo", "Porcentaje Reduccion"];
+  const anchos = esDescuento ? [{ wch: 22 }, { wch: 18 }, { wch: 24 }] : [{ wch: 18 }, { wch: 24 }];
+  const nombreArchivo = esDescuento ? "plantilla-descuento-lista-precio.xlsx" : "plantilla-margen-utilidad.xlsx";
+  const sheet = XLSX.utils.aoa_to_sheet([encabezado]);
+  sheet["!cols"] = anchos;
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Plantilla");
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
-  return new Response(new Uint8Array(buf), {
+  return new Response(new Uint8Array(buffer), {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="plantilla-margen-utilidad.xlsx"',
+      "Content-Disposition": `attachment; filename="${nombreArchivo}"`,
     },
   });
 }

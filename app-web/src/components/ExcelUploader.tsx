@@ -8,11 +8,15 @@ import type { FilaResultado, ProcesoKey } from "@/lib/domain-types";
 export default function ExcelUploader({
   disabled,
   procesoKey,
+  compania,
+  nivelPrecio,
   onParsed,
   onError,
 }: {
   disabled?: boolean;
   procesoKey: ProcesoKey;
+  compania: string;
+  nivelPrecio?: string;
   onParsed: (filas: FilaResultado[], nombre: string, s3Key: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -31,6 +35,8 @@ export default function ExcelUploader({
     setFileName(file.name);
     const fd = new FormData();
     fd.append("proceso", procesoKey);
+    fd.append("compania", compania);
+    if (nivelPrecio) fd.append("nivelPrecio", nivelPrecio);
     fd.append("archivo", file);
     try {
       const res = await parsearExcel(fd);

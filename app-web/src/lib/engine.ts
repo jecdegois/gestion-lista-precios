@@ -5,7 +5,6 @@ import {
   CATALOGO_ARTICULOS,
   NOMBRES_LISTA,
   GRUPOS_ARTICULOS,
-  ARTICULOS_POR_LISTA,
   LISTA_BASE_OBJETIVO,
   calcularCostoMinimoArticulo,
 } from "./catalog";
@@ -16,8 +15,23 @@ import type {
   TipoVariacion,
   ValidacionMargen,
   ValidacionPrecio,
+  ArticuloCatalogo,
 } from "./domain-types";
 import { fmtMonto } from "./format";
+
+export interface CatalogoContext {
+  articulos: Record<string, ArticuloCatalogo>;
+  nombresLista: Record<string, string>;
+  grupos: Record<string, { label: string; articulos: string[] }>;
+  listaBase: { codigo: string; nombre: string; nivelPrecio: string };
+}
+
+const CATALOGO_POR_DEFECTO: CatalogoContext = {
+  articulos: CATALOGO_ARTICULOS,
+  nombresLista: NOMBRES_LISTA,
+  grupos: GRUPOS_ARTICULOS,
+  listaBase: LISTA_BASE_OBJETIVO,
+};
 
 function round2(x: number): number {
   return Math.round(x * 100) / 100;
@@ -105,8 +119,8 @@ export interface FilaInput {
   grupoArticulo?: string;
 }
 
-export function validarFila(row: FilaInput, modo: ModoProceso): ValidacionPrecio {
-  const articulo = CATALOGO_ARTICULOS[row.codigo];
+export function validarFila(row: FilaInput, modo: ModoProceso, context: CatalogoContext = CATALOGO_POR_DEFECTO): ValidacionPrecio {
+  const articulo = context.articulos[row.codigo];
   const base: ValidacionPrecio = {
     valido: false,
     precioActual: null,
@@ -173,8 +187,8 @@ export function validarFila(row: FilaInput, modo: ModoProceso): ValidacionPrecio
   };
 }
 
-export function construirFilaCompleta(row: FilaInput, modo: ModoProceso): FilaPrecio {
-  const articulo = CATALOGO_ARTICULOS[row.codigo];
+export function construirFilaCompleta(row: FilaInput, modo: ModoProceso, context: CatalogoContext = CATALOGO_POR_DEFECTO): FilaPrecio {
+  const articulo = context.articulos[row.codigo];
   return {
     fila: row.fila ?? 0,
     codigo: row.codigo,
@@ -184,32 +198,38 @@ export function construirFilaCompleta(row: FilaInput, modo: ModoProceso): FilaPr
     variacionPorcentaje: row.variacionPorcentaje,
     valorPropuestoRaw: row.valorPropuestoRaw,
     grupoArticulo: row.grupoArticulo,
-    validacion: validarFila(row, modo),
+    validacion: validarFila(row, modo, context),
   };
 }
 
-export function construirFilaDesdeVariacion(row: FilaInput, modo: ModoProceso): FilaPrecio {
-  if (modo !== "factor") return construirFilaCompleta(row, modo);
+export function construirFilaDesdeVariacion(row: FilaInput, modo: ModoProceso, context: CatalogoContext = CATALOGO_POR_DEFECTO): FilaPrecio {
+  if (modo !== "factor") return construirFilaCompleta(row, modo, context);
   const conversion = calcularVariacion(row.tipoVariacion, row.variacionPorcentaje);
   const rowConFactor: FilaInput = { ...row, valorPropuestoRaw: textoFactorCalculado(conversion.factor) };
-  const fila = construirFilaCompleta(rowConFactor, modo);
-  const articulo = CATALOGO_ARTICULOS[row.codigo];
+  const fila = construirFilaCompleta(rowConFactor, modo, context);
+  const articulo = context.articulos[row.codigo];
   if (!conversion.valido && articulo) {
     fila.validacion = { ...fila.validacion, valido: false, causa: conversion.causa };
   }
   return fila;
 }
 
-export function codigoListaDesdeArchivo(valor: unknown): string | undefined {
+export function codigoListaDesdeArchivo(valor: unknown, nombresLista: Record<string, string> = NOMBRES_LISTA): string | undefined {
   const crudo = String(valor ?? "").trim().toLowerCase();
-  return Object.keys(NOMBRES_LISTA).find(
-    (codigo) => codigo === crudo || NOMBRES_LISTA[codigo].toLowerCase() === crudo,
+  return Object.keys(nombresLista).find(
+    (codigo) => codigo.toLowerCase() === crudo || nombresLista[codigo].toLowerCase() === crudo,
   );
 }
 
-export function construirFilaDescuentoMasivo(row: FilaInput, factorDirecto?: boolean): FilaPrecio {
-  const fila = factorDirecto ? construirFilaCompleta(row, "factor") : construirFilaDesdeVariacion(row, "factor");
-  const listaCodigo = codigoListaDesdeArchivo(row.listaCodigo);
+export function construirFilaDescuentoMasivo(
+  row: FilaInput,
+  factorDirecto?: boolean,
+  context: CatalogoContext = CATALOGO_POR_DEFECTO,
+): FilaPrecio {
+  const fila = factorDirecto
+    ? construirFilaCompleta(row, "factor", context)
+    : construirFilaDesdeVariacion(row, "factor", context);
+  const listaCodigo = codigoListaDesdeArchivo(row.listaCodigo, context.nombresLista);
   if (!listaCodigo) {
     return {
       ...fila,
@@ -218,11 +238,11 @@ export function construirFilaDescuentoMasivo(row: FilaInput, factorDirecto?: boo
       validacion: { ...fila.validacion, valido: false, causa: "La lista de precio no existe o no tiene un formato válido en la plantilla." },
     };
   }
-  return { ...fila, listaCodigo, lista: NOMBRES_LISTA[listaCodigo] };
+  return { ...fila, listaCodigo, lista: context.nombresLista[listaCodigo] || listaCodigo };
 }
 
-export function construirFilaMargenMasivo(row: FilaInput): FilaMargen {
-  const articulo = CATALOGO_ARTICULOS[row.codigo];
+export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoContext = CATALOGO_POR_DEFECTO): FilaMargen {
+  const articulo = context.articulos[row.codigo];
   const crudo = String(row.porcentajeReduccionRaw ?? "").trim().replace(",", ".");
   const porcentaje = Number.parseFloat(crudo);
   const formatoValido = crudo !== "" && !Number.isNaN(porcentaje) && /^\d+(\.\d+)?$/.test(crudo);
@@ -318,33 +338,40 @@ export function construirFilaMargenMasivo(row: FilaInput): FilaMargen {
 
 export function construirFilasMayoreodMasivo(
   codigoGrupo: string,
-  factor: string,
   tipoVariacion: TipoVariacion,
   magnitud: number | string,
+  context: CatalogoContext = CATALOGO_POR_DEFECTO,
 ): FilaPrecio[] {
-  const grupo = GRUPOS_ARTICULOS[codigoGrupo];
-  const articulos = grupo ? grupo.articulos : [];
+  const grupo = context.grupos[codigoGrupo];
+  const articulos = grupo ? grupo.articulos : Object.keys(context.articulos);
   return articulos.map((codigo, idx) => {
-    const fila = construirFilaCompleta(
-      { fila: idx + 1, codigo, tipoVariacion, variacionPorcentaje: magnitud, valorPropuestoRaw: factor },
+    const fila = construirFilaDesdeVariacion(
+      { fila: idx + 1, codigo, tipoVariacion, variacionPorcentaje: magnitud },
       "factor",
+      context,
     );
-    return { ...fila, lista: `${LISTA_BASE_OBJETIVO.nombre} / ${LISTA_BASE_OBJETIVO.nivelPrecio}`, grupoArticulo: codigoGrupo };
+    return {
+      ...fila,
+      lista: `${context.listaBase.nombre} / ${context.listaBase.nivelPrecio}`,
+      listaCodigo: context.listaBase.codigo,
+      grupoArticulo: codigoGrupo,
+    };
   });
 }
 
 export function construirFilasGestionGlobal(
   listaCodigo: string,
-  factor: string,
   tipoVariacion: TipoVariacion,
   magnitud: number | string,
+  context: CatalogoContext = CATALOGO_POR_DEFECTO,
 ): FilaPrecio[] {
-  const codigos = ARTICULOS_POR_LISTA[listaCodigo] || Object.keys(CATALOGO_ARTICULOS);
-  const nombreLista = NOMBRES_LISTA[listaCodigo] || listaCodigo || "Lista seleccionada";
+  const codigos = Object.keys(context.articulos);
+  const nombreLista = context.nombresLista[listaCodigo] || listaCodigo || "Lista seleccionada";
   return codigos.map((codigo, idx) => {
-    const fila = construirFilaCompleta(
-      { fila: idx + 1, codigo, tipoVariacion, variacionPorcentaje: magnitud, valorPropuestoRaw: factor },
+    const fila = construirFilaDesdeVariacion(
+      { fila: idx + 1, codigo, tipoVariacion, variacionPorcentaje: magnitud },
       "factor",
+      context,
     );
     return { ...fila, listaCodigo, lista: nombreLista };
   });
