@@ -22,16 +22,16 @@
 # E-01 — Gestión global por lista
 
 ## HU-01 — Crear borrador de cambio global
-**Como** Solicitante, **quiero** seleccionar una lista dentro de mi ámbito y definir un factor multiplicador válido, **para** preparar un cambio global de precios sin afectar producción.
+**Como** Solicitante, **quiero** seleccionar una lista existente de mi compañía autorizada y definir un factor multiplicador válido, **para** preparar un cambio global de precios sin afectar producción.
 
 **Personas:** P-01  
 **Trazabilidad:** RF-02 a RF-05, RF-17, RNF-04 a RNF-06, RNF-10, RNF-12.
 
 ### Criterios de aceptación
-1. **Dado** un Solicitante autenticado, **cuando** abre el formulario global, **entonces** solo puede seleccionar compañías, listas y categorías incluidas en su ámbito autorizado.
+1. **Dado** un Solicitante autenticado con compañía y rol autorizados, **cuando** abre el formulario global, **entonces** puede consultar listas existentes de su compañía y la interfaz valida la lista contra los maestros Softland.
 2. **Dado** un factor ingresado, **cuando** es menor o igual a cero, **entonces** la interfaz impide guardar o simular y muestra un mensaje funcional.
 3. **Dado** un factor válido, **cuando** es igual a `1.00`, **entonces** se identifica que no genera variación de precio; **cuando** está entre cero y uno, se identifica como rebaja; y **cuando** es mayor que uno y menor o igual a dos, se identifica como aumento proporcional.
-4. **Dado** un intento de usar una lista fuera del ámbito del usuario, **cuando** la solicitud llega al backend, **entonces** el backend la rechaza aunque la interfaz haya sido manipulada.
+4. **Dado** un intento de usar una lista inexistente o no vigente en Softland, **cuando** la solicitud llega al backend, **entonces** el backend la rechaza aunque la interfaz haya sido manipulada.
 5. **Dado** un borrador válido, **cuando** se guarda, **entonces** queda en estado Borrador y conserva actor, fecha/hora, ámbito y parámetros funcionales.
 
 ## HU-02 — Simular impacto global obligatorio
@@ -109,7 +109,7 @@
 **Trazabilidad:** RF-02, RF-03, RF-13 a RF-16, RF-17, RNF-04 a RNF-06, RNF-10 a RNF-12.
 
 ### Criterios de aceptación
-1. **Dado** un Solicitante autenticado, **cuando** busca un artículo o SKU, **entonces** solo obtiene artículos y listas que pertenecen a sus ámbitos autorizados.
+1. **Dado** un Solicitante autenticado con compañía y rol autorizados, **cuando** busca un artículo o SKU, **entonces** obtiene artículos y listas disponibles en los maestros Softland de su compañía.
 2. **Dado** un artículo y lista válidos, **cuando** se ingresa un factor numérico, **entonces** se muestra en tiempo real `Precio Final = Precio Base × Factor` junto con artículo/SKU, precio base, factor y advertencias.
 3. **Dado** un factor no numérico, menor o igual a cero o fuera del rango resuelto por compañía, lista y categoría, **cuando** se valida, **entonces** se bloquea el envío y se explica el motivo funcional.
 4. **Dado** varias reglas de rango aplicables, **cuando** el backend resuelve la autorización, **entonces** aplica la precedencia de negocio configurada y devuelve a la interfaz el resultado permitido sin revelar reglas técnicas sensibles.

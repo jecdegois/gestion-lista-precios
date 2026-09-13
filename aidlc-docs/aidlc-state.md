@@ -4,7 +4,7 @@
 - **Proyecto:** MV26020 - Automatización de Listas de Precio
 - **Tipo de Proyecto:** Brownfield de mejora y homologación de procesos Softland existentes en Costa Rica, Venezuela y Colombia
 - **Fecha de Inicio:** 2026-08-13T00:00:00Z
-- **Etapa Actual:** CONSTRUCCIÓN - Normalización de carga porcentual de margen mínimo validada
+- **Etapa Actual:** CONSTRUCCIÓN - Modo real FEBECA blindado en solo lectura; pendiente de prueba manual del usuario con sus credenciales y SQL Server
 
 ## Estado del Workspace
 - **Código Existente:** Sí — mockup React/Babel, scripts SQL y componentes Python de referencia en el workspace.

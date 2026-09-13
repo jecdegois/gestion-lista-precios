@@ -1,6 +1,6 @@
 import "server-only";
 import type { Articulo, NivelPrecio } from "@/lib/types";
-import { esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "./companies";
+import { assertEscrituraHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "./companies";
 import {
   buscarArticuloDemo,
   catalogoDemo,
@@ -29,10 +29,17 @@ export async function listarNivelesPrecio(compania: string): Promise<NivelPrecio
 
   const pool = await getPool(compania);
   const tabla = objetoCalificado(compania, "tablaNivelPrecio");
+  const versiones = objetoCalificado(compania, "tablaVersionNivel");
   const q = await pool.request().query(
     `SELECT DISTINCT NP.NIVEL_PRECIO AS codigo
        FROM ${tabla} NP
       WHERE NP.NIVEL_PRECIO IS NOT NULL
+        AND EXISTS (
+              SELECT 1
+                FROM ${versiones} VN
+               WHERE VN.NIVEL_PRECIO = NP.NIVEL_PRECIO
+                 AND VN.ESTADO = 'A'
+        )
       ORDER BY NP.NIVEL_PRECIO`,
   );
   return q.recordset.map((r: Record<string, unknown>) => {
@@ -47,12 +54,13 @@ export async function listarCatalogo(compania: string, nivelPrecio?: string): Pr
   const pool = await getPool(compania);
   const ap = objetoCalificado(compania, "tablaArticuloPrecio");
   const art = objetoCalificado(compania, "tablaArticulo");
+  const versiones = objetoCalificado(compania, "tablaVersionNivel");
   const mssql = await import("mssql");
   const request = pool.request();
-  let filtroNivel = "";
+  let filtroNivel = "WHERE VN.ESTADO = 'A'";
   if (nivelPrecio?.trim()) {
     request.input("nivelPrecio", mssql.VarChar(50), nivelPrecio.trim());
-    filtroNivel = "WHERE AP.NIVEL_PRECIO = @nivelPrecio";
+    filtroNivel += " AND AP.NIVEL_PRECIO = @nivelPrecio";
   }
   const q = await request.query(
     `WITH PRECIOS AS
@@ -63,16 +71,21 @@ export async function listarCatalogo(compania: string, nivelPrecio?: string): Pr
               CAST(A.COSTO_PROM_DOL AS FLOAT) AS costoPromedio,
               AP.NIVEL_PRECIO AS nivelPrecio,
               AP.VERSION AS version,
-              A.CATEGORIA AS categoria,
-              A.LINEA AS linea,
-              A.PROVEEDOR AS proveedor,
+              A.CLASIFICACION_1 AS clasificacion1,
+              A.CLASIFICACION_2 AS clasificacion2,
+              A.CLASIFICACION_3 AS clasificacion3,
+              A.CLASIFICACION_4 AS clasificacion4,
+              A.CLASIFICACION_5 AS clasificacion5,
               ROW_NUMBER() OVER (PARTITION BY AP.ARTICULO ORDER BY AP.VERSION DESC) AS rn
          FROM ${ap} AP
          INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
+         INNER JOIN ${versiones} VN
+                 ON VN.NIVEL_PRECIO = AP.NIVEL_PRECIO
+                AND VN.VERSION = AP.VERSION
          ${filtroNivel}
      )
      SELECT codigo, descripcion, precioLista, costoPromedio, nivelPrecio, version,
-            categoria, linea, proveedor
+            clasificacion1, clasificacion2, clasificacion3, clasificacion4, clasificacion5
        FROM PRECIOS
       WHERE rn = 1
       ORDER BY codigo`,
@@ -84,9 +97,11 @@ export async function listarCatalogo(compania: string, nivelPrecio?: string): Pr
     costoPromedio: Number(r.costoPromedio ?? 0),
     nivelPrecio: r.nivelPrecio == null ? undefined : String(r.nivelPrecio),
     version: r.version == null ? undefined : Number(r.version),
-    categoria: r.categoria == null ? undefined : String(r.categoria),
-    linea: r.linea == null ? undefined : String(r.linea),
-    proveedor: r.proveedor == null ? undefined : String(r.proveedor),
+    clasificacion1: r.clasificacion1 == null ? undefined : String(r.clasificacion1),
+    clasificacion2: r.clasificacion2 == null ? undefined : String(r.clasificacion2),
+    clasificacion3: r.clasificacion3 == null ? undefined : String(r.clasificacion3),
+    clasificacion4: r.clasificacion4 == null ? undefined : String(r.clasificacion4),
+    clasificacion5: r.clasificacion5 == null ? undefined : String(r.clasificacion5),
   }));
 }
 
@@ -96,6 +111,7 @@ export async function buscarArticulo(compania: string, codigo: string): Promise<
   const pool = await getPool(compania);
   const ap = objetoCalificado(compania, "tablaArticuloPrecio");
   const art = objetoCalificado(compania, "tablaArticulo");
+  const versiones = objetoCalificado(compania, "tablaVersionNivel");
   const mssql = await import("mssql");
   const q = await pool
     .request()
@@ -103,10 +119,17 @@ export async function buscarArticulo(compania: string, codigo: string): Promise<
     .query(
       `SELECT TOP (1) AP.ARTICULO AS codigo, A.DESCRIPCION AS descripcion,
               CAST(AP.PRECIO AS FLOAT) AS precioLista,
-              CAST(A.COSTO_PROM_DOL AS FLOAT) AS costoPromedio
+              CAST(A.COSTO_PROM_DOL AS FLOAT) AS costoPromedio,
+              AP.NIVEL_PRECIO AS nivelPrecio,
+              AP.VERSION AS version
          FROM ${ap} AP
          INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
-        WHERE AP.ARTICULO = @articulo`,
+         INNER JOIN ${versiones} VN
+                 ON VN.NIVEL_PRECIO = AP.NIVEL_PRECIO
+                AND VN.VERSION = AP.VERSION
+        WHERE AP.ARTICULO = @articulo
+          AND VN.ESTADO = 'A'
+        ORDER BY AP.VERSION DESC, AP.NIVEL_PRECIO`,
     );
   const r = q.recordset[0];
   if (!r) return undefined;
@@ -115,6 +138,8 @@ export async function buscarArticulo(compania: string, codigo: string): Promise<
     descripcion: String(r.descripcion ?? ""),
     precioLista: Number(r.precioLista ?? 0),
     costoPromedio: Number(r.costoPromedio ?? 0),
+    nivelPrecio: r.nivelPrecio == null ? undefined : String(r.nivelPrecio),
+    version: r.version == null ? undefined : Number(r.version),
   };
 }
 
@@ -157,6 +182,7 @@ export async function upsertUdf(
   porcentaje: number,
   usuario: string,
 ): Promise<void> {
+  assertEscrituraHabilitada();
   if (esModoDemo()) {
     upsertUdfDemo(compania, codigo, porcentaje);
     return;
@@ -202,6 +228,7 @@ export async function ejecutarSpMargen(
   articulo: string | null,
   usuario: string,
 ): Promise<void> {
+  assertEscrituraHabilitada();
   const pool = await getPool(compania);
   const sp = objetoCalificado(compania, "spMargen");
   const cfg = resolverCompania(compania).sql;
@@ -225,6 +252,7 @@ export async function ejecutarSpGestionListas(
   version: number,
   usuario: string,
 ): Promise<void> {
+  assertEscrituraHabilitada();
   const pool = await getPool(compania);
   const sp = objetoCalificado(compania, "spGestionListas");
   const cfg = resolverCompania(compania).sql;

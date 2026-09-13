@@ -38,7 +38,7 @@ export default function BandejaAprobacion({
   ];
 
   const visibles = solicitudes.filter((s) => {
-    if (!estaEnAmbito(currentUser.compania, s.compania, null)) return false;
+    if (!estaEnAmbito(currentUser.compania, s.compania)) return false;
     if (filtroEstado !== "TODOS" && s.estado !== filtroEstado) return false;
     if (filtroProceso !== "TODOS" && s.proceso !== filtroProceso) return false;
     return true;

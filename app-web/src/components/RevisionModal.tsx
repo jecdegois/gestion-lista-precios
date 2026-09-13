@@ -41,12 +41,14 @@ function SimuladorEstadoProceso({ estado }: { estado: string }) {
 export default function RevisionModal({
   solicitud,
   currentUser,
+  readOnly,
   onClose,
   onRechazar,
   onAprobar,
 }: {
   solicitud: Solicitud;
   currentUser: Identidad;
+  readOnly: boolean;
   onClose: () => void;
   onRechazar: (id: string, motivo: string) => void;
   onAprobar: (id: string) => void;
@@ -55,7 +57,7 @@ export default function RevisionModal({
 
   const filas = solicitud.filas;
   const puedeDecidir =
-    currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
+    !readOnly && currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
   const puedeAprobar = puedeDecidir && filas.length > 0;
   const enProceso = solicitud.estado === "EN_PROCESO";
   const resultado = solicitud.resultado;

@@ -34,16 +34,19 @@ const ORDEN_PROCESOS: ProcesoKey[] = [
 
 export default function NuevaSolicitud({
   readOnly,
+  consultaOnly = false,
   currentUser,
   onEnviado,
   onToast,
 }: {
   readOnly: boolean;
+  consultaOnly?: boolean;
   currentUser: Identidad;
   onEnviado: () => void;
   onToast: (msg: string, variant?: "success" | "error") => void;
 }) {
   const compania = currentUser.compania as string;
+  const bloquearCaptura = readOnly && !consultaOnly;
   const [tab, setTab] = useState<ProcesoKey>("FACTOR_PRECIO");
   const [modalidad, setModalidad] = useState<"manual" | "excel">("manual");
   const [nivel, setNivel] = useState("");
@@ -64,6 +67,7 @@ export default function NuevaSolicitud({
   const [articulosMaestros, setArticulosMaestros] = useState<ArticuloCatalogo[]>([]);
   const [gruposMaestros, setGruposMaestros] = useState<{ codigo: string; nombre: string; cantidad: number }[]>([]);
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
+  const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null);
 
   const proceso = PROCESOS[tab];
   const esDescuento = tab === "DESCUENTO_LISTA_PRECIO";
@@ -87,7 +91,7 @@ export default function NuevaSolicitud({
   const nombreNivel = (codigo: string) => nivelesPrecio.find((nivel) => nivel.codigo === codigo)?.nombre || codigo;
   const conversion = useMemo(() => calcularVariacion("AUMENTO", factor), [factor]);
   const factorInvalido = factor !== "" && !conversion.valido;
-  const listaFueraDeAmbito = !!nivel && !nivelesPrecio.some((item) => item.codigo === nivel);
+  const listaNoExisteEnMaestros = !!nivel && !nivelesPrecio.some((item) => item.codigo === nivel);
 
   const articuloSel = codigoArticulo ? articulosMaestros.find((articulo) => articulo.codigo === codigoArticulo) : undefined;
   const previewArticulo = articuloSel && conversion.valido && conversion.factor != null
@@ -115,17 +119,20 @@ export default function NuevaSolicitud({
   useEffect(() => {
     let vigente = true;
     setCargandoCatalogo(true);
+    setErrorCatalogo(null);
     void obtenerCatalogoSolicitud(compania, nivel || undefined)
       .then((catalogo) => {
         if (!vigente) return;
         setNivelesPrecio(catalogo.niveles);
-        if (nivel) {
-          setArticulosMaestros(catalogo.articulos);
-          setGruposMaestros(catalogo.grupos);
-        }
+        setArticulosMaestros(catalogo.articulos);
+        setGruposMaestros(catalogo.grupos);
       })
       .catch((error) => {
-        if (vigente) setErrorItem((error as Error).message || "No fue posible consultar los maestros de Softland.");
+        if (!vigente) return;
+        setNivelesPrecio([]);
+        setArticulosMaestros([]);
+        setGruposMaestros([]);
+        setErrorCatalogo((error as Error).message || "No fue posible consultar los maestros de Softland.");
       })
       .finally(() => {
         if (vigente) setCargandoCatalogo(false);
@@ -149,7 +156,7 @@ export default function NuevaSolicitud({
   }, [nivel, grupoArticulo, factor, itemsManual]);
 
   function agregarItem() {
-    if (readOnly) return;
+    if (bloquearCaptura) return;
     if (!nivel || !codigoArticulo || factorInvalido || factor === "") return;
     const clave = codigoArticulo + "|" + nivel;
     if (itemsManual.some((it) => it.codigo + "|" + it.listaCodigo === clave)) {
@@ -181,8 +188,8 @@ export default function NuevaSolicitud({
 
   function camposManualCompletos(): boolean {
     if (esListaBase) return !!grupoArticulo && conversion.valido && ack;
-    if (esDescuento) return itemsManual.length > 0 && !!nivel && !listaFueraDeAmbito;
-    return !!nivel && conversion.valido && !listaFueraDeAmbito; // Gestión Global
+    if (esDescuento) return itemsManual.length > 0 && !!nivel && !listaNoExisteEnMaestros;
+    return !!nivel && conversion.valido && !listaNoExisteEnMaestros; // Gestión Global
   }
 
   function camposCompletos(): boolean {
@@ -224,7 +231,7 @@ export default function NuevaSolicitud({
   }
 
   function handleArchivoParsed(fs: FilaResultado[], nombre: string, s3Key: string) {
-    // Marca inválidas filas de descuento con lista base o fuera de ámbito.
+    // Marca inválidas filas de descuento con lista base o inexistente en Softland.
     const ajustadas = fs.map((f) => {
       const lc = (f as { listaCodigo?: string | null }).listaCodigo;
       if (esDescuento && lc?.trim().toLowerCase() === "mayoreod") {
@@ -315,6 +322,19 @@ export default function NuevaSolicitud({
           <span className="text-sm font-medium">{compania}</span>
         </div>
         <p className="text-[11px] text-zinc-400 mt-1">Contexto resuelto automáticamente por Softland Security (S2/SS).</p>
+        {cargandoCatalogo && (
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-indigo-600">
+            <Icon name="loader" className="w-3.5 h-3.5" spin /> Consultando listas de precio…
+          </p>
+        )}
+        {errorCatalogo && (
+          <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" role="alert">
+            <b>No fue posible cargar el catálogo:</b> {errorCatalogo}
+          </div>
+        )}
+        {!cargandoCatalogo && !errorCatalogo && nivelesPrecio.length === 0 && (
+          <p className="mt-2 text-xs text-amber-700">No hay niveles de precio activos disponibles para esta compañía.</p>
+        )}
       </div>
 
       {/* Sub-tabs manual/excel solo en Descuento */}
@@ -330,11 +350,11 @@ export default function NuevaSolicitud({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mb-4">
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1.5">Lista de Precio</label>
-            <Combobox id="nivel-gg" value={nivel} onChange={(o) => setNivel(o.value)} options={nivelOpts} disabled={readOnly} placeholder="Seleccionar lista..." />
+            <Combobox id="nivel-gg" value={nivel} onChange={(o) => setNivel(o.value)} options={nivelOpts} disabled={bloquearCaptura} placeholder="Seleccionar lista..." />
           </div>
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
-            <input type="number" step="0.01" min="0" value={factor} disabled={readOnly} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
+            <input type="number" step="0.01" min="0" value={factor} disabled={bloquearCaptura} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
             {!factorInvalido && factor !== "" && conversion.factor != null && (
               <p className="text-[11px] text-zinc-500 mt-1">Factor aplicado: <b className="mono">{conversion.factor.toFixed(2)}</b></p>
             )}
@@ -349,17 +369,23 @@ export default function NuevaSolicitud({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Lista de Precio</label>
-              <Combobox id="nivel-desc" value={nivel} onChange={(o) => setNivel(o.value)} options={nivelOpts} disabled={readOnly} placeholder="Seleccionar lista..." />
+              <Combobox id="nivel-desc" value={nivel} onChange={(o) => setNivel(o.value)} options={nivelOpts} disabled={bloquearCaptura} placeholder="Seleccionar lista..." />
             </div>
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Código de Artículo</label>
-              <Combobox id="codigo-articulo" value={codigoArticulo} onChange={(o) => setCodigoArticulo(o.value)} options={articuloOpts} disabled={readOnly} placeholder="Buscar por código o nombre..." />
+              <Combobox id="codigo-articulo" value={codigoArticulo} onChange={(o) => setCodigoArticulo(o.value)} options={articuloOpts} disabled={bloquearCaptura} placeholder="Buscar por código o nombre..." />
             </div>
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
-              <input type="number" step="0.01" min="0" value={factor} disabled={readOnly} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
+              <input type="number" step="0.01" min="0" value={factor} disabled={bloquearCaptura} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
             </div>
           </div>
+          {!nivel && !cargandoCatalogo && !errorCatalogo && nivelesPrecio.length > 0 && (
+            <p className="text-xs text-zinc-500">Seleccione una lista de precio para consultar los artículos disponibles.</p>
+          )}
+          {!!nivel && !cargandoCatalogo && !errorCatalogo && articulosMaestros.length === 0 && (
+            <p className="text-xs text-amber-700">La lista seleccionada no tiene artículos con versión activa.</p>
+          )}
           {articuloSel && (
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
               <Card label="Descripción" value={articuloSel.descripcion} />
@@ -370,7 +396,7 @@ export default function NuevaSolicitud({
             </div>
           )}
           {previewArticulo && <EstadoRedondeoBadge estado={previewArticulo.estado} banda={previewArticulo.banda} />}
-          <button className="btn btn-outline" disabled={readOnly || !nivel || !codigoArticulo || factorInvalido || factor === ""} onClick={agregarItem}>
+          <button className="btn btn-outline" disabled={bloquearCaptura || !nivel || !codigoArticulo || factorInvalido || factor === ""} onClick={agregarItem}>
             <Icon name="plus" className="w-3.5 h-3.5" /> Agregar artículo
           </button>
           {errorItem && <p className="text-[11px] text-red-600">{errorItem}</p>}
@@ -394,7 +420,7 @@ export default function NuevaSolicitud({
                       <td className="px-3 py-2">{it.lista}</td>
                       <td className="px-3 py-2 text-right mono">{it.variacionPorcentaje}</td>
                       <td className="px-3 py-2 text-right">
-                        <button className="btn btn-ghost" onClick={() => quitarItem(it.codigo, it.listaCodigo)} disabled={readOnly}>
+                        <button className="btn btn-ghost" onClick={() => quitarItem(it.codigo, it.listaCodigo)} disabled={bloquearCaptura}>
                           <Icon name="trash" className="w-3.5 h-3.5 text-red-500" />
                         </button>
                       </td>
@@ -416,16 +442,16 @@ export default function NuevaSolicitud({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Grupo de Artículos</label>
-              <Combobox id="grupo-mayoreod" value={grupoArticulo} onChange={(o) => setGrupoArticulo(o.value)} options={grupoOpts} disabled={readOnly} placeholder="Seleccionar grupo..." />
+              <Combobox id="grupo-mayoreod" value={grupoArticulo} onChange={(o) => setGrupoArticulo(o.value)} options={grupoOpts} disabled={bloquearCaptura} placeholder="Seleccionar grupo..." />
             </div>
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
-              <input type="number" step="0.01" min="0" value={factor} disabled={readOnly} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
+              <input type="number" step="0.01" min="0" value={factor} disabled={bloquearCaptura} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
               {factorInvalido && <p className="text-[11px] text-red-600 mt-1">{conversion.causa}</p>}
             </div>
           </div>
           <label className="flex items-start gap-3 rounded-lg border border-zinc-200 p-3 cursor-pointer select-none max-w-xl">
-            <input type="checkbox" checked={ack} disabled={readOnly} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 h-4 w-4" />
+            <input type="checkbox" checked={ack} disabled={bloquearCaptura} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 h-4 w-4" />
             <span className="text-sm">Entiendo que esta solicitud aplicará cambios sobre la lista {nombreNivel(nivel)} para el grupo seleccionado cuando un aprobador la autorice.</span>
           </label>
         </div>
@@ -438,7 +464,7 @@ export default function NuevaSolicitud({
             <p className="text-xs text-zinc-600">Use las columnas Lista de Precio, Código Artículo y Factor Multiplicador.</p>
             <a href="/api/plantilla?proceso=DESCUENTO_LISTA_PRECIO" className="btn btn-outline"><Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla</a>
           </div>
-          <ExcelUploader disabled={readOnly} procesoKey={tab} compania={compania} nivelPrecio={nivel} onParsed={handleArchivoParsed} onError={setErrorCarga} />
+          <ExcelUploader disabled={bloquearCaptura} procesoKey={tab} compania={compania} nivelPrecio={nivel} onParsed={handleArchivoParsed} onError={setErrorCarga} />
           {errorCarga && <p className="text-[11px] text-red-600">{errorCarga}</p>}
           {conteoErrores > 0 && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">La carga contiene {conteoErrores} fila(s) inválida(s). Corrija y cargue nuevamente.</div>
@@ -456,7 +482,7 @@ export default function NuevaSolicitud({
           <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
             <a href="/api/plantilla" className="btn btn-outline"><Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla</a>
           </div>
-          <ExcelUploader disabled={readOnly} procesoKey={tab} compania={compania} nivelPrecio={nivel} onParsed={handleArchivoParsed} onError={setErrorCarga} />
+          <ExcelUploader disabled={bloquearCaptura} procesoKey={tab} compania={compania} nivelPrecio={nivel} onParsed={handleArchivoParsed} onError={setErrorCarga} />
           {errorCarga && <p className="text-[11px] text-red-600">{errorCarga}</p>}
           {conteoErrores > 0 && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">La carga contiene {conteoErrores} fila(s) inválida(s). Corrija los porcentajes y cargue nuevamente.</div>
@@ -466,7 +492,7 @@ export default function NuevaSolicitud({
 
       {/* Botones */}
       <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
-        <button className="btn btn-outline" disabled={readOnly || !camposCompletos()} onClick={handleSimular}>
+        <button className="btn btn-outline" disabled={bloquearCaptura || !camposCompletos()} onClick={handleSimular}>
           <Icon name="search" className="w-3.5 h-3.5" /> {(modalidad === "excel" && permiteExcel) || esMargen ? "Precalcular impacto" : "Simular impacto"}
         </button>
         <button className={"btn " + (esListaBase ? "btn-destructive" : "btn-default")} disabled={!puedeEnviar() || sending} onClick={handleEnviar}>

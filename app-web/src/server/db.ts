@@ -1,61 +1,17 @@
 import "server-only";
 import type { ConnectionPool as MssqlConnectionPool } from "mssql";
-import { resolverCompania, type CompaniaConfig } from "./companies";
+import { resolverCompania } from "./companies";
 
 /**
- * Pool de conexiones SQL Server por compania (arquitectura multiempresa).
- * Cada compania mantiene su propio pool contra su base Softland. La carga de
- * `mssql` es dinamica para no romper el build cuando el paquete no esta
- * instalado (por ejemplo, en DEMO_MODE).
+ * Pool único para la base SQL Server compartida por el Portal y Softland.
+ * Cada repositorio califica los objetos con su esquema: PORTAL_PRECIOS para el
+ * Portal y el esquema configurado de la compañía (por ejemplo, FEBECA) para
+ * catálogos operativos.
  */
-const pools = new Map<string, MssqlConnectionPool>();
+let sharedPool: MssqlConnectionPool | null = null;
 
-function buildConfig(cfg: CompaniaConfig) {
+function buildSharedSqlConfig() {
   return {
-    server: cfg.server,
-    database: cfg.database,
-    user: cfg.user,
-    password: cfg.password,
-    port: Number(process.env.SQL_PORT ?? 1433),
-    options: {
-      encrypt: (process.env.SQL_ENCRYPT ?? "false").toLowerCase() === "true",
-      trustServerCertificate:
-        (process.env.SQL_TRUST_SERVER_CERTIFICATE ?? "true").toLowerCase() === "true",
-    },
-    pool: { max: 5, min: 0, idleTimeoutMillis: 30000 },
-  };
-}
-
-export async function getPool(compania: string): Promise<MssqlConnectionPool> {
-  const clave = compania.trim().toUpperCase();
-  const existente = pools.get(clave);
-  if (existente && existente.connected) return existente;
-
-  const cfg = resolverCompania(clave);
-  // Import dinamico: solo se carga en servidor y solo cuando se conecta de verdad.
-  const mssql = await import("mssql");
-  const pool = new mssql.ConnectionPool(buildConfig(cfg));
-  await pool.connect();
-  pools.set(clave, pool);
-  return pool;
-}
-
-/** Devuelve el esquema calificado de la compania (p. ej. "[COFER]"). */
-export function esquemaDe(compania: string): string {
-  return `[${resolverCompania(compania).schema}]`;
-}
-
-/**
- * Pool para la base del PORTAL (esquema [PORTAL_PRECIOS]). Es un unico destino
- * para toda la organizacion, independiente de la compania activa. Se configura
- * con PORTAL_DB_* ; si no se define, cae en las variables PORTAL_* mínimas.
- */
-let portalPool: MssqlConnectionPool | null = null;
-
-export async function getPortalPool(): Promise<MssqlConnectionPool> {
-  if (portalPool && portalPool.connected) return portalPool;
-  const mssql = await import("mssql");
-  const pool = new mssql.ConnectionPool({
     server: process.env.PORTAL_DB_SERVER ?? "localhost",
     database: process.env.PORTAL_DB_NAME ?? "SOFTLANDQA",
     user: process.env.PORTAL_DB_USER ?? "app_user",
@@ -66,8 +22,32 @@ export async function getPortalPool(): Promise<MssqlConnectionPool> {
       trustServerCertificate: (process.env.SQL_TRUST_SERVER_CERTIFICATE ?? "true").toLowerCase() === "true",
     },
     pool: { max: 5, min: 0, idleTimeoutMillis: 30000 },
-  });
+  };
+}
+
+/**
+ * Obtiene el pool compartido para los catálogos de una compañía. La resolución
+ * conserva la validación de la compañía y su esquema, sin abrir otra conexión.
+ */
+export async function getPool(compania: string): Promise<MssqlConnectionPool> {
+  resolverCompania(compania);
+  return getPortalPool();
+}
+
+/** Devuelve el esquema calificado de la compania (p. ej. "[FEBECA]"). */
+export function esquemaDe(compania: string): string {
+  return `[${resolverCompania(compania).schema}]`;
+}
+
+/**
+ * Pool físico compartido. La conexión se configura una sola vez mediante
+ * PORTAL_DB_*; los repositorios distinguen Portal y Softland por esquema.
+ */
+export async function getPortalPool(): Promise<MssqlConnectionPool> {
+  if (sharedPool && sharedPool.connected) return sharedPool;
+  const mssql = await import("mssql");
+  const pool = new mssql.ConnectionPool(buildSharedSqlConfig());
   await pool.connect();
-  portalPool = pool;
+  sharedPool = pool;
   return pool;
 }

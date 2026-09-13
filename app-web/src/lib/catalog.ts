@@ -92,16 +92,9 @@ export const TIPOS_VARIACION: Record<string, string> = { AUMENTO: "Aumento", DIS
 export function estaEnAmbito(
   compania: string | null | undefined,
   companiaSolicitud: string | null | undefined,
-  listaCodigo: string | null | undefined,
-  nivelesAutorizados?: readonly string[],
 ): boolean {
   if (!compania) return false;
-  if (companiaSolicitud && companiaSolicitud !== compania) return false;
-  // La lista maestra no se resuelve con datos fijos del frontend. La acción
-  // server-side valida el código contra NIVEL_PRECIO y, si aplica, contra el
-  // ámbito persistido del usuario.
-  if (listaCodigo && nivelesAutorizados && !nivelesAutorizados.includes(listaCodigo)) return false;
-  return true;
+  return !companiaSolicitud || companiaSolicitud === compania;
 }
 
 export function margenMinimoEfectivo(articulo: ArticuloCatalogo | undefined): number {

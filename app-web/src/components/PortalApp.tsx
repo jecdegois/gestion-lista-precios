@@ -23,7 +23,7 @@ interface Toast {
   variant?: "success" | "error";
 }
 
-export default function PortalApp({ demo }: { demo: boolean }) {
+export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolean; readOnly: boolean; portalOnly: boolean }) {
   const [user, setUser] = useState<Identidad | null>(null);
   const [nav, setNav] = useState<NavKey>("nueva");
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
@@ -33,28 +33,35 @@ export default function PortalApp({ demo }: { demo: boolean }) {
 
   const esAprobador = user?.rol === "APROBADOR";
 
-  const refrescar = useCallback(async () => {
+  const refrescarSolicitudes = useCallback(async () => {
     if (!user) return;
-    const [ss, ev] = await Promise.all([obtenerSolicitudes(), obtenerAuditoria(user.compania ?? undefined)]);
-    setSolicitudes(ss);
-    setEventos(ev);
+    setSolicitudes(await obtenerSolicitudes(user.compania ?? undefined));
+  }, [user]);
+
+  const refrescarAuditoria = useCallback(async () => {
+    if (!user) return;
+    setEventos(await obtenerAuditoria(user.compania ?? undefined));
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
-    if (user.rol === "APROBADOR") setNav("bandeja");
-    else if (user.rol === "OPERADOR") setNav("nueva");
+    setNav(user.rol === "APROBADOR" ? "bandeja" : "nueva");
     setModalId(null);
-    void refrescar();
-  }, [user, refrescar]);
+  }, [user]);
 
-  // Polling para reflejar la transición EN_PROCESO -> PROCESADO/... sin bloquear.
   useEffect(() => {
     if (!user) return;
+    if (nav === "auditoria") void refrescarAuditoria();
+    else void refrescarSolicitudes();
+  }, [user, nav, refrescarAuditoria, refrescarSolicitudes]);
+
+  // La actualización periódica solo aplica a las pestañas que consultan solicitudes.
+  useEffect(() => {
+    if (!user || nav === "auditoria") return;
     const hayEnProceso = solicitudes.some((s) => s.estado === "EN_PROCESO");
-    const interval = setInterval(() => void refrescar(), hayEnProceso ? 2500 : 8000);
+    const interval = setInterval(() => void refrescarSolicitudes(), hayEnProceso ? 2500 : 8000);
     return () => clearInterval(interval);
-  }, [user, solicitudes, refrescar]);
+  }, [user, nav, solicitudes, refrescarSolicitudes]);
 
   function pushToast(message: string, variant?: "success" | "error") {
     const id = Date.now() + Math.random();
@@ -66,23 +73,23 @@ export default function PortalApp({ demo }: { demo: boolean }) {
     setModalId(id);
     if (user) {
       const s = solicitudes.find((x) => x.id === id);
-      if (s && s.estado === "PENDIENTE" && esAprobador && s.solicitanteEmail !== user.email) {
+      if (s && s.estado === "PENDIENTE" && esAprobador && !readOnly && s.solicitanteEmail !== user.email) {
         await registrarRevision(id, user.nombre, user.rol, user.compania ?? "");
-        void refrescar();
+        void refrescarSolicitudes();
       }
     }
   }
 
   async function handleRechazar(id: string, motivo: string) {
-    if (!user) return;
+    if (!user || readOnly) return;
     const res = await rechazarSolicitud(id, motivo, user.nombre, user.rol);
     if (!res.ok) pushToast(res.error ?? "No fue posible rechazar.", "error");
     else pushToast(`Solicitud ${id} rechazada. El solicitante fue notificado.`, "error");
-    await refrescar();
+    await refrescarSolicitudes();
   }
 
   async function handleAprobar(id: string) {
-    if (!user) return;
+    if (!user || readOnly) return;
     const res = await aprobarSolicitud({
       solicitudId: id,
       aprobadorNombre: user.nombre,
@@ -91,10 +98,10 @@ export default function PortalApp({ demo }: { demo: boolean }) {
     });
     if (!res.ok) pushToast(res.error ?? "No fue posible aprobar.", "error");
     else pushToast(`Solicitud ${id} en proceso · ${res.idProcesoSP}`, "success");
-    await refrescar();
+    await refrescarSolicitudes();
   }
 
-  if (!user) return <LoginScreen onLogin={setUser} />;
+  if (!user) return <LoginScreen onLogin={setUser} demo={demo} />;
   if (user.rol === "SIN_PERMISO") return <Vista403 user={user} />;
 
   const solicitudModal = modalId ? solicitudes.find((s) => s.id === modalId) : undefined;
@@ -112,7 +119,7 @@ export default function PortalApp({ demo }: { demo: boolean }) {
         {nav === "nueva" && (
           <>
             <h1 className="text-xl font-bold text-zinc-900 mb-4">Nueva solicitud de cambio de precio</h1>
-            <NuevaSolicitud readOnly={false} currentUser={user} onEnviado={refrescar} onToast={pushToast} />
+            <NuevaSolicitud readOnly={readOnly} consultaOnly={portalOnly} currentUser={user} onEnviado={refrescarSolicitudes} onToast={pushToast} />
             <MisSolicitudes solicitudes={solicitudes} currentUser={user} onVerDetalle={handleAbrir} />
           </>
         )}
@@ -120,8 +127,8 @@ export default function PortalApp({ demo }: { demo: boolean }) {
         {nav === "bandeja" && (
           <>
             <h1 className="text-xl font-bold text-zinc-900 mb-1">Bandeja de aprobación</h1>
-            <p className="text-sm text-zinc-500 mb-4">Revise y autorice las solicitudes de su compañía (segregación de funciones).</p>
-            <BandejaAprobacion solicitudes={solicitudes} currentUser={user} readOnly={!esAprobador} onAbrir={handleAbrir} />
+            <p className="text-sm text-zinc-500 mb-4">Revise las solicitudes de su compañía y consulte su detalle.</p>
+            <BandejaAprobacion solicitudes={solicitudes} currentUser={user} readOnly={readOnly || !esAprobador} onAbrir={handleAbrir} />
           </>
         )}
 
@@ -138,6 +145,7 @@ export default function PortalApp({ demo }: { demo: boolean }) {
         <RevisionModal
           solicitud={solicitudModal}
           currentUser={user}
+          readOnly={readOnly}
           onClose={() => setModalId(null)}
           onRechazar={handleRechazar}
           onAprobar={handleAprobar}
