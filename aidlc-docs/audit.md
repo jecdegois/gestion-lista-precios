@@ -879,3 +879,31 @@ que es eso?"
 **Context**: Construcción - validación de columnas físicas de ARTICULO
 
 ---
+## Corrección de Precio por Lista
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "el precio actual viene de ahi no me cohinciden los precios"
+**AI Response**: "Se corrigió el mapeo estático para exigir una lista de precio, seleccionar la versión activa más reciente de esa lista y mantener un contexto de catálogo separado por lista en Excel, simulaciones y validación de solicitudes. No se ejecutaron consultas SQL, solicitudes HTTP ni operaciones de escritura."
+**Context**: Corrección de precio actual en modo solo lectura
+
+---
+## Consulta sobre Margen Mínimo
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "tomA DE rticulo_precio el margen minimo ? de un articulo esta nulo que pasa ahi? cuando viene null"
+**AI Response**: "Se verificará estáticamente el origen y el tratamiento del margen mínimo ante valores nulos, sin ejecutar consultas contra la base de datos."
+**Context**: Consulta funcional de catálogo en modo solo lectura
+
+---
+## Solicitud de Margen Mínimo desde ARTICULO_PRECIO
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "de la tabla articulo_precio MARGEN_UTILIDAD_MIN se llama la columna a nivel de porcentaje en la simulacion debe mostrar el equivalente en precio"
+**AI Response**: "Se incorporará MARGEN_UTILIDAD_MIN desde ARTICULO_PRECIO como porcentaje y se mostrará el precio mínimo equivalente en la simulación, conservando operaciones exclusivamente de lectura."
+**Context**: Ajuste de catálogo y simulación en modo solo lectura
+
+---
+## Implementación de Margen Mínimo desde ARTICULO_PRECIO
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "de la tabla articulo_precio MARGEN_UTILIDAD_MIN se llama la columna a nivel de porcentaje en la simulacion debe mostrar el equivalente en precio"
+**AI Response**: "Se agregó MARGEN_UTILIDAD_MIN a los SELECT de catálogo y artículo, se normaliza de porcentaje a factor decimal, y las simulaciones muestran el margen y el precio mínimo equivalente. En margen masivo se muestra el margen base persistido, el margen simulado después de la reducción y el precio mínimo equivalente. Los nulos o porcentajes inválidos conservan el fallback global del 20%. No se ejecutaron consultas SQL, HTTP ni operaciones de escritura."
+**Context**: Implementación de margen mínimo en modo solo lectura
+
+---

@@ -51,6 +51,9 @@ export interface ValidacionPrecio {
   precioRedondeado: number | null;
   estadoRedondeo: EstadoRedondeo | null;
   bandaRedondeo: { numero: number; intervalo: string } | null;
+  /** Factor decimal del margen mínimo de ARTICULO_PRECIO (ej. 0.20 = 20%). */
+  margenMinimo: number | null;
+  /** Precio mínimo equivalente: costo / (1 - margen mínimo). */
   costoMinimo: number | null;
   causa: string | null;
 }
@@ -66,6 +69,9 @@ export interface ValidacionMargen {
   costoMinimo: number | null;
   margenPromedio: number | null;
   margenSobrePrecioRedondeado: number | null;
+  /** Margen base leído de ARTICULO_PRECIO o fallback global si está nulo. */
+  margenMinimoBase: number | null;
+  /** Margen mínimo simulado después de aplicar la reducción. */
   margenMinimo: number | null;
   porcentajeReduccion: number | null;
   factorReduccion: number | null;

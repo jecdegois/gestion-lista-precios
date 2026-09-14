@@ -48,48 +48,48 @@ export async function listarNivelesPrecio(compania: string): Promise<NivelPrecio
   });
 }
 
-export async function listarCatalogo(compania: string, nivelPrecio?: string): Promise<Articulo[]> {
-  if (esModoDemo()) return catalogoDemo(compania);
+export async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Articulo[]> {
+  const nivel = nivelPrecio.trim();
+  if (!nivel) throw new Error("Debe indicar una lista de precio para consultar el catálogo.");
+  if (esModoDemo()) return catalogoDemo(compania).map((articulo) => ({ ...articulo, nivelPrecio: nivel, version: 1 }));
 
   const pool = await getPool(compania);
   const ap = objetoCalificado(compania, "tablaArticuloPrecio");
   const art = objetoCalificado(compania, "tablaArticulo");
   const versiones = objetoCalificado(compania, "tablaVersionNivel");
   const mssql = await import("mssql");
-  const request = pool.request();
-  let filtroNivel = "WHERE VN.ESTADO = 'A'";
-  if (nivelPrecio?.trim()) {
-    request.input("nivelPrecio", mssql.VarChar(50), nivelPrecio.trim());
-    filtroNivel += " AND AP.NIVEL_PRECIO = @nivelPrecio";
-  }
-  const q = await request.query(
-    `WITH PRECIOS AS
-     (
+  const q = await pool
+    .request()
+    .input("nivelPrecio", mssql.VarChar(50), nivel)
+    .query(
+      `WITH VersionActiva AS
+       (
+         SELECT VN.NIVEL_PRECIO, MAX(VN.VERSION) AS VERSION
+           FROM ${versiones} VN
+          WHERE VN.ESTADO = 'A'
+            AND VN.NIVEL_PRECIO = @nivelPrecio
+          GROUP BY VN.NIVEL_PRECIO
+       )
        SELECT AP.ARTICULO AS codigo,
               A.DESCRIPCION AS descripcion,
               CAST(AP.PRECIO AS FLOAT) AS precioLista,
               CAST(A.COSTO_PROM_DOL AS FLOAT) AS costoPromedio,
               AP.NIVEL_PRECIO AS nivelPrecio,
               AP.VERSION AS version,
+              CAST(AP.MARGEN_UTILIDAD_MIN AS FLOAT) AS margenUtilidadMinPorcentaje,
               A.CLASIFICACION_1 AS clasificacion1,
               A.CLASIFICACION_2 AS clasificacion2,
               A.CLASIFICACION_3 AS clasificacion3,
               A.CLASIFICACION_4 AS clasificacion4,
-              A.CLASIFICACION_5 AS clasificacion5,
-              ROW_NUMBER() OVER (PARTITION BY AP.ARTICULO ORDER BY AP.VERSION DESC) AS rn
+              A.CLASIFICACION_5 AS clasificacion5
          FROM ${ap} AP
+         INNER JOIN VersionActiva VA
+                 ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
+                AND VA.VERSION = AP.VERSION
          INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
-         INNER JOIN ${versiones} VN
-                 ON VN.NIVEL_PRECIO = AP.NIVEL_PRECIO
-                AND VN.VERSION = AP.VERSION
-         ${filtroNivel}
-     )
-     SELECT codigo, descripcion, precioLista, costoPromedio, nivelPrecio, version,
-            clasificacion1, clasificacion2, clasificacion3, clasificacion4, clasificacion5
-       FROM PRECIOS
-      WHERE rn = 1
-      ORDER BY codigo`,
-  );
+        WHERE AP.NIVEL_PRECIO = @nivelPrecio
+        ORDER BY AP.ARTICULO`,
+    );
   return q.recordset.map((r: Record<string, unknown>) => ({
     codigo: String(r.codigo),
     descripcion: String(r.descripcion ?? ""),
@@ -97,6 +97,7 @@ export async function listarCatalogo(compania: string, nivelPrecio?: string): Pr
     costoPromedio: Number(r.costoPromedio ?? 0),
     nivelPrecio: r.nivelPrecio == null ? undefined : String(r.nivelPrecio),
     version: r.version == null ? undefined : Number(r.version),
+    margenUtilidadMinPorcentaje: r.margenUtilidadMinPorcentaje == null ? null : Number(r.margenUtilidadMinPorcentaje),
     clasificacion1: r.clasificacion1 == null ? undefined : String(r.clasificacion1),
     clasificacion2: r.clasificacion2 == null ? undefined : String(r.clasificacion2),
     clasificacion3: r.clasificacion3 == null ? undefined : String(r.clasificacion3),
@@ -105,8 +106,13 @@ export async function listarCatalogo(compania: string, nivelPrecio?: string): Pr
   }));
 }
 
-export async function buscarArticulo(compania: string, codigo: string): Promise<Articulo | undefined> {
-  if (esModoDemo()) return buscarArticuloDemo(compania, codigo);
+export async function buscarArticulo(compania: string, codigo: string, nivelPrecio: string): Promise<Articulo | undefined> {
+  const nivel = nivelPrecio.trim();
+  if (!nivel) throw new Error("Debe indicar una lista de precio para consultar un artículo.");
+  if (esModoDemo()) {
+    const articulo = buscarArticuloDemo(compania, codigo);
+    return articulo ? { ...articulo, nivelPrecio: nivel, version: 1 } : undefined;
+  }
 
   const pool = await getPool(compania);
   const ap = objetoCalificado(compania, "tablaArticuloPrecio");
@@ -116,20 +122,29 @@ export async function buscarArticulo(compania: string, codigo: string): Promise<
   const q = await pool
     .request()
     .input("articulo", mssql.VarChar(20), codigo.trim())
+    .input("nivelPrecio", mssql.VarChar(50), nivel)
     .query(
-      `SELECT TOP (1) AP.ARTICULO AS codigo, A.DESCRIPCION AS descripcion,
+      `WITH VersionActiva AS
+       (
+         SELECT VN.NIVEL_PRECIO, MAX(VN.VERSION) AS VERSION
+           FROM ${versiones} VN
+          WHERE VN.ESTADO = 'A'
+            AND VN.NIVEL_PRECIO = @nivelPrecio
+          GROUP BY VN.NIVEL_PRECIO
+       )
+       SELECT AP.ARTICULO AS codigo, A.DESCRIPCION AS descripcion,
               CAST(AP.PRECIO AS FLOAT) AS precioLista,
               CAST(A.COSTO_PROM_DOL AS FLOAT) AS costoPromedio,
               AP.NIVEL_PRECIO AS nivelPrecio,
-              AP.VERSION AS version
+              AP.VERSION AS version,
+              CAST(AP.MARGEN_UTILIDAD_MIN AS FLOAT) AS margenUtilidadMinPorcentaje
          FROM ${ap} AP
+         INNER JOIN VersionActiva VA
+                 ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
+                AND VA.VERSION = AP.VERSION
          INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
-         INNER JOIN ${versiones} VN
-                 ON VN.NIVEL_PRECIO = AP.NIVEL_PRECIO
-                AND VN.VERSION = AP.VERSION
         WHERE AP.ARTICULO = @articulo
-          AND VN.ESTADO = 'A'
-        ORDER BY AP.VERSION DESC, AP.NIVEL_PRECIO`,
+          AND AP.NIVEL_PRECIO = @nivelPrecio`,
     );
   const r = q.recordset[0];
   if (!r) return undefined;
@@ -140,6 +155,7 @@ export async function buscarArticulo(compania: string, codigo: string): Promise<
     costoPromedio: Number(r.costoPromedio ?? 0),
     nivelPrecio: r.nivelPrecio == null ? undefined : String(r.nivelPrecio),
     version: r.version == null ? undefined : Number(r.version),
+    margenUtilidadMinPorcentaje: r.margenUtilidadMinPorcentaje == null ? null : Number(r.margenUtilidadMinPorcentaje),
   };
 }
 

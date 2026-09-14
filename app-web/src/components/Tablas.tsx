@@ -78,7 +78,9 @@ export function TablaMargenMinimo({ filas }: { filas: FilaMargen[] }) {
               <th className="text-right font-medium px-3 py-2">Precio Redondeado</th>
               <th className="text-left font-medium px-3 py-2">Banda / Estado</th>
               <th className="text-right font-medium px-3 py-2">Margen Promedio</th>
+              <th className="text-right font-medium px-3 py-2">Margen Mín. Base</th>
               <th className="text-right font-medium px-3 py-2">Margen Mínimo</th>
+              <th className="text-right font-medium px-3 py-2">Precio Mínimo Equiv.</th>
               <th className="text-left font-medium px-3 py-2">Validación</th>
             </tr>
           </thead>
@@ -96,7 +98,9 @@ export function TablaMargenMinimo({ filas }: { filas: FilaMargen[] }) {
                   <td className="px-3 py-2 text-right mono">{validacion.precioRedondeado != null ? <b>{fmtMonto(validacion.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
                   <td className="px-3 py-2"><EstadoRedondeoBadge estado={validacion.estadoRedondeo} banda={validacion.bandaRedondeo} /></td>
                   <td className="px-3 py-2 text-right mono">{fmtPct(validacion.margenPromedio)}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtPct(validacion.margenMinimoBase)}</td>
                   <td className="px-3 py-2 text-right mono">{validacion.margenMinimo != null ? <b>{fmtPct(validacion.margenMinimo)}</b> : <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.costoMinimo)}</td>
                   <td className="px-3 py-2"><EtiquetaValidacion fila={fila} /></td>
                 </tr>
               );
@@ -147,7 +151,8 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
               <th className="text-right font-medium px-3 py-2">Factor</th>
               <th className="text-right font-medium px-3 py-2">Precio Calc.</th>
               <th className="text-right font-medium px-3 py-2">Precio Redondeado</th>
-              <th className="text-right font-medium px-3 py-2">Costo Mínimo</th>
+              <th className="text-right font-medium px-3 py-2">Margen Mínimo</th>
+              <th className="text-right font-medium px-3 py-2">Precio Mínimo Equiv.</th>
               <th className="text-left font-medium px-3 py-2">Estado</th>
               <th className="text-left font-medium px-3 py-2">Validación</th>
             </tr>
@@ -166,6 +171,7 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
                   <td className="px-3 py-2 text-right mono">{fila.valorPropuestoRaw ?? "—"}</td>
                   <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioPropuesto)}</td>
                   <td className="px-3 py-2 text-right mono">{validacion.precioRedondeado != null ? <b>{fmtMonto(validacion.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtPct(validacion.margenMinimo)}</td>
                   <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.costoMinimo)}</td>
                   <td className="px-3 py-2"><EstadoRedondeoBadge estado={validacion.estadoRedondeo} banda={validacion.bandaRedondeo} /></td>
                   <td className="px-3 py-2"><EtiquetaValidacion fila={fila} /></td>
