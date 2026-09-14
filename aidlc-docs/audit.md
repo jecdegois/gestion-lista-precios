@@ -907,3 +907,226 @@ que es eso?"
 **Context**: Implementación de margen mínimo en modo solo lectura
 
 ---
+## Solicitud de Habilitación de Registro
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "deja que la app registre la solicitud y todo"
+**AI Response**: "Se solicitó confirmación explícita para habilitar únicamente las escrituras del esquema Portal, manteniendo bloqueadas las mutaciones y SPs de Softland. No se modificó READ_ONLY_MODE ni se ejecutaron operaciones de base de datos."
+**Context**: Solicitud de cambio de permisos de escritura
+
+---
+## Confirmación de Escrituras Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "A"
+**AI Response**: "Se autorizó habilitar INSERT de solicitudes, detalles y auditoría, junto con UPDATE de estados y revisiones únicamente dentro de PORTAL_PRECIOS. Softland/FEBECA permanecerá bloqueado para INSERT, UPDATE, DELETE, MERGE, secuencias y SPs."
+**Context**: Confirmación explícita de alcance de escritura
+
+---
+## Habilitación de Registro en Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "A"
+**AI Response**: "Se habilitó el registro de solicitudes, detalles, auditoría y actualizaciones de estado exclusivamente en PORTAL_PRECIOS. PORTAL_ONLY_MODE permanece activo y READ_ONLY_MODE se configuró en false para permitir únicamente estas escrituras Portal. Las mutaciones MERGE, INSERT, UPDATE, DELETE, secuencias y SPs de FEBECA/Softland quedaron detrás de assertEscrituraSoftlandHabilitada; la aprobación que podría dispararlas se rechaza en modo solo Portal. No se ejecutó SQL, HTTP ni se creó una solicitud real."
+**Context**: Implementación de opción A — Portal escribible, Softland bloqueado
+
+---
+## Consulta de Esquema Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "OK LA TABLA NO EXISTE PARA CREARLO QUE COLUMNAS NECESITA?"
+**AI Response**: "Se verificará el esquema local para distinguir la secuencia SEQ_SOLICITUD de las tablas Portal requeridas y documentar sus columnas, sin ejecutar SQL contra la base de datos."
+**Context**: Consulta de estructura para registro de solicitudes
+
+---
+## Consulta de Columnas para Registro Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "que columnas requieres para la solicitud y demas?"
+**AI Response**: "Se documentarán las columnas mínimas requeridas por la aplicación actual para la solicitud, su detalle, auditoría, secuencia y la resolución de usuarios, sin modificar ni ejecutar la base de datos."
+**Context**: Consulta de esquema mínimo Portal
+
+---
+## Solicitud de Migración de Columnas Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "segun estas columnas genera el query para agregar las columnas faltantes"
+**AI Response**: "Se preparará un script idempotente de ALTER TABLE para agregar únicamente las columnas faltantes en PORTAL_PRECIOS.SOLICITUD según su estructura actual, sin ejecutarlo. Se indicará el ajuste de aplicación necesario por el uso actual de ID_SOLICITUD UNIQUEIDENTIFIER y TIPO_PROCESO."
+**Context**: Generación de migración DDL no ejecutada
+
+---
+## Solicitud de Visualización de Margen Mínimo
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "porque el margen minimo sale nada ? debe mostrar en vez de procentaje o nada eequivalente de costo de ese ´porcentaje"
+**AI Response**: "Se ajustará la simulación para mostrar el precio mínimo equivalente del margen almacenado en vez de porcentajes o valores vacíos, incluso cuando no exista una reducción válida. No se ejecutarán consultas ni mutaciones SQL."
+**Context**: Corrección de presentación de margen mínimo
+
+---
+## Implementación de Visualización de Margen Mínimo
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "porque el margen minimo sale nada ? debe mostrar en vez de procentaje o nada eequivalente de costo de ese ´porcentaje"
+**AI Response**: "Se calculó el precio mínimo base antes de validar la reducción, se conserva cuando la reducción está vacía o inválida y la interfaz muestra importes equivalentes en lugar de porcentajes para el margen mínimo. No se ejecutaron consultas ni mutaciones SQL."
+**Context**: Validación local mediante el script typecheck (tsc --noEmit sin diagnósticos) y git diff --check; el envoltorio del terminal mostró código -1 sin errores de TypeScript.
+
+---
+## Error de Registro de Solicitud Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "1 of 1 error  
+Next.js (14.2.33) is outdated (learn more)  
+  
+Unhandled Runtime Error  
+Error: Cannot insert the value NULL into column 'IDP_OPERADOR', table 'SOFTLANDQA.PORTAL_PRECIOS.SOLICITUD'; column does not allow nulls. INSERT fails.  
+  
+Call Stack  
+handleError  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/mssql/lib/tedious/request.js (384:15)  
+Connection.emit  
+node:events (519:28)  
+Connection.emit  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/connection.js (959:18)  
+RequestTokenHandler.onErrorMessage  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/handler.js (285:21)  
+Readable.<anonymous>  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/token-stream-parser.js (18:33)  
+Readable.emit  
+node:events (519:28) aigue faltando columnas identificalas ya las que me dices estan"
+**AI Response**: "Se identificará estáticamente el origen de IDP_OPERADOR y los campos obligatorios enviados por la aplicación. No se ejecutarán consultas ni mutaciones SQL."
+**Context**: Diagnóstico de registro de solicitudes Portal
+
+---
+## Corrección de Contrato de Solicitud Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "1 of 1 error  
+Next.js (14.2.33) is outdated (learn more)  
+  
+Unhandled Runtime Error  
+Error: Cannot insert the value NULL into column 'IDP_OPERADOR', table 'SOFTLANDQA.PORTAL_PRECIOS.SOLICITUD'; column does not allow nulls. INSERT fails.  
+  
+Call Stack  
+handleError  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/mssql/lib/tedious/request.js (384:15)  
+Connection.emit  
+node:events (519:28)  
+Connection.emit  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/connection.js (959:18)  
+RequestTokenHandler.onErrorMessage  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/handler.js (285:21)  
+Readable.<anonymous>  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/token-stream-parser.js (18:33)  
+Readable.emit  
+node:events (519:28) aigue faltando columnas identificalas ya las que me dices estan"
+**AI Response**: "El campo IDP_OPERADOR ya existía y era obligatorio; el INSERT lo omitía. Se propagó USUARIO.IDP_SUBJECT como IDP_OPERADOR, se agregó validación previa para evitar un INSERT con ese valor vacío y se adecuó ID_SOLICITUD como UNIQUEIDENTIFIER para el detalle. No se ejecutaron consultas ni mutaciones SQL."
+**Context**: Corrección estática de contrato Portal; tsc --noEmit sin diagnósticos y git diff --check sin errores.
+
+---
+## Error de Restricción de Tipo de Proceso Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "1 of 1 error
+Next.js (14.2.33) is outdated (learn more)
+
+Unhandled Runtime Error
+Error: The INSERT statement conflicted with the CHECK constraint \"CK_PP_SOL_TIPO\". The conflict occurred in database \"SOFTLANDQA\", table \"PORTAL_PRECIOS.SOLICITUD\", column 'TIPO_PROCESO'.
+
+Call Stack
+handleError
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/mssql/lib/tedious/request.js (384:15)
+Connection.emit
+node:events (519:28)
+Connection.emit
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/connection.js (959:18)
+RequestTokenHandler.onErrorMessage
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/handler.js (285:21)
+Readable.<anonymous>
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/token-stream-parser.js (18:33)
+Readable.emit
+node:events (519:28)"
+**AI Response**: "Se rastreará estáticamente el contrato de TIPO_PROCESO y se alineará el valor enviado por la aplicación con la restricción CK_PP_SOL_TIPO, sin ejecutar SQL ni mutar la base."
+**Context**: Diagnóstico de restricción de proceso en Portal
+
+---
+## Solicitud de Definición de Restricción Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "1 of 1 error
+Next.js (14.2.33) is outdated (learn more)
+
+Unhandled Runtime Error
+Error: The INSERT statement conflicted with the CHECK constraint \"CK_PP_SOL_TIPO\". The conflict occurred in database \"SOFTLANDQA\", table \"PORTAL_PRECIOS.SOLICITUD\", column 'TIPO_PROCESO'.
+
+Call Stack
+handleError
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/mssql/lib/tedious/request.js (384:15)
+Connection.emit
+node:events (519:28)
+Connection.emit
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/handler.js (285:21)
+Readable.<anonymous>
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/token-stream-parser.js (18:33)
+Readable.emit
+node:events (519:28)"
+**AI Response**: "La definición de CK_PP_SOL_TIPO no está versionada localmente y no se puede inferir de forma segura. Se solicitará únicamente su definición o captura para configurar el mapeo explícito sin ejecutar operaciones de base de datos."
+**Context**: Bloqueo de contrato físico TIPO_PROCESO
+
+---
+## Solicitud de Verificación de Columnas Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "a parte de esto falta otras columna verifica"
+**AI Response**: "Se compararán estáticamente las columnas insertadas, actualizadas y leídas por la aplicación contra la estructura física compartida de PORTAL_PRECIOS.SOLICITUD. No se ejecutarán consultas ni mutaciones SQL."
+**Context**: Inventario de compatibilidad de contrato Portal
+
+---
+## Resultado de Comparación de Contrato Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "a parte de esto falta otras columna verifica"
+**AI Response**: "La comparación estática identificó campos incompatibles entre el repositorio y la estructura física compartida: el código usa CODIGO_SOLICITUD, PROCESO y MODALIDAD; la tabla reportada usa ID_PROCESO, TIPO_PROCESO y LISTA_PRECIO. También deben confirmarse los defaults/nulabilidad de INTENTOS_REINTENTO, FECHA_CREACION y FECHA_MODIFICACION, además del esquema de SOLICITUD_DETALLE. Se solicitará metadato de solo lectura antes de modificar el INSERT para evitar nuevos errores."
+**Context**: Inventario de diferencias de columnas Portal
+
+---
+## Solicitud de Script de Mitigación de Columnas Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "query para aplicar y asi mitigar estos errores de las coolumnas"
+**AI Response**: "Se entregará un script DDL idempotente, limitado al esquema PORTAL_PRECIOS, para agregar columnas de compatibilidad faltantes usadas por la aplicación. No se incluirá la desactivación ni sustitución ciega de CK_PP_SOL_TIPO, ya que requiere los valores autorizados de la restricción física."
+**Context**: Generación de DDL no ejecutado para compatibilidad Portal
+
+---
+## Corrección Solicitada de CK_PP_SOL_TIPO
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "1 of 1 error  
+Next.js (14.2.33) is outdated (learn more)  
+  
+Unhandled Runtime Error  
+Error: The INSERT statement conflicted with the CHECK constraint \"CK_PP_SOL_TIPO\". The conflict occurred in database \"SOFTLANDQA\", table \"PORTAL_PRECIOS.SOLICITUD\", column 'TIPO_PROCESO'.  
+  
+Call Stack  
+handleError  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/mssql/lib/tedious/request.js (384:15)  
+Connection.emit  
+node:events (519:28)  
+Connection.emit  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/connection.js (959:18)  
+RequestTokenHandler.onErrorMessage  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/handler.js (285:21)  
+Readable.<anonymous>  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/token-stream-parser.js (18:33)  
+Readable.emit  
+node:events (519:28) corrige no me pasastetodas las columnas ya no debe de aparecer mas errores mitaga"
+**AI Response**: "La aplicación se alineará para insertar explícitamente TIPO_PROCESO. Se preparará, sin ejecutar, una migración controlada que actualiza CK_PP_SOL_TIPO para permitir las cuatro claves de proceso vigentes."
+**Context**: Corrección de contrato físico para tipo de proceso Portal
+
+---
+## Implementación de Contrato Completo de Solicitud Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "1 of 1 error  
+Next.js (14.2.33) is outdated (learn more)  
+  
+Unhandled Runtime Error  
+Error: The INSERT statement conflicted with the CHECK constraint \"CK_PP_SOL_TIPO\". The conflict occurred in database \"SOFTLANDQA\", table \"PORTAL_PRECIOS.SOLICITUD\", column 'TIPO_PROCESO'.  
+  
+Call Stack  
+handleError  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/mssql/lib/tedious/request.js (384:15)  
+Connection.emit  
+node:events (519:28)  
+Connection.emit  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/handler.js (285:21)  
+Readable.<anonymous>  
+file:///C:/Users/ysalas/MV26020-Calculo-de-listas-de-precio/app-web/node_modules/tedious/lib/token/token-stream-parser.js (18:33)  
+Readable.emit  
+node:events (519:28) corrige no me pasastetodas las columnas ya no debe de aparecer mas errores mitaga"
+**AI Response**: "La aplicación inserta explícitamente ID_PROCESO, TIPO_PROCESO, LISTA_PRECIO, IDP_OPERADOR, INTENTOS_REINTENTO y las fechas requeridas. Se entregó una migración no ejecutada para completar columnas de compatibilidad y redefinir CK_PP_SOL_TIPO con las cuatro claves activas."
+**Context**: Validación local de contrato Portal mediante tsc --noEmit sin diagnósticos y git diff --check sin errores.
+
+---

@@ -23,7 +23,7 @@ import type {
 } from "@/lib/domain-types";
 import type { NivelPrecio } from "@/lib/types";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
-import { esModoDemo, esModoSoloLectura, objetoPortal } from "@/server/companies";
+import { esModoDemo, esModoSoloLectura, esModoSoloPortal, objetoPortal } from "@/server/companies";
 import { listarCatalogo, listarNivelesPrecio } from "@/server/pricing-repository";
 import {
   ejecutarSpGestionListas,
@@ -81,11 +81,16 @@ export async function resolverIdentidad(email: string, compania?: string): Promi
     rol: rol as Identidad["rol"],
     color: String(r.COLOR ?? "#52525b"),
     compania: companiaNormalizada,
+    idpSubject: r.IDP_SUBJECT == null ? null : String(r.IDP_SUBJECT).trim() || null,
   };
 }
 
 function errorSoloLectura(): { ok: false; error: string } {
   return { ok: false, error: "El sistema está en modo solo lectura. No se permiten cambios ni ejecuciones." };
+}
+
+function errorSoloPortal(): { ok: false; error: string } {
+  return { ok: false, error: "La aprobación que procesa Softland está bloqueada en modo solo Portal." };
 }
 
 function normalizarEncabezado(v: unknown): string {
@@ -394,8 +399,16 @@ export interface EnviarSolicitudInput {
 
 export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boolean; error?: string; solicitud?: Solicitud }> {
   if (esModoSoloLectura()) return errorSoloLectura();
-  // Revalidacion defensiva de ambito (equivalente a la del backend real).
-  if (!estaEnAmbito(input.compania, input.compania)) {
+  const identidadPortal = await resolverIdentidad(input.usuarioEmail, input.compania);
+  const idpOperador = identidadPortal?.idpSubject?.trim();
+  if (!identidadPortal || !idpOperador) {
+    return {
+      ok: false,
+      error: "No se puede registrar la solicitud: el usuario Portal no tiene un IDP_SUBJECT activo para completar IDP_OPERADOR.",
+    };
+  }
+  // Revalidación defensiva con la identidad resuelta desde el Portal.
+  if (!estaEnAmbito(identidadPortal.compania, input.compania)) {
     return { ok: false, error: "Esta solicitud está fuera de su ámbito autorizado por compañía. No puede enviarse." };
   }
 
@@ -446,8 +459,9 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
     proceso: input.proceso,
     modalidad: input.modalidad,
     compania: input.compania,
-    solicitanteNombre: input.usuarioNombre,
-    solicitanteEmail: input.usuarioEmail,
+    solicitanteNombre: identidadPortal.nombre,
+    solicitanteEmail: identidadPortal.email,
+    idpOperador,
     parametros: input.parametros,
     filas: input.filas,
     archivoNombre: input.archivoNombre ?? null,
@@ -457,8 +471,30 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
     motivoRechazo: null,
     idProcesoSP: null,
   };
-  await agregarSolicitud(solicitud);
-  await registrarEvento("SOLICITUD_ENVIADA", input.usuarioNombre, input.usuarioRol, input.compania, solicitud.id, null, input.usuarioEmail);
+  try {
+    await agregarSolicitud(solicitud);
+    await registrarEvento(
+      "SOLICITUD_ENVIADA",
+      identidadPortal.nombre,
+      identidadPortal.rol,
+      input.compania,
+      solicitud.id,
+      null,
+      identidadPortal.email,
+    );
+  } catch (error) {
+    const detalle = error instanceof Error ? error.message : "";
+    if (detalle.includes("CK_PP_SOL_TIPO")) {
+      return {
+        ok: false,
+        error: "El Portal aún no acepta este TIPO_PROCESO. Aplique la migración de CK_PP_SOL_TIPO antes de reenviar la solicitud.",
+      };
+    }
+    return {
+      ok: false,
+      error: "No fue posible registrar la solicitud en el Portal. Verifique el contrato de columnas y restricciones de PORTAL_PRECIOS.SOLICITUD.",
+    };
+  }
   return { ok: true, solicitud };
 }
 
@@ -509,6 +545,7 @@ export interface AprobarInput {
 
 export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; error?: string; idProcesoSP?: string }> {
   if (esModoSoloLectura()) return errorSoloLectura();
+  if (esModoSoloPortal()) return errorSoloPortal();
   const s = await obtenerSolicitud(input.solicitudId);
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
   if (s.estado !== "PENDIENTE") return { ok: false, error: "La solicitud no está pendiente de aprobación." };

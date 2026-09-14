@@ -123,6 +123,7 @@ export interface FilaInput {
 export function validarFila(row: FilaInput, modo: ModoProceso, context: CatalogoContext = CATALOGO_POR_DEFECTO): ValidacionPrecio {
   const articulo = context.articulos[row.codigo];
   const margenMinimo = articulo ? margenMinimoEfectivo(articulo) : null;
+  const costoMinimo = articulo ? calcularCostoMinimoArticulo(articulo) : null;
   const base: ValidacionPrecio = {
     valido: false,
     precioActual: null,
@@ -131,7 +132,7 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
     estadoRedondeo: null,
     bandaRedondeo: null,
     margenMinimo,
-    costoMinimo: null,
+    costoMinimo,
     causa: null,
   };
 
@@ -162,7 +163,6 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
   }
 
   const redondeo = redondearPrecioComercial(precioPropuesto);
-  const costoMinimo = calcularCostoMinimoArticulo(articulo);
   const precioParaValidar = redondeo.precioRedondeado ?? precioPropuesto;
 
   if (costoMinimo != null && precioParaValidar < costoMinimo) {
@@ -251,6 +251,11 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
   const formatoValido = crudo !== "" && !Number.isNaN(porcentaje) && /^\d+(\.\d+)?$/.test(crudo);
   const factorReduccion = formatoValido ? porcentaje / 100 : null;
   const multiplicadorMargen = factorReduccion != null ? 1 - factorReduccion : null;
+  const margenMinimoBase = articulo ? margenMinimoEfectivo(articulo) : null;
+  const costo = articulo && typeof articulo.costoReposicion === "number" ? articulo.costoReposicion : null;
+  const costoMinimoBase = costo != null && margenMinimoBase != null && margenMinimoBase >= 0 && margenMinimoBase < 1
+    ? costo / (1 - margenMinimoBase)
+    : null;
 
   const validacionBase: ValidacionMargen = {
     valido: false,
@@ -259,10 +264,11 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
     precioRedondeado: null,
     estadoRedondeo: null,
     bandaRedondeo: null,
+    costoMinimoBase,
     costoMinimo: null,
     margenPromedio: null,
     margenSobrePrecioRedondeado: null,
-    margenMinimoBase: null,
+    margenMinimoBase,
     margenMinimo: null,
     porcentajeReduccion: formatoValido ? porcentaje : null,
     factorReduccion,
@@ -296,9 +302,7 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
   }
 
   const precioLista = articulo.precioActual;
-  const costo = typeof articulo.costoReposicion === "number" ? articulo.costoReposicion : null;
   const margenPromedio = precioLista > 0 && costo != null ? (precioLista - costo) / precioLista : null;
-  const margenMinimoBase = margenMinimoEfectivo(articulo);
   const margenMinimo = multiplicadorMargen != null ? Math.max(0, margenMinimoBase * multiplicadorMargen) : null;
   const redondeo = redondearPrecioComercial(precioLista);
   const precioRedondeado = redondeo.precioRedondeado;
@@ -316,6 +320,7 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
       precioRedondeado,
       estadoRedondeo: margenNoCumple ? "ALERTA_MARGEN" : redondeo.estado,
       bandaRedondeo: redondeo.banda,
+      costoMinimoBase,
       costoMinimo,
       margenPromedio,
       margenSobrePrecioRedondeado,
