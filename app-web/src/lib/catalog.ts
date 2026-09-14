@@ -60,7 +60,9 @@ export const LISTA_BASE_OBJETIVO = {
   versionEstado: "Vigente",
 };
 
-export const PROCESOS: Record<ProcesoKey, ProcesoDef> = {
+export type TipoProcesoPortal = "MANUAL" | "MASIVO";
+
+export const PROCESOS: Record<ProcesoKey | TipoProcesoPortal, ProcesoDef> = {
   FACTOR_PRECIO: {
     label: "Gestión Global",
     desc: "Ajuste global manual por lista de precio mediante un factor.",
@@ -84,6 +86,18 @@ export const PROCESOS: Record<ProcesoKey, ProcesoDef> = {
     desc: "Carga masiva del porcentaje de reducción por artículo para recalcular el Margen Mínimo de Utilidad (Regla de Mayoreo).",
     ejecucion: "Recalculo de margen mínimo autorizado",
     modo: "margen",
+  },
+  MANUAL: {
+    label: "Manual",
+    desc: "Solicitud registrada desde el formulario.",
+    ejecucion: "Registro manual en Portal",
+    modo: "factor",
+  },
+  MASIVO: {
+    label: "Masivo",
+    desc: "Solicitud registrada desde una carga Excel.",
+    ejecucion: "Registro masivo en Portal",
+    modo: "factor",
   },
 };
 

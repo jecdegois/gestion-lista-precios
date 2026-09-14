@@ -85,6 +85,7 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
   const mssql = await import("mssql");
   const idpOperador = s.idpOperador?.trim();
   const listaPrecio = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
+  const tipoProceso = s.modalidad === "excel" ? "MASIVO" : "MANUAL";
   if (!idpOperador) {
     throw new Error("No se puede registrar la solicitud Portal sin IDP_OPERADOR.");
   }
@@ -93,7 +94,7 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
     .input("cod", mssql.VarChar(20), s.id)
     .input("idProceso", mssql.VarChar(30), s.id)
     .input("comp", mssql.VarChar(20), s.compania)
-    .input("tipoProceso", mssql.VarChar(30), s.proceso)
+    .input("tipoProceso", mssql.VarChar(30), tipoProceso)
     .input("mod", mssql.VarChar(10), s.modalidad)
     .input("listaPrecio", mssql.VarChar(30), listaPrecio || null)
     .input("idpOperador", mssql.VarChar(128), idpOperador)

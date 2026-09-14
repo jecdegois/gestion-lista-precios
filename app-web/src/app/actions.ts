@@ -483,16 +483,16 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
       identidadPortal.email,
     );
   } catch (error) {
-    const detalle = error instanceof Error ? error.message : "";
+    const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de base de datos no identificado.";
     if (detalle.includes("CK_PP_SOL_TIPO")) {
       return {
         ok: false,
-        error: "El Portal aún no acepta este TIPO_PROCESO. Aplique la migración de CK_PP_SOL_TIPO antes de reenviar la solicitud.",
+        error: `TIPO_PROCESO rechazado por CK_PP_SOL_TIPO: ${detalle}`,
       };
     }
     return {
       ok: false,
-      error: "No fue posible registrar la solicitud en el Portal. Verifique el contrato de columnas y restricciones de PORTAL_PRECIOS.SOLICITUD.",
+      error: `No fue posible registrar la solicitud en el Portal: ${detalle}`,
     };
   }
   return { ok: true, solicitud };
