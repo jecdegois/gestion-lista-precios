@@ -97,6 +97,11 @@ function normalizarEncabezado(v: unknown): string {
     .toLowerCase();
 }
 
+function normalizarMargenUtilidadMinimo(porcentaje: number | null | undefined): number | undefined {
+  if (porcentaje == null || !Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje >= 100) return undefined;
+  return porcentaje / 100;
+}
+
 function convertirArticuloMaestro(articulo: Awaited<ReturnType<typeof listarCatalogo>>[number]): ArticuloCatalogo {
   const clasificaciones = [
     articulo.clasificacion1,
@@ -114,7 +119,7 @@ function convertirArticuloMaestro(articulo: Awaited<ReturnType<typeof listarCata
     descripcion: articulo.descripcion,
     precioActual: articulo.precioLista,
     costoReposicion: articulo.costoPromedio,
-    margenUtilidadMin: undefined,
+    margenUtilidadMin: normalizarMargenUtilidadMinimo(articulo.margenUtilidadMinPorcentaje),
     categoria: articulo.clasificacion1 ?? "",
     subcategoria: articulo.clasificacion2 ?? "",
     grupo,
@@ -124,7 +129,11 @@ function convertirArticuloMaestro(articulo: Awaited<ReturnType<typeof listarCata
   };
 }
 
-function crearContextoCatalogo(niveles: NivelPrecio[], articulosMaestros: Awaited<ReturnType<typeof listarCatalogo>>): CatalogoContext {
+function crearContextoCatalogo(
+  niveles: NivelPrecio[],
+  articulosMaestros: Awaited<ReturnType<typeof listarCatalogo>>,
+  listaBaseCodigo?: string,
+): CatalogoContext {
   const articulos = articulosMaestros.map(convertirArticuloMaestro);
   const grupos: CatalogoContext["grupos"] = {};
   for (const articulo of articulos) {
@@ -133,13 +142,32 @@ function crearContextoCatalogo(niveles: NivelPrecio[], articulosMaestros: Awaite
     grupos[clave].articulos.push(articulo.codigo);
   }
   const nombresLista = Object.fromEntries(niveles.map((nivel) => [nivel.codigo, nivel.nombre]));
-  const base = niveles.find((nivel) => nivel.codigo.toUpperCase() === "MAYOREOD") ?? niveles[0] ?? { codigo: "", nombre: "", };
+  const base = (listaBaseCodigo
+    ? niveles.find((nivel) => nivel.codigo.toUpperCase() === listaBaseCodigo.toUpperCase())
+    : undefined)
+    ?? niveles.find((nivel) => nivel.codigo.toUpperCase() === "MAYOREOD")
+    ?? niveles[0]
+    ?? { codigo: "", nombre: "" };
   return {
     articulos: Object.fromEntries(articulos.map((articulo) => [articulo.codigo, articulo])),
     nombresLista,
     grupos,
     listaBase: { codigo: base.codigo, nombre: base.nombre, nivelPrecio: base.codigo },
   };
+}
+
+async function cargarContextosPorLista(
+  compania: string,
+  niveles: NivelPrecio[],
+  listas: string[],
+): Promise<Map<string, CatalogoContext>> {
+  const contextos = await Promise.all(
+    listas.map(async (lista) => [
+      lista,
+      crearContextoCatalogo(niveles, await listarCatalogo(compania, lista), lista),
+    ] as const),
+  );
+  return new Map(contextos);
 }
 
 function resolverNivelPrecio(niveles: NivelPrecio[], valor: string | null | undefined): string | undefined {
@@ -256,12 +284,11 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
     ? dataRows.map((r) => String(r[0] ?? "").trim())
     : [nivelPrecio || niveles[0]?.codigo];
   const nivelesConsulta = nivelesSolicitadosCanonicos(niveles, nivelesConsultaRaw);
-  const contexto = crearContextoCatalogo(
-    niveles,
-    (await Promise.all(nivelesConsulta.map((nivel) => listarCatalogo(compania, nivel)))).flat(),
-  );
+  const contextosPorLista = await cargarContextosPorLista(compania, niveles, nivelesConsulta);
+  const contextoVacio = crearContextoCatalogo(niveles, []);
   const filas = dataRows.map((r, idx) => {
     if (esDescuento) {
+      const listaCodigo = resolverNivelPrecio(niveles, String(r[0] ?? "").trim());
       return construirFilaDescuentoMasivo(
         {
           fila: idx + 1,
@@ -271,9 +298,10 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
           valorPropuestoRaw: r[2] !== undefined ? String(r[2]).trim() : "",
         },
         true,
-        contexto,
+        listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
       );
     }
+    const listaCodigo = nivelesConsulta[0];
     return construirFilaCompleta(
       {
         fila: idx + 1,
@@ -282,7 +310,7 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
         valorPropuestoRaw: r[1] !== undefined ? String(r[1]).trim() : "",
       },
       "factor",
-      contexto,
+      listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
     );
   });
   return { ok: true, filas, archivoNombre: file.name, archivoS3Key };
@@ -306,7 +334,11 @@ export async function simularManual(input: SimularManualInput): Promise<{ ok: bo
   const magnitud = input.factor ?? "";
   const tv = input.tipoVariacion ?? "AUMENTO";
   const niveles = await listarNivelesPrecio(input.compania);
-  const nivelesSolicitados = input.items?.map((item) => item.listaCodigo) ?? [input.nivelBase ?? input.nivel ?? niveles[0]?.codigo];
+  const nivelesSolicitados = input.items
+    ? input.items.map((item) => item.listaCodigo)
+    : input.proceso === "MAYOREOD_MASIVO"
+      ? [input.nivelBase ?? input.nivel ?? niveles[0]?.codigo]
+      : [input.nivel ?? input.nivelBase ?? niveles[0]?.codigo];
   const nivelesSolicitadosNoVacios = nivelesSolicitados
     .filter((nivel): nivel is string => Boolean(nivel?.trim()))
     .map((nivel) => nivel.trim().toLowerCase());
@@ -314,28 +346,31 @@ export async function simularManual(input: SimularManualInput): Promise<{ ok: bo
   if (nivelesConsulta.length === 0 || nivelesConsulta.length !== new Set(nivelesSolicitadosNoVacios).size) {
     return { ok: false, filas: [] };
   }
-  const articulosMaestros = (await Promise.all(
-    nivelesConsulta.map((nivel) => listarCatalogo(input.compania, nivel)),
-  )).flat();
-  const contexto = crearContextoCatalogo(niveles, articulosMaestros);
+  const contextosPorLista = await cargarContextosPorLista(input.compania, niveles, nivelesConsulta);
+  const contextoVacio = crearContextoCatalogo(niveles, []);
   const nivelAplicable = resolverNivelPrecio(niveles, input.nivel);
+  const nivelBaseAplicable = resolverNivelPrecio(niveles, input.nivelBase ?? input.nivel);
 
   if (input.proceso === "MAYOREOD_MASIVO" && input.grupoArticulos) {
+    const contexto = nivelBaseAplicable ? contextosPorLista.get(nivelBaseAplicable) ?? contextoVacio : contextoVacio;
     return { ok: true, filas: construirFilasMayoreodMasivo(input.grupoArticulos, tv, magnitud, contexto) };
   }
   if (input.proceso === "DESCUENTO_LISTA_PRECIO" && input.items) {
-    const filas = input.items.map((it, idx) =>
-      construirFilaDescuentoMasivo({
+    const filas = input.items.map((it, idx) => {
+      const listaCodigo = resolverNivelPrecio(niveles, it.listaCodigo);
+      const contexto = listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio;
+      return construirFilaDescuentoMasivo({
         fila: idx + 1,
         codigo: it.codigo,
         listaCodigo: it.listaCodigo,
         tipoVariacion: it.tipoVariacion,
         variacionPorcentaje: it.variacionPorcentaje,
-      }, false, contexto),
-    );
+      }, false, contexto);
+    });
     return { ok: true, filas };
   }
   if (nivelAplicable) {
+    const contexto = contextosPorLista.get(nivelAplicable) ?? contextoVacio;
     return { ok: true, filas: construirFilasGestionGlobal(nivelAplicable, tv, magnitud, contexto) };
   }
   return { ok: true, filas: [] };
@@ -383,12 +418,26 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
     return { ok: false, error: "La solicitud contiene una lista que no existe en los maestros de Softland." };
   }
 
-  const maestros = (await Promise.all(
-    nivelesCanonicos.map((nivel) => listarCatalogo(input.compania, nivel)),
-  )).flat();
-  const codigosMaestros = new Set(maestros.map((articulo) => articulo.codigo.trim().toUpperCase()));
-  if (input.filas.length === 0 || input.filas.some((fila) => !codigosMaestros.has(fila.codigo.trim().toUpperCase()))) {
-    return { ok: false, error: "La solicitud contiene un artículo que no existe en los maestros de Softland." };
+  const contextosPorLista = await cargarContextosPorLista(input.compania, niveles, nivelesCanonicos);
+  const listaPredeterminada = resolverNivelPrecio(
+    niveles,
+    input.parametros.nivelPrecio ?? input.parametros.listaBase ?? input.parametros.nivel,
+  );
+  const contieneArticulo = (listaCodigo: string, codigoArticulo: string): boolean => {
+    const contexto = contextosPorLista.get(listaCodigo);
+    const codigoNormalizado = codigoArticulo.trim().toUpperCase();
+    return Object.values(contexto?.articulos ?? {}).some(
+      (articulo) => articulo.codigo.trim().toUpperCase() === codigoNormalizado,
+    );
+  };
+  const hayArticuloFueraDeLista = input.filas.some((fila) => {
+    const listaFila = "listaCodigo" in fila && fila.listaCodigo
+      ? resolverNivelPrecio(niveles, fila.listaCodigo)
+      : listaPredeterminada;
+    return !listaFila || !contieneArticulo(listaFila, fila.codigo);
+  });
+  if (input.filas.length === 0 || hayArticuloFueraDeLista) {
+    return { ok: false, error: "La solicitud contiene un artículo que no existe en la lista de precio seleccionada en Softland." };
   }
 
   const codigo = await siguienteCodigoSolicitud();

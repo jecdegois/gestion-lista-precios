@@ -6,6 +6,8 @@ export interface Articulo {
   descripcion: string;
   precioLista: number;
   costoPromedio: number;
+  /** Porcentaje persistido en ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN (ej. 20 = 20%). */
+  margenUtilidadMinPorcentaje?: number | null;
   nivelPrecio?: string;
   version?: number;
   clasificacion1?: string;

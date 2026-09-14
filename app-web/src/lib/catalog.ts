@@ -98,7 +98,12 @@ export function estaEnAmbito(
 }
 
 export function margenMinimoEfectivo(articulo: ArticuloCatalogo | undefined): number {
-  if (articulo && typeof articulo.margenUtilidadMin === "number" && articulo.margenUtilidadMin > 0) {
+  if (
+    articulo
+    && typeof articulo.margenUtilidadMin === "number"
+    && articulo.margenUtilidadMin >= 0
+    && articulo.margenUtilidadMin < 1
+  ) {
     return articulo.margenUtilidadMin;
   }
   return MARGEN_MINIMO_GLOBAL;
