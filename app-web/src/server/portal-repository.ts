@@ -1,6 +1,6 @@
 import "server-only";
 import type { EventoAuditoria, EventoTipo, Rol, Solicitud } from "@/lib/domain-types";
-import { assertEscrituraHabilitada, esModoDemo, objetoPortal } from "./companies";
+import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "./companies";
 import {
   agregarSolicitud as demoAgregar,
   actualizarSolicitud as demoActualizar,
@@ -58,12 +58,15 @@ export async function obtenerSolicitud(codigo: string): Promise<Solicitud | unde
   const cab = await pool.request().input("cod", mssql.VarChar(20), codigo).query(`SELECT * FROM ${sp} WHERE CODIGO_SOLICITUD = @cod`);
   const r = cab.recordset[0];
   if (!r) return undefined;
-  const det = await pool.request().input("id", mssql.Int, r.ID_SOLICITUD).query(`SELECT * FROM ${spd} WHERE ID_SOLICITUD = @id`);
+  const det = await pool
+    .request()
+    .input("id", mssql.UniqueIdentifier, String(r.ID_SOLICITUD))
+    .query(`SELECT * FROM ${spd} WHERE ID_SOLICITUD = @id`);
   return mapSolicitud(r, det.recordset);
 }
 
 export async function siguienteCodigoSolicitud(): Promise<string> {
-  assertEscrituraHabilitada();
+  assertEscrituraPortalHabilitada();
   if (esModoDemo()) return "SOL-" + (10450 + demoSeq());
   const pool = await getPortalPool();
   const q = await pool.request().query(`SELECT NEXT VALUE FOR ${objetoPortal("SEQ_SOLICITUD")} AS n`);
@@ -71,7 +74,7 @@ export async function siguienteCodigoSolicitud(): Promise<string> {
 }
 
 export async function agregarSolicitud(s: Solicitud): Promise<void> {
-  assertEscrituraHabilitada();
+  assertEscrituraPortalHabilitada();
   if (esModoDemo()) {
     demoAgregar(s);
     return;
@@ -80,31 +83,42 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
   const sp = objetoPortal("SOLICITUD");
   const spd = objetoPortal("SOLICITUD_DETALLE");
   const mssql = await import("mssql");
+  const idpOperador = s.idpOperador?.trim();
+  const listaPrecio = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
+  if (!idpOperador) {
+    throw new Error("No se puede registrar la solicitud Portal sin IDP_OPERADOR.");
+  }
   const req = pool
     .request()
     .input("cod", mssql.VarChar(20), s.id)
+    .input("idProceso", mssql.VarChar(30), s.id)
     .input("comp", mssql.VarChar(20), s.compania)
-    .input("proc", mssql.VarChar(30), s.proceso)
+    .input("tipoProceso", mssql.VarChar(30), s.proceso)
     .input("mod", mssql.VarChar(10), s.modalidad)
+    .input("listaPrecio", mssql.VarChar(30), listaPrecio || null)
+    .input("idpOperador", mssql.VarChar(128), idpOperador)
     .input("email", mssql.VarChar(120), s.solicitanteEmail)
     .input("nombre", mssql.VarChar(120), s.solicitanteNombre)
     .input("params", mssql.NVarChar(mssql.MAX), JSON.stringify(s.parametros ?? {}))
     .input("archNom", mssql.VarChar(260), s.archivoNombre)
     .input("archS3", mssql.VarChar(400), s.archivoS3Key);
   const ins = await req.query(
-    `INSERT INTO ${sp} (CODIGO_SOLICITUD, COMPANIA, PROCESO, MODALIDAD, SOLICITANTE_EMAIL, SOLICITANTE_NOMBRE,
-                        ESTADO, PARAMETROS_JSON, ARCHIVO_NOMBRE, ARCHIVO_S3_KEY, FECHA_ENVIO)
+    `INSERT INTO ${sp} (CODIGO_SOLICITUD, ID_PROCESO, COMPANIA, TIPO_PROCESO, MODALIDAD, LISTA_PRECIO,
+                        IDP_OPERADOR, SOLICITANTE_EMAIL, SOLICITANTE_NOMBRE, ESTADO, PARAMETROS_JSON,
+                        ARCHIVO_NOMBRE, ARCHIVO_S3_KEY, INTENTOS_REINTENTO, FECHA_CREACION,
+                        FECHA_MODIFICACION, FECHA_ENVIO)
      OUTPUT INSERTED.ID_SOLICITUD
-     VALUES (@cod,@comp,@proc,@mod,@email,@nombre,'PENDIENTE',@params,@archNom,@archS3,GETDATE());`,
+     VALUES (@cod,@idProceso,@comp,@tipoProceso,@mod,@listaPrecio,@idpOperador,@email,@nombre,'PENDIENTE',@params,
+             @archNom,@archS3,0,GETDATE(),GETDATE(),GETDATE());`,
   );
-  const idSolicitud = ins.recordset[0].ID_SOLICITUD as number;
+  const idSolicitud = String(ins.recordset[0].ID_SOLICITUD);
   for (const f of s.filas) {
     await insertarDetalle(pool, spd, idSolicitud, f);
   }
 }
 
 export async function actualizarSolicitud(codigo: string, patch: Partial<Solicitud>): Promise<void> {
-  assertEscrituraHabilitada();
+  assertEscrituraPortalHabilitada();
   if (esModoDemo()) {
     demoActualizar(codigo, patch);
     return;
@@ -138,26 +152,25 @@ export async function registrarEvento(
   idProcesoSP: string | null,
   usuarioEmail = "",
 ): Promise<void> {
-  assertEscrituraHabilitada();
+  assertEscrituraPortalHabilitada();
   if (esModoDemo()) {
     demoRegistrarEvento(evento, usuario, rol, compania, solicitudId, idProcesoSP);
     return;
   }
   const pool = await getPortalPool();
-  const ae = objetoPortal("AUDITORIA_EVENTOS");
+  const ae = objetoPortal("AUDITORIA_PRECIOS");
   const mssql = await import("mssql");
+  const payload = JSON.stringify({ usuario, compania, solicitudId });
   await pool
     .request()
-    .input("comp", mssql.VarChar(20), compania)
-    .input("email", mssql.VarChar(120), usuarioEmail || usuario)
-    .input("nombre", mssql.VarChar(120), usuario)
+    .input("proceso", mssql.VarChar(30), idProcesoSP ?? solicitudId ?? evento)
+    .input("subject", mssql.VarChar(120), usuarioEmail || usuario)
     .input("rol", mssql.VarChar(15), rol)
     .input("evento", mssql.VarChar(50), evento)
-    .input("cod", mssql.VarChar(20), solicitudId)
-    .input("proc", mssql.VarChar(30), idProcesoSP)
+    .input("payload", mssql.NVarChar(mssql.MAX), payload)
     .query(
-      `INSERT INTO ${ae} (COMPANIA, USUARIO_EMAIL, USUARIO_NOMBRE, ROL, EVENTO, CODIGO_SOLICITUD, ID_PROCESO_SP)
-       VALUES (@comp,@email,@nombre,@rol,@evento,@cod,@proc);`,
+      `INSERT INTO ${ae} (ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO)
+       VALUES (@proceso,@subject,@rol,@evento,@payload,GETDATE());`,
     );
 }
 
@@ -208,12 +221,12 @@ export async function listarEventos(compania?: string): Promise<EventoAuditoria[
 // ---------------------------------------------------------------------------
 type SqlPool = Awaited<ReturnType<typeof getPortalPool>>;
 
-async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, f: import("@/lib/domain-types").FilaResultado): Promise<void> {
+async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: string, f: import("@/lib/domain-types").FilaResultado): Promise<void> {
   const mssql = await import("mssql");
   const v = f.validacion as unknown as Record<string, unknown>;
   await pool
     .request()
-    .input("id", mssql.Int, idSolicitud)
+    .input("id", mssql.UniqueIdentifier, idSolicitud)
     .input("fila", mssql.Int, f.fila)
     .input("art", mssql.VarChar(20), f.codigo)
     .input("desc", mssql.VarChar(200), f.descripcion)
@@ -242,12 +255,13 @@ function mapSolicitud(r: Record<string, unknown>, _detalle: Record<string, unkno
     parametros = {};
   }
   return {
-    id: String(r.CODIGO_SOLICITUD),
-    proceso: r.PROCESO as Solicitud["proceso"],
+    id: String(r.CODIGO_SOLICITUD ?? r.ID_PROCESO),
+    proceso: (r.TIPO_PROCESO ?? r.PROCESO) as Solicitud["proceso"],
     modalidad: r.MODALIDAD as Solicitud["modalidad"],
     compania: String(r.COMPANIA),
     solicitanteNombre: String(r.SOLICITANTE_NOMBRE),
     solicitanteEmail: String(r.SOLICITANTE_EMAIL),
+    idpOperador: (r.IDP_OPERADOR as string) ?? null,
     parametros,
     filas: [],
     archivoNombre: (r.ARCHIVO_NOMBRE as string) ?? null,

@@ -1,6 +1,6 @@
 import "server-only";
 import type { Articulo, NivelPrecio } from "@/lib/types";
-import { assertEscrituraHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "./companies";
+import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "./companies";
 import {
   buscarArticuloDemo,
   catalogoDemo,
@@ -198,7 +198,7 @@ export async function upsertUdf(
   porcentaje: number,
   usuario: string,
 ): Promise<void> {
-  assertEscrituraHabilitada();
+  assertEscrituraSoftlandHabilitada();
   if (esModoDemo()) {
     upsertUdfDemo(compania, codigo, porcentaje);
     return;
@@ -244,7 +244,7 @@ export async function ejecutarSpMargen(
   articulo: string | null,
   usuario: string,
 ): Promise<void> {
-  assertEscrituraHabilitada();
+  assertEscrituraSoftlandHabilitada();
   const pool = await getPool(compania);
   const sp = objetoCalificado(compania, "spMargen");
   const cfg = resolverCompania(compania).sql;
@@ -268,7 +268,7 @@ export async function ejecutarSpGestionListas(
   version: number,
   usuario: string,
 ): Promise<void> {
-  assertEscrituraHabilitada();
+  assertEscrituraSoftlandHabilitada();
   const pool = await getPool(compania);
   const sp = objetoCalificado(compania, "spGestionListas");
   const cfg = resolverCompania(compania).sql;

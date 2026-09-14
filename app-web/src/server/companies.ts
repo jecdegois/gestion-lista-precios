@@ -156,8 +156,22 @@ export function esModoSoloPortal(): boolean {
   return (process.env.PORTAL_ONLY_MODE ?? "false").trim().toLowerCase() === "true";
 }
 
-export function assertEscrituraHabilitada(): void {
+export function assertEscrituraPortalHabilitada(): void {
   if (esModoSoloLectura()) {
     throw new Error("PORTAL_READ_ONLY: el sistema está configurado únicamente para lectura.");
   }
+}
+
+export function assertEscrituraSoftlandHabilitada(): void {
+  if (esModoSoloLectura()) {
+    throw new Error("SOFTLAND_READ_ONLY: Softland está configurado únicamente para lectura.");
+  }
+  if (esModoSoloPortal()) {
+    throw new Error("PORTAL_ONLY_MODE: las mutaciones y procedimientos de Softland están bloqueados.");
+  }
+}
+
+/** @deprecated Use una guarda específica para Portal o Softland. */
+export function assertEscrituraHabilitada(): void {
+  assertEscrituraSoftlandHabilitada();
 }

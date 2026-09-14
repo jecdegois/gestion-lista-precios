@@ -10,6 +10,8 @@ export interface Identidad {
   rol: Rol;
   color: string;
   compania: string | null;
+  /** Subject canónico del proveedor de identidad, usado como IDP_OPERADOR. */
+  idpSubject?: string | null;
 }
 
 export type ProcesoKey =
@@ -66,6 +68,9 @@ export interface ValidacionMargen {
   precioRedondeado: number | null;
   estadoRedondeo: EstadoRedondeo | null;
   bandaRedondeo: { numero: number; intervalo: string } | null;
+  /** Precio mínimo equivalente del margen base de ARTICULO_PRECIO. */
+  costoMinimoBase: number | null;
+  /** Precio mínimo equivalente después de aplicar la reducción simulada. */
   costoMinimo: number | null;
   margenPromedio: number | null;
   margenSobrePrecioRedondeado: number | null;
@@ -142,6 +147,8 @@ export interface Solicitud {
   compania: string;
   solicitanteNombre: string;
   solicitanteEmail: string;
+  /** Identificador IdP obligatorio del usuario que crea la solicitud Portal. */
+  idpOperador?: string | null;
   parametros: ParametrosSolicitud;
   filas: FilaResultado[];
   archivoNombre: string | null;
