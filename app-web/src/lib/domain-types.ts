@@ -55,6 +55,8 @@ export interface ValidacionPrecio {
   bandaRedondeo: { numero: number; intervalo: string } | null;
   /** Factor decimal del margen mínimo de ARTICULO_PRECIO (ej. 0.20 = 20%). */
   margenMinimo: number | null;
+  /** Costo de reposición usado para validar y persistir el detalle. */
+  costo: number | null;
   /** Precio mínimo equivalente: costo / (1 - margen mínimo). */
   costoMinimo: number | null;
   causa: string | null;
@@ -68,6 +70,8 @@ export interface ValidacionMargen {
   precioRedondeado: number | null;
   estadoRedondeo: EstadoRedondeo | null;
   bandaRedondeo: { numero: number; intervalo: string } | null;
+  /** Costo de reposición usado para persistir el detalle. */
+  costo: number | null;
   /** Precio mínimo equivalente del margen base de ARTICULO_PRECIO. */
   costoMinimoBase: number | null;
   /** Precio mínimo equivalente después de aplicar la reducción simulada. */

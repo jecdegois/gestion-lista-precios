@@ -85,7 +85,16 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
   const mssql = await import("mssql");
   const idpOperador = s.idpOperador?.trim();
   const listaPrecio = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
-  const tipoProceso = s.modalidad === "excel" ? "MASIVO" : "MANUAL";
+  const tipoProcesoPorPestana: Record<string, string> = {
+    FACTOR_PRECIO: "GESTION_GLOBAL",
+    MAYOREOD_MASIVO: "ACTUALIZACION_MASIVA_PRECIOS",
+    DESCUENTO_LISTA_PRECIO: "DESCUENTO_ARTICULO",
+    MARGEN_UTILIDAD_MASIVO: "CARGA_MASIVA_MARGEN_UTILIDAD",
+  };
+  const tipoProceso = tipoProcesoPorPestana[s.proceso];
+  if (!tipoProceso) {
+    throw new Error(`No existe un TIPO_PROCESO Portal para la pestaña ${s.proceso}.`);
+  }
   if (!idpOperador) {
     throw new Error("No se puede registrar la solicitud Portal sin IDP_OPERADOR.");
   }
@@ -225,30 +234,45 @@ type SqlPool = Awaited<ReturnType<typeof getPortalPool>>;
 async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: string, f: import("@/lib/domain-types").FilaResultado): Promise<void> {
   const mssql = await import("mssql");
   const v = f.validacion as unknown as Record<string, unknown>;
+  const valorPropuesto = "valorPropuestoRaw" in f
+    ? Number.parseFloat(String(f.valorPropuestoRaw ?? "").replace(",", "."))
+    : Number.NaN;
+  const factorAplicado = typeof v.multiplicadorMargen === "number"
+    ? v.multiplicadorMargen
+    : typeof v.factorReduccion === "number"
+      ? v.factorReduccion
+      : Number.isFinite(valorPropuesto)
+        ? valorPropuesto
+        : null;
+  const precioSimulado = (v.precioRedondeado as number | null) ?? (v.precioPropuesto as number | null) ?? null;
+  const porcentajeMargen = (v.margenMinimo as number | null) ?? 0;
+  const costo = (v.costo as number | null) ?? null;
+  // CK_PP_SOLDET_ESTADO acepta el estado inicial de negocio, no el resultado de la validación local.
+  const estadoFila = "PENDIENTE";
+  // La causa se conserva dentro del JSON del detalle, no en una columna independiente.
+  const mensajeError = null;
+
   await pool
     .request()
     .input("id", mssql.UniqueIdentifier, idSolicitud)
-    .input("fila", mssql.Int, f.fila)
-    .input("art", mssql.VarChar(20), f.codigo)
-    .input("desc", mssql.VarChar(200), f.descripcion)
-    .input("pct", mssql.Decimal(9, 4), (v.porcentajeReduccion as number) ?? null)
-    .input("factNorm", mssql.Decimal(9, 6), (v.factorReduccion as number) ?? null)
-    .input("precioAct", mssql.Decimal(28, 8), (v.precioActual as number) ?? null)
-    .input("precioRed", mssql.Decimal(28, 8), (v.precioRedondeado as number) ?? null)
-    .input("estRed", mssql.VarChar(20), (v.estadoRedondeo as string) ?? null)
-    .input("margMin", mssql.Decimal(9, 6), (v.margenMinimo as number) ?? null)
-    .input("valido", mssql.Char(1), v.valido ? "S" : "N")
-    .input("codRech", mssql.VarChar(40), (v.codigoRechazo as string) ?? null)
-    .input("causa", mssql.VarChar(400), (v.causa as string) ?? null)
+    .input("sku", mssql.VarChar(20), f.codigo)
+    .input("descripcion", mssql.VarChar(200), f.descripcion)
+    .input("precioActual", mssql.Decimal(28, 8), (v.precioActual as number) ?? null)
+    .input("costo", mssql.Decimal(28, 8), costo)
+    .input("factorAplicado", mssql.Decimal(18, 8), factorAplicado)
+    .input("precioSimulado", mssql.Decimal(28, 8), precioSimulado)
+    .input("porcentajeMargen", mssql.Decimal(9, 6), porcentajeMargen)
+    .input("estadoFila", mssql.VarChar(20), estadoFila)
+    .input("mensajeError", mssql.VarChar(400), mensajeError)
     .query(
-      `INSERT INTO ${spd} (ID_SOLICITUD, FILA, ARTICULO, DESCRIPCION, PORCENTAJE_REDUCCION, FACTOR_REDUCCION_NORM,
-                           PRECIO_ACTUAL, PRECIO_REDONDEADO, ESTADO_REDONDEO, MARGEN_MINIMO, VALIDO, CODIGO_RECHAZO, CAUSA)
-       VALUES (@id,@fila,@art,@desc,@pct,@factNorm,@precioAct,@precioRed,@estRed,@margMin,@valido,@codRech,@causa);`,
+      `INSERT INTO ${spd} (ID_SOLICITUD, SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO, FACTOR_APLICADO,
+                           PRECIO_SIMULADO, PORCENTAJE_MARGEN, ESTADO_FILA, MENSAJE_ERROR)
+       VALUES (@id,@sku,@descripcion,@precioActual,@costo,@factorAplicado,@precioSimulado,
+               @porcentajeMargen,@estadoFila,@mensajeError);`,
     );
 }
 
-function mapSolicitud(r: Record<string, unknown>, _detalle: Record<string, unknown>[]): Solicitud {
-  // Mapeo de encabezado; el detalle real puede rehidratarse si se requiere en UI.
+function mapSolicitud(r: Record<string, unknown>, detalle: Record<string, unknown>[]): Solicitud {
   let parametros = {};
   try {
     parametros = r.PARAMETROS_JSON ? JSON.parse(String(r.PARAMETROS_JSON)) : {};
@@ -264,7 +288,7 @@ function mapSolicitud(r: Record<string, unknown>, _detalle: Record<string, unkno
     solicitanteEmail: String(r.SOLICITANTE_EMAIL),
     idpOperador: (r.IDP_OPERADOR as string) ?? null,
     parametros,
-    filas: [],
+    filas: detalle.map(mapDetalleFila),
     archivoNombre: (r.ARCHIVO_NOMBRE as string) ?? null,
     archivoS3Key: (r.ARCHIVO_S3_KEY as string) ?? null,
     fechaEnvio: new Date(r.FECHA_ENVIO as string).toLocaleString("es-CR", { hour12: false }),
@@ -273,5 +297,41 @@ function mapSolicitud(r: Record<string, unknown>, _detalle: Record<string, unkno
     idProcesoSP: (r.ID_PROCESO_SP as string) ?? null,
     autorizadoPor: (r.APROBADOR_NOMBRE as string) ?? undefined,
     autorizadoPorEmail: (r.APROBADOR_EMAIL as string) ?? undefined,
+  };
+}
+
+function mapDetalleFila(d: Record<string, unknown>): import("@/lib/domain-types").FilaResultado {
+  const numero = (valor: unknown): number | null => {
+    if (typeof valor === "number") return Number.isFinite(valor) ? valor : null;
+    if (typeof valor === "string" && valor.trim() !== "") {
+      const convertido = Number(valor);
+      return Number.isFinite(convertido) ? convertido : null;
+    }
+    return null;
+  };
+  const estadoFila = String(d.ESTADO_FILA ?? "PENDIENTE").toUpperCase();
+  const precioActual = numero(d.PRECIO_ACTUAL);
+  const precioSimulado = numero(d.PRECIO_SIMULADO);
+  const costo = numero(d.COSTO);
+  const porcentajeMargen = numero(d.PORCENTAJE_MARGEN) ?? 0;
+  const factorAplicado = numero(d.FACTOR_APLICADO);
+
+  return {
+    fila: numero(d.ID_DETALLE) ?? 0,
+    codigo: String(d.SKU ?? ""),
+    descripcion: String(d.DESCRIPCION ?? ""),
+    valorPropuestoRaw: factorAplicado === null ? undefined : String(factorAplicado),
+    validacion: {
+      valido: estadoFila !== "ERROR",
+      precioActual,
+      precioPropuesto: precioSimulado,
+      precioRedondeado: precioSimulado,
+      estadoRedondeo: precioSimulado === null ? null : "CALCULADO",
+      bandaRedondeo: null,
+      margenMinimo: porcentajeMargen,
+      costo,
+      costoMinimo: null,
+      causa: null,
+    },
   };
 }

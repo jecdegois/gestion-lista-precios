@@ -1229,3 +1229,109 @@ Show collapsed frames
 **Context**: Corrección de renderizado de MisSolicitudes
 
 ---
+## Mapeo Dinámico de TIPO_PROCESO por Pestaña
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "Atención Kiro:
+
+El valor asignado a 'TIPO_PROCESO' debe ser 100% DINÁMICO y reflejar la pestaña activa seleccionada por el usuario en \"Nueva solicitud de cambio de precio\".
+
+Aplica las siguientes modificaciones:
+
+1. MAPEADOR DE PESTAÑA ACTIVA EN EL INSERT:
+
+   Vincula el estado de la pestaña activa al 'INSERT' de 'PORTAL_PRECIOS.SOLICITUD' según los siguientes valores:
+
+   - \"Gestión Global\" -> 'GESTION_GLOBAL'
+
+   - \"Actualización Masiva de Precios\" -> 'ACTUALIZACION_MASIVA_PRECIOS'
+
+   - \"Descuento por Artículo\" -> 'DESCUENTO_ARTICULO'
+
+   - \"Carga Masiva de Margen de Utilidad\" -> 'CARGA_MASIVA_MARGEN_UTILIDAD'
+
+2. MAPEO EN LA TABLA DE SOLICITUDES (src/components/MisSolicitudes.tsx):
+
+   Actualiza el objeto 'PROCESOS' para formatear los nombres de las badges adecuadamente:
+
+   - GESTION_GLOBAL: { label: 'Gestión Global' }
+
+   - ACTUALIZACION_MASIVA_PRECIOS: { label: 'Actualización Masiva de Precios' }
+
+   - DESCUENTO_ARTICULO: { label: 'Descuento por Artículo' }
+
+   - CARGA_MASIVA_MARGEN_UTILIDAD: { label: 'Carga Masiva de Margen de Utilidad' }
+
+   Asegura la lectura con fallback seguro:
+
+   const labelProceso = PROCESOS[s.proceso]?.label || s.proceso?.replace(/_/g, ' ');
+
+3. CONSERVACIÓN DE INTERFAZ:
+
+   Mantén el diseño visual de las pestañas y los estilos CSS intactos.
+
+[Imagen adjunta: toast rojo de contrato Portal]"
+**AI Response**: "Se mapeó TIPO_PROCESO desde la pestaña activa a los cuatro códigos físicos indicados y se adoptó el fallback seguro para la etiqueta en la tabla, preservando la estructura y clases CSS."
+**Context**: Integración dinámica de procesos Portal
+
+---
+## Persistencia de Toast Anterior
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "[Imagen adjunta: toast rojo conserva el literal anterior 'No fue posible registrar la solicitud en el Portal. Verifique el contrato de columnas y restricciones de PORTAL_PRECIOS.SOLICITUD.']"
+**AI Response**: "El código actual ya genera un diagnóstico específico y el servidor recompiló. Se buscará el literal anterior y se reiniciará el servidor Next.js para eliminar módulos o acciones en caché antes de volver a probar."
+**Context**: Diagnóstico de recarga de servidor local
+
+---
+## Diagnóstico de Columna CAUSA en Detalle Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "columna causa? para que es sale error se crea la solicitud pero apraece ese mensaje
+
+[Imagen adjunta: toast de error Portal tras envío]"
+**AI Response**: "CAUSA es un texto opcional de validación por fila. La cabecera se registra antes del detalle y el insert de detalle intenta persistir CAUSA; se retirará esa persistencia para el esquema físico actual y se ajustará la operación para evitar solicitudes parciales ante un fallo de detalle."
+**Context**: Corrección de persistencia de SOLICITUD_DETALLE
+
+---
+## Contrato Físico de SOLICITUD_DETALLE Confirmado
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "el detalle de la solicitud no se esta guardando porquw que columnas faltan? eliminas las innecesarias estas son las que tiene ID_DETALLE
+
+ID_SOLICITUD
+
+SKU
+
+DESCRIPCION
+
+PRECIO_ACTUAL
+
+COSTO
+
+FACTOR_APLICADO
+
+PRECIO_SIMULADO
+
+PORCENTAJE_MARGEN
+
+ESTADO_FILA
+
+MENSAJE_ERROR
+
+[Imagen adjunta: toast de contrato Portal]"
+**AI Response**: "Se alineará el INSERT de SOLICITUD_DETALLE exclusivamente con las diez columnas físicas indicadas, omitiendo ID_DETALLE por ser generado por la tabla. Los campos internos de rechazo/causa se mapearán a MENSAJE_ERROR."
+**Context**: Corrección de detalle Portal
+
+---
+## Implementación de Detalle Portal con Contrato Físico
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "ok eso corrige el mensaje y el error? corrigelo
+
+[Imagen adjunta: toast genérico de contrato Portal]"
+**AI Response**: "Se implementará el INSERT de SOLICITUD_DETALLE usando exclusivamente las columnas físicas proporcionadas; CAUSA se conservará en la validación pero se almacenará como MENSAJE_ERROR."
+**Context**: Corrección definitiva de persistencia de detalle
+
+---
+## Checkpoint de Memoria de Largo Plazo
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "comprime y guarda el ltm"
+**AI Response**: "Se guardó el checkpoint LTM chk_000005 con las decisiones, archivos relevantes, validaciones y pendientes del registro Portal. Se excluyeron rutas y variables sensibles."
+**Context**: Compresión de contexto y persistencia local de sesión
+
+---
