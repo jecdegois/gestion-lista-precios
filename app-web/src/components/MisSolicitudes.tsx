@@ -34,23 +34,26 @@ export default function MisSolicitudes({
             {propias.length === 0 && (
               <tr><td colSpan={7} className="px-4 py-10 text-center text-zinc-400">Aún no ha enviado solicitudes en esta sesión.</td></tr>
             )}
-            {propias.map((s) => (
-              <tr key={s.id}>
-                <td className="px-4 py-3 mono">{s.id}</td>
-                <td className="px-4 py-3"><span className="badge badge-outline">{PROCESOS[s.proceso]?.label || s.proceso || "MASIVO"}</span></td>
-                <td className="px-4 py-3">{s.compania}</td>
-                <td className="px-4 py-3 mono text-zinc-500">{s.fechaEnvio}</td>
-                <td className="px-4 py-3"><EstadoBadge estado={s.estado} /></td>
-                <td className="px-4 py-3 text-xs text-zinc-500">
-                  {s.estado === "RECHAZADO" ? s.motivoRechazo : s.estado === "EN_PROCESO" ? `Trabajo en segundo plano (${s.idProcesoSP})` : s.idProcesoSP || "—"}
-                </td>
-                <td className="px-4 py-3">
-                  <button className="btn btn-outline" onClick={() => onVerDetalle(s.id)}>
-                    {s.estado === "EN_PROCESO" ? "Consultar avance" : "Ver detalle"}
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {propias.map((s) => {
+              const labelProceso = PROCESOS[s.proceso]?.label || s.proceso?.replace(/_/g, " ");
+              return (
+                <tr key={s.id}>
+                  <td className="px-4 py-3 mono">{s.id}</td>
+                  <td className="px-4 py-3"><span className="badge badge-outline">{labelProceso}</span></td>
+                  <td className="px-4 py-3">{s.compania}</td>
+                  <td className="px-4 py-3 mono text-zinc-500">{s.fechaEnvio}</td>
+                  <td className="px-4 py-3"><EstadoBadge estado={s.estado} /></td>
+                  <td className="px-4 py-3 text-xs text-zinc-500">
+                    {s.estado === "RECHAZADO" ? s.motivoRechazo : s.estado === "EN_PROCESO" ? `Trabajo en segundo plano (${s.idProcesoSP})` : s.idProcesoSP || "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button className="btn btn-outline" onClick={() => onVerDetalle(s.id)}>
+                      {s.estado === "EN_PROCESO" ? "Consultar avance" : "Ver detalle"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

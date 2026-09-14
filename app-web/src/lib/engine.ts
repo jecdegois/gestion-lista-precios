@@ -124,6 +124,7 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
   const articulo = context.articulos[row.codigo];
   const margenMinimo = articulo ? margenMinimoEfectivo(articulo) : null;
   const costoMinimo = articulo ? calcularCostoMinimoArticulo(articulo) : null;
+  const costo = articulo?.costoReposicion ?? null;
   const base: ValidacionPrecio = {
     valido: false,
     precioActual: null,
@@ -132,6 +133,7 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
     estadoRedondeo: null,
     bandaRedondeo: null,
     margenMinimo,
+    costo,
     costoMinimo,
     causa: null,
   };
@@ -173,6 +175,7 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
       precioRedondeado: redondeo.precioRedondeado,
       estadoRedondeo: redondeo.estado === "CALCULADO" ? "ALERTA_MARGEN" : redondeo.estado,
       bandaRedondeo: redondeo.banda,
+      costo,
       costoMinimo,
       causa: `El precio final (${fmtMonto(precioParaValidar)}) es menor que el Costo Mínimo del Artículo (${fmtMonto(costoMinimo)}).`,
     };
@@ -185,6 +188,7 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
     precioRedondeado: redondeo.precioRedondeado,
     estadoRedondeo: redondeo.estado,
     bandaRedondeo: redondeo.banda,
+    costo,
     costoMinimo,
     causa: null,
   };
@@ -264,6 +268,7 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
     precioRedondeado: null,
     estadoRedondeo: null,
     bandaRedondeo: null,
+    costo,
     costoMinimoBase,
     costoMinimo: null,
     margenPromedio: null,
@@ -320,6 +325,7 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
       precioRedondeado,
       estadoRedondeo: margenNoCumple ? "ALERTA_MARGEN" : redondeo.estado,
       bandaRedondeo: redondeo.banda,
+      costo,
       costoMinimoBase,
       costoMinimo,
       margenPromedio,

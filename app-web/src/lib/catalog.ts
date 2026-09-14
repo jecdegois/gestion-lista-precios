@@ -60,7 +60,13 @@ export const LISTA_BASE_OBJETIVO = {
   versionEstado: "Vigente",
 };
 
-export type TipoProcesoPortal = "MANUAL" | "MASIVO";
+export type TipoProcesoPortal =
+  | "MANUAL"
+  | "MASIVO"
+  | "GESTION_GLOBAL"
+  | "ACTUALIZACION_MASIVA_PRECIOS"
+  | "DESCUENTO_ARTICULO"
+  | "CARGA_MASIVA_MARGEN_UTILIDAD";
 
 export const PROCESOS: Record<ProcesoKey | TipoProcesoPortal, ProcesoDef> = {
   FACTOR_PRECIO: {
@@ -98,6 +104,30 @@ export const PROCESOS: Record<ProcesoKey | TipoProcesoPortal, ProcesoDef> = {
     desc: "Solicitud registrada desde una carga Excel.",
     ejecucion: "Registro masivo en Portal",
     modo: "factor",
+  },
+  GESTION_GLOBAL: {
+    label: "Gestión Global",
+    desc: "Tipo físico Portal para la pestaña Gestión Global.",
+    ejecucion: "Registro en Portal",
+    modo: "factor",
+  },
+  ACTUALIZACION_MASIVA_PRECIOS: {
+    label: "Actualización Masiva de Precios",
+    desc: "Tipo físico Portal para la pestaña de actualización masiva.",
+    ejecucion: "Registro en Portal",
+    modo: "factor",
+  },
+  DESCUENTO_ARTICULO: {
+    label: "Descuento por Artículo",
+    desc: "Tipo físico Portal para la pestaña de descuento por artículo.",
+    ejecucion: "Registro en Portal",
+    modo: "factor",
+  },
+  CARGA_MASIVA_MARGEN_UTILIDAD: {
+    label: "Carga Masiva de Margen de Utilidad",
+    desc: "Tipo físico Portal para la pestaña de carga de margen.",
+    ejecucion: "Registro en Portal",
+    modo: "margen",
   },
 };
 
