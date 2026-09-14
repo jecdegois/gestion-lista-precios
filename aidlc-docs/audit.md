@@ -1130,3 +1130,102 @@ node:events (519:28) corrige no me pasastetodas las columnas ya no debe de apare
 **Context**: Validación local de contrato Portal mediante tsc --noEmit sin diagnósticos y git diff --check sin errores.
 
 ---
+## Inicio de Servidor Local
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "aja levanta la aplicacion esta caido el localhost"
+**AI Response**: "Se iniciará el servidor de desarrollo Next.js en segundo plano y se verificará su salida. La captura adjunta muestra un error manejado de contrato Portal, independiente de la disponibilidad de localhost."
+**Context**: Operación local de servidor de desarrollo
+
+---
+## Solicitud de Eliminación de Restricción Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "QUITA LA RESTRICCION"
+**AI Response**: "Se identificó CK_PP_SOL_TIPO como la restricción que rechaza la inserción. No se ejecutará DDL directamente contra la base; se proporcionará un script transaccional para que el usuario lo aplique bajo su control."
+**Context**: Restricción CHECK sobre PORTAL_PRECIOS.SOLICITUD.TIPO_PROCESO
+
+---
+## Consulta sobre CK_PP_SOL_TIPO
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "CK_PP_SOL_TIPO  COMO SOLUCIONARLO? O QUITARLO"
+**AI Response**: "Se explicó la alternativa recomendada de redefinir la CHECK para los cuatro tipos de proceso vigentes y la alternativa temporal de eliminar solo CK_PP_SOL_TIPO. No se ejecutó DDL sobre la base."
+**Context**: Restricción Portal sobre TIPO_PROCESO
+
+---
+## Error Genérico de Registro Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "[Imagen adjunta: aviso en interfaz: No fue posible registrar la solicitud en el Portal. Verifique el contrato de columnas y restricciones de PORTAL_PRECIOS.SOLICITUD.]"
+**AI Response**: "Se corregirá el manejo de errores de la acción de solicitud para mostrar el mensaje concreto del proveedor SQL durante pruebas, evitando que la interfaz oculte la columna o restricción que sigue impidiendo el registro."
+**Context**: Diagnóstico de contrato Portal desde interfaz local
+
+---
+## Regla Confirmada de Tipo de Proceso Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "SE ENVIA MASIVO CIUANDO VENGA DEL EXCEL MANUAL SI ES POR EL FORMULARIO NO LO ENVIES NULL"
+**AI Response**: "Se mapeará TIPO_PROCESO a MASIVO cuando la modalidad sea Excel y a MANUAL cuando proceda del formulario, en lugar de enviar las claves internas del proceso."
+**Context**: Contrato físico de PORTAL_PRECIOS.SOLICITUD.TIPO_PROCESO
+
+---
+## Evidencia Visual de Error Genérico Portal
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "[Imagen adjunta: toast rojo repetido con el texto 'No fue posible registrar la solicitud en el Portal. Verifique el contrato de columnas y restricciones de PORTAL_PRECIOS.SOLICITUD.']"
+**AI Response**: "La interfaz aún reflejaba el mapeo anterior. Se aplicó el contrato confirmado: TIPO_PROCESO=MASIVO para Excel y TIPO_PROCESO=MANUAL para formulario, sin valores nulos."
+**Context**: Corrección de inserción Portal
+
+---
+## Corrección de Renderizado de Solicitudes
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "Atención Kiro:
+
+Corrija el error de renderizado en 'src/components/MisSolicitudes.tsx' línea 40:
+
+1. MANEJO SEGURO DE PROCESOS (OPTIONAL CHAINING / FALLBACK):
+
+   - Modifique la lectura del badge de proceso para evitar intentar acceder a '.label' de un objeto no definido.
+
+   - Reemplace:
+
+     PROCESOS[s.proceso].label
+
+     por:
+
+     PROCESOS[s.proceso]?.label || s.proceso || 'MASIVO'
+
+2. MAPEO DE TIPOS:
+
+   - Asegúrese de que el diccionario 'PROCESOS' en el frontend contenga la llave para los valores que devuelve la base de datos (por ejemplo, 'MASIVO' o 'MANUAL').
+
+3. CONSERVACIÓN DE INTERFAZ:
+
+   - Conserve el diseño visual de la tabla y los estilos CSS de la insignia (badge) exactamente en su estado original."
+**AI Response**: "Se ajustará el acceso seguro al label del badge y se incorporarán las etiquetas de presentación para MASIVO y MANUAL, sin modificar el diseño ni los estilos de la tabla."
+**Context**: Compatibilidad de renderizado con tipos físicos Portal
+
+---
+## Corrección Solicitada de Badge de Proceso
+**Timestamp**: 2026-09-10T00:00:00Z
+**User Input**: "CORRIGE
+
+1 of 1 error
+Next.js (14.2.33) is outdated (learn more)
+
+Unhandled Runtime Error
+TypeError: Cannot read properties of undefined (reading 'label')
+
+Source
+src\components\MisSolicitudes.tsx (40:102) @ label
+
+  38 |               <tr key={s.id}>
+  39 |                 <td className=\"px-4 py-3 mono\">{s.id}</td>
+> 40 |                 <td className=\"px-4 py-3\"><span className=\"badge badge-outline\">{PROCESOS[s.proceso].label}</span></td>
+     |                                                                                                      ^
+  41 |                 <td className=\"px-4 py-3\">{s.compania}</td>
+  42 |                 <td className=\"px-4 py-3 mono text-zinc-500\">{s.fechaEnvio}</td>
+  43 |                 <td className=\"px-4 py-3\"><EstadoBadge estado={s.estado} /></td>
+Call Stack
+Show collapsed frames
+
+[Imagen adjunta: alerta genérica de contrato Portal]"
+**AI Response**: "Se aplicó el acceso seguro solicitado al label del badge y se ampliará el diccionario de procesos para los valores físicos MANUAL y MASIVO, preservando las clases y diseño de la tabla."
+**Context**: Corrección de renderizado de MisSolicitudes
+
+---

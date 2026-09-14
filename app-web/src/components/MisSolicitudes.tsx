@@ -37,7 +37,7 @@ export default function MisSolicitudes({
             {propias.map((s) => (
               <tr key={s.id}>
                 <td className="px-4 py-3 mono">{s.id}</td>
-                <td className="px-4 py-3"><span className="badge badge-outline">{PROCESOS[s.proceso].label}</span></td>
+                <td className="px-4 py-3"><span className="badge badge-outline">{PROCESOS[s.proceso]?.label || s.proceso || "MASIVO"}</span></td>
                 <td className="px-4 py-3">{s.compania}</td>
                 <td className="px-4 py-3 mono text-zinc-500">{s.fechaEnvio}</td>
                 <td className="px-4 py-3"><EstadoBadge estado={s.estado} /></td>
