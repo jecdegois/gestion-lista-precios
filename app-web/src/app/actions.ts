@@ -10,7 +10,6 @@ import {
   type CatalogoContext,
 } from "@/lib/engine";
 import { estaEnAmbito } from "@/lib/catalog";
-import { esFilaMargen } from "@/lib/domain-types";
 import type {
   FilaResultado,
   ArticuloCatalogo,
@@ -23,13 +22,8 @@ import type {
 } from "@/lib/domain-types";
 import type { NivelPrecio } from "@/lib/types";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
-import { esModoDemo, esModoSoloLectura, esModoSoloPortal, objetoPortal } from "@/server/companies";
+import { esEjecucionSoftlandBloqueada, esModoDemo, esModoSoloLectura, esModoSoloPortal, objetoPortal } from "@/server/companies";
 import { listarCatalogo, listarNivelesPrecio } from "@/server/pricing-repository";
-import {
-  ejecutarSpGestionListas,
-  ejecutarSpMargen,
-  upsertUdf,
-} from "@/server/pricing-repository";
 import {
   actualizarSolicitud,
   agregarSolicitud,
@@ -90,7 +84,7 @@ function errorSoloLectura(): { ok: false; error: string } {
 }
 
 function errorSoloPortal(): { ok: false; error: string } {
-  return { ok: false, error: "La aprobación que procesa Softland está bloqueada en modo solo Portal." };
+  return { ok: false, error: "La aplicación está en modo de simulación segura: no se ejecutan procedimientos ni cambios sobre Softland." };
 }
 
 function normalizarEncabezado(v: unknown): string {
@@ -400,11 +394,11 @@ export interface EnviarSolicitudInput {
 export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boolean; error?: string; solicitud?: Solicitud }> {
   if (esModoSoloLectura()) return errorSoloLectura();
   const identidadPortal = await resolverIdentidad(input.usuarioEmail, input.compania);
-  const idpOperador = identidadPortal?.idpSubject?.trim();
+  const idpOperador = identidadPortal?.idpSubject?.trim() || identidadPortal?.email.trim().toLowerCase();
   if (!identidadPortal || !idpOperador) {
     return {
       ok: false,
-      error: "No se puede registrar la solicitud: el usuario Portal no tiene un IDP_SUBJECT activo para completar IDP_OPERADOR.",
+      error: "No se puede registrar la solicitud: no se encontró una identidad activa ni un correo válido para completar IDP_OPERADOR.",
     };
   }
   // Revalidación defensiva con la identidad resuelta desde el Portal.
@@ -534,7 +528,8 @@ export async function rechazarSolicitud(
 }
 
 // ---------------------------------------------------------------------------
-// APROBACION — REGLA DE ORO: aqui y solo aqui se ejecuta el SP/UDF real.
+// APROBACION — conserva la decisión maker-checker, pero este aplicativo no
+// ejecuta SP ni mutaciones sobre Softland. Solo se permiten consultas SELECT.
 // ---------------------------------------------------------------------------
 export interface AprobarInput {
   solicitudId: string;
@@ -545,7 +540,8 @@ export interface AprobarInput {
 
 export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; error?: string; idProcesoSP?: string }> {
   if (esModoSoloLectura()) return errorSoloLectura();
-  if (esModoSoloPortal()) return errorSoloPortal();
+  // La aprobación registra la decisión en el flujo aplicativo. La ejecución
+  // operativa permanece bloqueada: Softland se consulta exclusivamente con SELECT.
   const s = await obtenerSolicitud(input.solicitudId);
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
   if (s.estado !== "PENDIENTE") return { ok: false, error: "La solicitud no está pendiente de aprobación." };
@@ -570,69 +566,12 @@ export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boole
   });
   await registrarEvento("EJECUCION_ENCOLADA", input.aprobadorNombre, input.aprobadorRol, s.compania, s.id, idProcesoSP);
 
-  // REGLA DE ORO: EXECUTE del SP/UDF real SOLO al aprobar y solo fuera de DEMO_MODE.
-  if (!esModoDemo()) {
-    void ejecutarProcesamientoReal(s.id, s.compania, input.aprobadorNombre);
-  } else {
-    // En demo, el "worker" corre en el store con un retardo perceptible (paridad mock).
-    void simularProcesamientoDemo(s.id);
-  }
+  // Este flujo no ejecuta SP/UDF ni instrucciones de modificación en Softland.
+  // Solo utiliza datos que ya fueron consultados mediante SELECT para generar
+  // un resultado simulado, visible y trazable en la aplicación.
+  void simularProcesamientoDemo(s.id);
 
   return { ok: true, idProcesoSP };
-}
-
-/**
- * Procesamiento REAL: ejecuta el SP por cada artículo válido de la solicitud
- * sobre la base de la compañía activa. Solo se invoca desde aprobarSolicitud.
- */
-async function ejecutarProcesamientoReal(solicitudId: string, compania: string, aprobador: string): Promise<void> {
-  const s = await obtenerSolicitud(solicitudId);
-  if (!s) return;
-  const filas = [...s.filas];
-  let fallidos = 0;
-  const filaConLista = filas.find((fila) => "listaCodigo" in fila && Boolean(fila.listaCodigo));
-  const nivelDesdeFila = filaConLista && "listaCodigo" in filaConLista ? filaConLista.listaCodigo : undefined;
-  const nivelPrecio = s.parametros.nivelPrecio
-    ?? s.parametros.nivel
-    ?? nivelDesdeFila
-    ?? "MAYOREOD";
-  const esProcesoMargen = s.proceso === "MARGEN_UTILIDAD_MASIVO";
-
-  if (esProcesoMargen) {
-    // 1) Llenado de la UDF U_FACTOR_REDUCCION_MARGEN con el porcentaje cargado
-    //    por artículo, usando el mapa de objetos SQL configurable de la compañía.
-    // 2) Ejecución del SP de margen por artículo válido (persiste el mínimo).
-    for (const f of filas) {
-      if (!f.validacion.valido) {
-        fallidos++;
-        continue;
-      }
-      try {
-        if (esFilaMargen(f) && f.porcentajeReduccion != null) {
-          await upsertUdf(compania, f.codigo, f.descripcion, f.porcentajeReduccion, aprobador);
-        }
-        await ejecutarSpMargen(compania, nivelPrecio, 1, f.codigo, aprobador);
-      } catch {
-        fallidos++;
-        f.validacion.valido = false;
-      }
-    }
-  } else {
-    // Procesos de precio: se dispara una sola vez el SP de gestión de listas
-    // con redondeo para la lista/versión de la solicitud.
-    fallidos = filas.filter((f) => !f.validacion.valido).length;
-    try {
-      await ejecutarSpGestionListas(compania, nivelPrecio, 1, aprobador);
-    } catch {
-      // Si el SP falla, se marca la corrida como fallida completa.
-      fallidos = filas.length;
-      filas.forEach((f) => {
-        f.validacion.valido = false;
-      });
-    }
-  }
-
-  await finalizarProcesamiento(solicitudId, filas, fallidos, aprobador);
 }
 
 /** Worker DEMO: retardo perceptible y cómputo de resultado sin tocar BD. */

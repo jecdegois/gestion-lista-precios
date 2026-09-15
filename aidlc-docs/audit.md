@@ -1335,3 +1335,45 @@ MENSAJE_ERROR
 **Context**: Compresión de contexto y persistencia local de sesión
 
 ---
+## Corrección de persistencia de detalle
+**Timestamp**: 2026-09-14T00:00:00Z
+**User Input**: "ok corrigelo no lo tomes en cuenta porque no esta"
+**AI Response**: "Se eliminó el uso del campo inexistente VALIDO y de las columnas de cálculo no presentes de PORTAL_PRECIOS.SOLICITUD_DETALLE. El INSERT ahora utiliza solamente las columnas reales de detalle; la lectura se ordena por ID_DETALLE. También se agregó respaldo por correo para IDP_OPERADOR. La verificación tsc --noEmit no mostró diagnósticos, aunque el adaptador de terminal devolvió código -1."
+**Context**: Construcción - Corrección de persistencia de solicitudes
+
+---
+## Solicitud de diagrama y estado funcional
+**Timestamp**: 2026-09-14T00:00:00Z
+**User Input**: "Genera drao.io con el fjujo de como debe de ainteractual y funcionar el aplicativo en general en base a los documentos y lo desarrollado asi como un resumen de lo que ya se  lleva en base al diagrama y lo que falta"
+**AI Response**: "Se inició el levantamiento de documentación, código y persistencia para generar un diagrama draw.io del flujo real del aplicativo y un resumen contrastado de avances, brechas y arquitectura objetivo."
+**Context**: Construcción - documentación de arquitectura y estado de implementación
+
+---
+## Diagrama y resumen de estado generados
+**Timestamp**: 2026-09-14T00:00:00Z
+**User Input**: "Genera drao.io con el fjujo de como debe de ainteractual y funcionar el aplicativo en general en base a los documentos y lo desarrollado asi como un resumen de lo que ya se  lleva en base al diagrama y lo que falta"
+**AI Response**: "Se generaron `docs/flujo-funcional-aplicativo.drawio` y `docs/resumen-avance-y-pendientes-aplicativo.md`. El diagrama separa componentes implementados de la arquitectura objetivo pendiente y el resumen documenta avances, riesgos y prioridades verificadas contra la documentación, UI, Server Actions, repositorios SQL y DDL."
+**Context**: Construcción - documentación de arquitectura y estado de implementación
+
+---
+## Validación de entregables de flujo y estado
+**Timestamp**: 2026-09-14T00:00:00Z
+**User Input**: "Genera drao.io con el fjujo de como debe de ainteractual y funcionar el aplicativo en general en base a los documentos y lo desarrollado asi como un resumen de lo que ya se  lleva en base al diagrama y lo que falta"
+**AI Response**: "Se validó que `docs/flujo-funcional-aplicativo.drawio` es XML parseable por draw.io, contiene los nueve nodos funcionales esenciales y dieciséis conexiones. También se verificó en codificación UTF-8 que el resumen incluye flujo, avance confirmado, pendientes, riesgos y fuentes revisadas."
+**Context**: Construcción - validación de documentación de arquitectura
+
+---
+## Actualización del diagrama por pestaña y persistencia
+**Timestamp**: 2026-09-14T00:00:00Z
+**User Input**: "ajusta el diagrama que sea directo consis por pestaña como debe de duncionar a que debe de llamas es decir que sp corre cada uno y donde hace insersion"
+**AI Response**: "Se reemplazó `docs/flujo-funcional-aplicativo.drawio` por un flujo objetivo detallado por pestaña. El diagrama muestra consultas previas a Softland, inserciones de solicitud/detalle/auditoría en PORTAL_PRECIOS, aprobación y las ejecuciones posteriores: SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO para las tres pestañas de precio; MERGE en U_FACTOR_REDUCCION_MARGEN y SP_CALCULAR_MARGEN_MINIMO_ARTICULO para margen masivo."
+**Context**: Construcción - documentación del flujo operativo objetivo
+
+---
+## Validación del diagrama por pestaña y persistencia
+**Timestamp**: 2026-09-14T00:00:00Z
+**User Input**: "actualiza"
+**AI Response**: "Se validó que el XML de `docs/flujo-funcional-aplicativo.drawio` es parseable y contiene las cuatro pestañas, consultas de Softland, inserciones de PORTAL_PRECIOS, aprobación, ambos SP, la UDF de margen y actualización de resultado. El diagrama tiene 12 nodos requeridos y 19 conexiones."
+**Context**: Construcción - validación de documentación de flujo operativo
+
+---
