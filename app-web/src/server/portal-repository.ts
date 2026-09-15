@@ -58,10 +58,11 @@ export async function obtenerSolicitud(codigo: string): Promise<Solicitud | unde
   const cab = await pool.request().input("cod", mssql.VarChar(20), codigo).query(`SELECT * FROM ${sp} WHERE CODIGO_SOLICITUD = @cod`);
   const r = cab.recordset[0];
   if (!r) return undefined;
+  const idSolicitud = enteroSeguro(r.ID_SOLICITUD, "ID_SOLICITUD de la solicitud");
   const det = await pool
     .request()
-    .input("id", mssql.UniqueIdentifier, String(r.ID_SOLICITUD))
-    .query(`SELECT * FROM ${spd} WHERE ID_SOLICITUD = @id`);
+    .input("idSolicitud", mssql.Int, idSolicitud)
+    .query(`SELECT * FROM ${spd} WHERE ID_SOLICITUD = @idSolicitud ORDER BY ID_DETALLE`);
   return mapSolicitud(r, det.recordset);
 }
 
@@ -83,45 +84,34 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
   const sp = objetoPortal("SOLICITUD");
   const spd = objetoPortal("SOLICITUD_DETALLE");
   const mssql = await import("mssql");
-  const idpOperador = s.idpOperador?.trim();
-  const listaPrecio = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
-  const tipoProcesoPorPestana: Record<string, string> = {
-    FACTOR_PRECIO: "GESTION_GLOBAL",
-    MAYOREOD_MASIVO: "ACTUALIZACION_MASIVA_PRECIOS",
-    DESCUENTO_LISTA_PRECIO: "DESCUENTO_ARTICULO",
-    MARGEN_UTILIDAD_MASIVO: "CARGA_MASIVA_MARGEN_UTILIDAD",
-  };
-  const tipoProceso = tipoProcesoPorPestana[s.proceso];
-  if (!tipoProceso) {
-    throw new Error(`No existe un TIPO_PROCESO Portal para la pestaña ${s.proceso}.`);
-  }
-  if (!idpOperador) {
-    throw new Error("No se puede registrar la solicitud Portal sin IDP_OPERADOR.");
-  }
+  const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
+  const idUsuarioSolicitante = enteroSeguro(
+    await buscarIdUsuario(pool, s.solicitanteEmail),
+    "ID_USUARIO_SOLICITANTE",
+  );
   const req = pool
     .request()
     .input("cod", mssql.VarChar(20), s.id)
-    .input("idProceso", mssql.VarChar(30), s.id)
     .input("comp", mssql.VarChar(20), s.compania)
-    .input("tipoProceso", mssql.VarChar(30), tipoProceso)
+    .input("proceso", mssql.VarChar(30), s.proceso)
     .input("mod", mssql.VarChar(10), s.modalidad)
-    .input("listaPrecio", mssql.VarChar(30), listaPrecio || null)
-    .input("idpOperador", mssql.VarChar(128), idpOperador)
+    .input("lista", mssql.VarChar(30), lista || null)
+    .input("idpOperador", mssql.VarChar(128), s.idpOperador?.trim() || s.solicitanteEmail.trim().toLowerCase())
+    .input("idUsuarioSolicitante", mssql.Int, idUsuarioSolicitante)
     .input("email", mssql.VarChar(120), s.solicitanteEmail)
     .input("nombre", mssql.VarChar(120), s.solicitanteNombre)
-    .input("params", mssql.NVarChar(mssql.MAX), JSON.stringify(s.parametros ?? {}))
+    .input("params", mssql.NVarChar(mssql.MAX), JSON.stringify({ ...s.parametros, filas: s.filas }))
     .input("archNom", mssql.VarChar(260), s.archivoNombre)
     .input("archS3", mssql.VarChar(400), s.archivoS3Key);
   const ins = await req.query(
-    `INSERT INTO ${sp} (CODIGO_SOLICITUD, ID_PROCESO, COMPANIA, TIPO_PROCESO, MODALIDAD, LISTA_PRECIO,
-                        IDP_OPERADOR, SOLICITANTE_EMAIL, SOLICITANTE_NOMBRE, ESTADO, PARAMETROS_JSON,
-                        ARCHIVO_NOMBRE, ARCHIVO_S3_KEY, INTENTOS_REINTENTO, FECHA_CREACION,
-                        FECHA_MODIFICACION, FECHA_ENVIO)
+    `INSERT INTO ${sp} (CODIGO_SOLICITUD, COMPANIA, PROCESO, MODALIDAD, LISTA_PRECIO, IDP_OPERADOR,
+                        ID_USUARIO_SOLICITANTE, SOLICITANTE_EMAIL, SOLICITANTE_NOMBRE, ESTADO, PARAMETROS_JSON,
+                        ARCHIVO_NOMBRE, ARCHIVO_S3_KEY)
      OUTPUT INSERTED.ID_SOLICITUD
-     VALUES (@cod,@idProceso,@comp,@tipoProceso,@mod,@listaPrecio,@idpOperador,@email,@nombre,'PENDIENTE',@params,
-             @archNom,@archS3,0,GETDATE(),GETDATE(),GETDATE());`,
+     VALUES (@cod,@comp,@proceso,@mod,@lista,@idpOperador,@idUsuarioSolicitante,@email,@nombre,'PENDIENTE',@params,
+             @archNom,@archS3);`,
   );
-  const idSolicitud = String(ins.recordset[0].ID_SOLICITUD);
+  const idSolicitud = enteroSeguro(ins.recordset[0]?.ID_SOLICITUD, "ID_SOLICITUD generado");
   for (const f of s.filas) {
     await insertarDetalle(pool, spd, idSolicitud, f);
   }
@@ -168,60 +158,46 @@ export async function registrarEvento(
     return;
   }
   const pool = await getPortalPool();
-  const ae = objetoPortal("AUDITORIA_PRECIOS");
+  const ae = objetoPortal("AUDITORIA_EVENTOS");
   const mssql = await import("mssql");
-  const payload = JSON.stringify({ usuario, compania, solicitudId });
   await pool
     .request()
-    .input("proceso", mssql.VarChar(30), idProcesoSP ?? solicitudId ?? evento)
-    .input("subject", mssql.VarChar(120), usuarioEmail || usuario)
+    .input("compania", mssql.VarChar(20), compania)
+    .input("email", mssql.VarChar(120), usuarioEmail || usuario)
+    .input("usuario", mssql.VarChar(120), usuario)
     .input("rol", mssql.VarChar(15), rol)
     .input("evento", mssql.VarChar(50), evento)
-    .input("payload", mssql.NVarChar(mssql.MAX), payload)
+    .input("solicitud", mssql.VarChar(20), solicitudId)
+    .input("proceso", mssql.VarChar(30), idProcesoSP)
     .query(
-      `INSERT INTO ${ae} (ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO)
-       VALUES (@proceso,@subject,@rol,@evento,@payload,GETDATE());`,
+      `INSERT INTO ${ae} (COMPANIA, USUARIO_EMAIL, USUARIO_NOMBRE, ROL, EVENTO, CODIGO_SOLICITUD, ID_PROCESO_SP)
+       VALUES (@compania,@email,@usuario,@rol,@evento,@solicitud,@proceso);`,
     );
 }
 
 export async function listarEventos(compania?: string): Promise<EventoAuditoria[]> {
   if (esModoDemo()) return demoListarEventos(compania);
   const pool = await getPortalPool();
-  const ae = objetoPortal("AUDITORIA_PRECIOS");
+  const ae = objetoPortal("AUDITORIA_EVENTOS");
   const mssql = await import("mssql");
-  const columnas = "ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO";
   const q = compania
     ? await pool
       .request()
       .input("comp", mssql.VarChar(20), compania)
-      .query(
-        `SELECT TOP (200) ${columnas}
-           FROM ${ae}
-          WHERE ISJSON(PAYLOAD_JSON) = 1
-            AND JSON_VALUE(PAYLOAD_JSON, '$.compania') = @comp
-          ORDER BY FECHA_EVENTO DESC`,
-      )
-    : await pool.request().query(`SELECT TOP (200) ${columnas} FROM ${ae} ORDER BY FECHA_EVENTO DESC`);
+      .query(`SELECT TOP (200) * FROM ${ae} WHERE COMPANIA = @comp ORDER BY FECHA DESC`)
+    : await pool.request().query(`SELECT TOP (200) * FROM ${ae} ORDER BY FECHA DESC`);
 
   return q.recordset.map((r: Record<string, unknown>) => {
-    let payload: Record<string, unknown> = {};
-    try {
-      const parsed = JSON.parse(String(r.PAYLOAD_JSON ?? "{}"));
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
-    } catch {
-      // Un registro histórico con JSON inválido aún debe poder visualizarse.
-    }
-
     const rol = r.ROL === "APROBADOR" || r.ROL === "OPERADOR" ? r.ROL : "OPERADOR";
     return {
-      id: String(r.ID_AUDITORIA),
-      fecha: new Date(r.FECHA_EVENTO as string).toLocaleString("es-CR", { hour12: false }),
-      usuario: typeof payload.usuario === "string" ? payload.usuario : String(r.IDP_SUBJECT ?? ""),
+      id: String(r.ID_EVENTO),
+      fecha: new Date(r.FECHA as string).toLocaleString("es-CR", { hour12: false }),
+      usuario: String(r.USUARIO_NOMBRE ?? r.USUARIO_EMAIL ?? ""),
       rol: rol as Rol,
       evento: r.EVENTO as EventoTipo,
-      solicitudId: typeof payload.solicitudId === "string" ? payload.solicitudId : null,
-      idProcesoSP: (r.ID_PROCESO as string) ?? null,
-      compania: typeof payload.compania === "string" ? payload.compania : (compania ?? ""),
+      solicitudId: r.CODIGO_SOLICITUD == null ? null : String(r.CODIGO_SOLICITUD),
+      idProcesoSP: r.ID_PROCESO_SP == null ? null : String(r.ID_PROCESO_SP),
+      compania: String(r.COMPANIA ?? compania ?? ""),
     };
   });
 }
@@ -231,45 +207,56 @@ export async function listarEventos(compania?: string): Promise<EventoAuditoria[
 // ---------------------------------------------------------------------------
 type SqlPool = Awaited<ReturnType<typeof getPortalPool>>;
 
-async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: string, f: import("@/lib/domain-types").FilaResultado): Promise<void> {
+async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, f: import("@/lib/domain-types").FilaResultado): Promise<void> {
   const mssql = await import("mssql");
   const v = f.validacion as unknown as Record<string, unknown>;
-  const valorPropuesto = "valorPropuestoRaw" in f
-    ? Number.parseFloat(String(f.valorPropuestoRaw ?? "").replace(",", "."))
-    : Number.NaN;
-  const factorAplicado = typeof v.multiplicadorMargen === "number"
-    ? v.multiplicadorMargen
-    : typeof v.factorReduccion === "number"
-      ? v.factorReduccion
-      : Number.isFinite(valorPropuesto)
-        ? valorPropuesto
-        : null;
-  const precioSimulado = (v.precioRedondeado as number | null) ?? (v.precioPropuesto as number | null) ?? null;
-  const porcentajeMargen = (v.margenMinimo as number | null) ?? 0;
-  const costo = (v.costo as number | null) ?? null;
-  // CK_PP_SOLDET_ESTADO acepta el estado inicial de negocio, no el resultado de la validación local.
-  const estadoFila = "PENDIENTE";
-  // La causa se conserva dentro del JSON del detalle, no en una columna independiente.
-  const mensajeError = null;
+  const numero = (valor: unknown): number | null =>
+    typeof valor === "number" && Number.isFinite(valor) ? valor : null;
+  const factorAplicado = numero(v.multiplicadorMargen) ?? numero(v.factorReduccion) ?? 0;
+  const precioActual = numero(v.precioActual) ?? 0;
+  const costo = numero(v.costo) ?? numero(v.costoMinimo) ?? 0;
+  const precioSimulado = numero(v.precioRedondeado) ?? numero(v.precioPropuesto) ?? precioActual;
+  const porcentajeMargen = numero(v.margenMinimo) ?? 0;
 
+  // El esquema existente no contiene VALIDO ni las columnas de cálculo antiguas.
+  // CAUSA queda incluida en PARAMETROS_JSON de la cabecera, no se duplica en detalle.
   await pool
     .request()
-    .input("id", mssql.UniqueIdentifier, idSolicitud)
-    .input("sku", mssql.VarChar(20), f.codigo)
-    .input("descripcion", mssql.VarChar(200), f.descripcion)
-    .input("precioActual", mssql.Decimal(28, 8), (v.precioActual as number) ?? null)
-    .input("costo", mssql.Decimal(28, 8), costo)
-    .input("factorAplicado", mssql.Decimal(18, 8), factorAplicado)
-    .input("precioSimulado", mssql.Decimal(28, 8), precioSimulado)
-    .input("porcentajeMargen", mssql.Decimal(9, 6), porcentajeMargen)
-    .input("estadoFila", mssql.VarChar(20), estadoFila)
-    .input("mensajeError", mssql.VarChar(400), mensajeError)
+    .input("id", mssql.Int, idSolicitud)
+    .input("sku", mssql.VarChar(50), f.codigo)
+    .input("descripcion", mssql.VarChar(255), f.descripcion || null)
+    .input("precioActual", mssql.Decimal(18, 4), precioActual)
+    .input("costo", mssql.Decimal(18, 4), costo)
+    .input("factorAplicado", mssql.Decimal(8, 4), factorAplicado)
+    .input("precioSimulado", mssql.Decimal(18, 4), precioSimulado)
+    .input("porcentajeMargen", mssql.Decimal(18, 4), porcentajeMargen)
+    .input("estadoFila", mssql.VarChar(30), "PENDIENTE")
+    .input("mensajeError", mssql.VarChar(mssql.MAX), null)
     .query(
-      `INSERT INTO ${spd} (ID_SOLICITUD, SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO, FACTOR_APLICADO,
-                           PRECIO_SIMULADO, PORCENTAJE_MARGEN, ESTADO_FILA, MENSAJE_ERROR)
-       VALUES (@id,@sku,@descripcion,@precioActual,@costo,@factorAplicado,@precioSimulado,
-               @porcentajeMargen,@estadoFila,@mensajeError);`,
+      `INSERT INTO ${spd} (ID_SOLICITUD, SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO,
+                           FACTOR_APLICADO, PRECIO_SIMULADO, PORCENTAJE_MARGEN,
+                           ESTADO_FILA, MENSAJE_ERROR)
+       VALUES (@id,@sku,@descripcion,@precioActual,@costo,@factorAplicado,
+               @precioSimulado,@porcentajeMargen,@estadoFila,@mensajeError);`,
     );
+}
+
+async function buscarIdUsuario(pool: SqlPool, email: string): Promise<number | null> {
+  const mssql = await import("mssql");
+  const resultado = await pool
+    .request()
+    .input("email", mssql.VarChar(120), email.trim().toLowerCase())
+    .query(`SELECT ID_USUARIO FROM ${objetoPortal("USUARIO")} WHERE LOWER(EMAIL) = @email AND ACTIVO = 'S'`);
+  const id = resultado.recordset[0]?.ID_USUARIO;
+  return id == null ? null : enteroSeguro(id, "ID_USUARIO");
+}
+
+function enteroSeguro(valor: unknown, etiqueta: string): number {
+  const id = typeof valor === "number" ? valor : Number.parseInt(String(valor), 10);
+  if (!Number.isSafeInteger(id) || id < 1) {
+    throw new Error(`${etiqueta} debe ser un entero positivo.`);
+  }
+  return id;
 }
 
 function mapSolicitud(r: Record<string, unknown>, detalle: Record<string, unknown>[]): Solicitud {
@@ -281,12 +268,12 @@ function mapSolicitud(r: Record<string, unknown>, detalle: Record<string, unknow
   }
   return {
     id: String(r.CODIGO_SOLICITUD ?? r.ID_PROCESO),
-    proceso: (r.TIPO_PROCESO ?? r.PROCESO) as Solicitud["proceso"],
+    proceso: r.PROCESO as Solicitud["proceso"],
     modalidad: r.MODALIDAD as Solicitud["modalidad"],
     compania: String(r.COMPANIA),
     solicitanteNombre: String(r.SOLICITANTE_NOMBRE),
     solicitanteEmail: String(r.SOLICITANTE_EMAIL),
-    idpOperador: (r.IDP_OPERADOR as string) ?? null,
+    idpOperador: null,
     parametros,
     filas: detalle.map(mapDetalleFila),
     archivoNombre: (r.ARCHIVO_NOMBRE as string) ?? null,
@@ -330,7 +317,7 @@ function mapDetalleFila(d: Record<string, unknown>): import("@/lib/domain-types"
       bandaRedondeo: null,
       margenMinimo: porcentajeMargen,
       costo,
-      costoMinimo: null,
+      costoMinimo: costo,
       causa: null,
     },
   };

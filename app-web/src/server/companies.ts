@@ -152,8 +152,21 @@ export function esModoSoloLectura(): boolean {
   return (process.env.READ_ONLY_MODE ?? "true").trim().toLowerCase() === "true";
 }
 
+/**
+ * Guardia de aplicación para este entorno de análisis y simulación.
+ * Permanece activa salvo una habilitación explícita futura, auditada y fuera
+ * de este código. Con ella activa nunca se ejecutan MERGE, INSERT, UPDATE ni
+ * procedimientos almacenados, ni operaciones `INSERT`, `UPDATE`, `DELETE`,
+ * `MERGE` o `ALTER` sobre los esquemas operativos de Softland. Las consultas
+ * `SELECT` de catálogos permanecen habilitadas.
+ */
+export function esEjecucionSoftlandBloqueada(): boolean {
+  return true;
+}
+
 export function esModoSoloPortal(): boolean {
-  return (process.env.PORTAL_ONLY_MODE ?? "false").trim().toLowerCase() === "true";
+  return esEjecucionSoftlandBloqueada()
+    || (process.env.PORTAL_ONLY_MODE ?? "false").trim().toLowerCase() === "true";
 }
 
 export function assertEscrituraPortalHabilitada(): void {
@@ -163,6 +176,9 @@ export function assertEscrituraPortalHabilitada(): void {
 }
 
 export function assertEscrituraSoftlandHabilitada(): void {
+  if (esEjecucionSoftlandBloqueada()) {
+    throw new Error("SOFTLAND_EXECUTION_BLOCKED: este aplicativo opera solo en simulación; no se permiten mutaciones ni procedimientos almacenados de Softland.");
+  }
   if (esModoSoloLectura()) {
     throw new Error("SOFTLAND_READ_ONLY: Softland está configurado únicamente para lectura.");
   }
