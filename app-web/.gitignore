@@ -1,26 +1,45 @@
-# dependencies
-/node_modules
+# Dependencies and package-manager artifacts
+/node_modules/
+.pnp
+.pnp.*
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
 
-# next.js
+# Next.js and build outputs
 /.next/
 /out/
+/build/
+.turbo/
+.vercel/
 
-# production
-/build
-
-# misc
-.DS_Store
+# Local environment files and secrets
+.env
+.env.local
+.env*.local
+!.env.example
 *.pem
+*.key
 
-# debug
+# Logs and diagnostics
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# local env files
-.env
-.env*.local
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
 
-# typescript
+# TypeScript generated files
 *.tsbuildinfo
 next-env.d.ts
+
+# Keep package manifests and lockfiles versioned:
+# package.json
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
