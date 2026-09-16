@@ -1440,3 +1440,38 @@ MENSAJE_ERROR
 **Context**: Construcción - optimización de catálogo y documentación del componente Dropdown.
 
 ---
+## Ajuste visual de tabla de impacto manual
+**Timestamp**: 2026-09-16T15:20:00Z
+**User Input**: "quita de la tabla las columnas de estado y validacion, si cumplen con estos criterios sombrea el fondo de un color verde claro\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/.env</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se eliminaron las columnas Estado y Validación del adaptador de la tabla de simulación de Descuento por Artículo > Captura Manual. Se agregó rowClassName al componente reusable y las filas con validacion.valido=true reciben bg-green-50. Se mantuvo el resumen de validaciones inferior y se documentó rowClassName en table-reusable-component.md. typecheck, diff check y smoke HTTP pasaron."
+**Context**: Construcción - ajuste de presentación de resultados de simulación.
+
+---
+## Altura dinámica de tabla reusable
+**Timestamp**: 2026-09-16T17:22:00Z
+**User Input**: "La tabla tiene un ancho maximo pero si tengo un solo registro debe ser del tamño de ese registro e ir creciendo hasta llegar a su maxima altura, no una altura siempre porque cuando hay un solo registro se ve vacia\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/.env</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se eliminó la altura fija de ResponsiveDataTable y se conservaron únicamente máximos responsive. El contenedor crece con el contenido y activa desplazamiento al alcanzar max-height. Se actualizó table-reusable-component.md. typecheck, diff check y smoke HTTP finalizaron correctamente."
+**Context**: Construcción - ajuste de tamaño responsive de tabla reusable.
+
+---
+## Migración de tabla de artículos capturados
+**Timestamp**: 2026-09-16T17:24:35Z
+**User Input**: "la tabla donde van cargando los articulos antes de simular el impacto, también pasala al componente reutilizable\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/.env</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se creó TablaArticulosCapturaManual.tsx basado en ResponsiveDataTable, con columnas #, Código, Lista, Factor % y acción de eliminar. Se sustituyó únicamente la tabla de artículos agregados de Captura Manual en NuevaSolicitud, preservando onRemove, disabled, type=button y aria-label. Se actualizó table-reusable-component.md. npm.cmd run typecheck, git diff --check y smoke HTTP pasaron."
+**Context**: Construcción - migración de tabla previa a simulación.
+
+---
+## Ajuste de ancho de código y descripción
+**Timestamp**: 2026-09-16T17:32:39Z
+**User Input**: "cambia la descripcion de la tabla tenga un maximo de ancho y que si la descripcion se pasa de ese ancho, al hacer over en el nombre me muestre el texto completo, de esta manera aseguramos que el código se escriba en una sola fila\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\napp-web/src/components/NuevaSolicitud.tsx\napp-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se configuró la columna Código con whitespace-nowrap y la columna Descripción con max-w-[280px], truncate, whitespace-nowrap y title para mostrar el texto completo al pasar el cursor. Se actualizó table-reusable-component.md. typecheck, diff check y smoke HTTP finalizaron correctamente."
+**Context**: Construcción - ajuste de presentación de columnas de tabla.
+
+---
+## Revisión de altura visual de filas
+**Timestamp**: 2026-09-16T17:40:00Z
+**User Input**: "Aunque no veo que se cambiara el alto o el padding visualmente se ve menos alta la fila de la tabla de simular impacto, revisa una vez mas\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\napp-web/src/components/NuevaSolicitud.tsx\napp-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se comparó la tabla anterior con ResponsiveDataTable. Ambas usan text-sm y px-3 py-2 en celdas; no existe una reducción explícita de padding o alto. La diferencia visual proviene de que la tabla manual ya no contiene las columnas Estado/Validación con badges y la descripción ahora se mantiene en una sola línea por truncate/whitespace-nowrap. Se conservó el código sin introducir un alto artificial. typecheck pasó."
+**Context**: Construcción - revisión visual de altura de filas.
+
+---

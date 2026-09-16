@@ -8,12 +8,12 @@ import { TIPOS_VARIACION } from "@/lib/catalog";
 import { esFilaMargen } from "@/lib/domain-types";
 import type { FilaMargen, FilaPrecio, FilaResultado } from "@/lib/domain-types";
 
-function esHallazgoDeNegocio(fila: FilaResultado): boolean {
+export function esHallazgoDeNegocio(fila: FilaResultado): boolean {
   const validacion = fila.validacion;
   return !validacion.valido && validacion.estadoRedondeo === "ALERTA_MARGEN" && Boolean(validacion.causa);
 }
 
-function EtiquetaValidacion({ fila }: { fila: FilaResultado }) {
+export function EtiquetaValidacion({ fila }: { fila: FilaResultado }) {
   const validacion = fila.validacion;
   if (validacion.valido) {
     return <span className="badge badge-ok"><Icon name="check" className="w-3 h-3" /> Válida</span>;
@@ -24,7 +24,7 @@ function EtiquetaValidacion({ fila }: { fila: FilaResultado }) {
   return <span className="badge badge-rechazado" title={validacion.causa ?? ""}><Icon name="alertTriangle" className="w-3 h-3" /> Dato por corregir</span>;
 }
 
-function ResumenValidaciones({ filas }: { filas: FilaResultado[] }) {
+export function ResumenValidaciones({ filas }: { filas: FilaResultado[] }) {
   const hallazgos = filas.filter(esHallazgoDeNegocio);
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila));
 
