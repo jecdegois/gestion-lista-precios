@@ -4,9 +4,9 @@
   "private": true,
   "description": "Portal web full-stack (Next.js) para Gestion Masiva de Precios MV26020",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 5000",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 5000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
