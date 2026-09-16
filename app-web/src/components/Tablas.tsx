@@ -6,6 +6,7 @@ import { EstadoRedondeoBadge } from "./Badges";
 import { fmtMonto, fmtPct, fmtFactor } from "@/lib/format";
 import { TIPOS_VARIACION } from "@/lib/catalog";
 import { esFilaMargen } from "@/lib/domain-types";
+import TablaHallazgosMargen from "./newComponents/TablaHallazgosMargen";
 import type { FilaMargen, FilaPrecio, FilaResultado } from "@/lib/domain-types";
 
 export function esHallazgoDeNegocio(fila: FilaResultado): boolean {
@@ -33,11 +34,7 @@ export function ResumenValidaciones({ filas }: { filas: FilaResultado[] }) {
       {hallazgos.length > 0 && (
         <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
           <p className="text-xs font-semibold text-red-800 mb-1.5">Hallazgos de margen:</p>
-          <ul className="text-xs text-red-700 space-y-1">
-            {hallazgos.map((fila) => (
-              <li key={`hallazgo-${fila.fila}-${fila.codigo}`}>[{fila.codigo}]: {fila.validacion.causa}</li>
-            ))}
-          </ul>
+          <TablaHallazgosMargen filas={hallazgos} />
         </div>
       )}
       {datosPorCorregir.length > 0 && (

@@ -10,6 +10,11 @@ export interface PageMeta {
   totalPages: number;
 }
 
+export interface TableLoadParams {
+  offset: number;
+  limit: number;
+}
+
 export interface TableColumn<Row> {
   key: string;
   header: string;
@@ -38,6 +43,10 @@ interface ResponsiveDataTableProps<Row> {
   tableHeightClass?: string;
   onPageChange?: (page: number) => void;
   onLimitChange?: (limit: number) => void;
+  hasMore?: boolean;
+  nextOffset?: number | null;
+  loadingMore?: boolean;
+  onLoadMore?: (params: TableLoadParams) => void | Promise<void>;
   onRowActivate?: (row: Row) => void;
   rowClassName?: (row: Row) => string;
 }
@@ -76,6 +85,10 @@ export default function ResponsiveDataTable<Row>({
   tableHeightClass = "max-h-[56vh] sm:max-h-[58vh] md:max-h-[64vh] lg:max-h-[70vh] xl:max-h-[74vh]",
   onPageChange,
   onLimitChange,
+  hasMore = false,
+  nextOffset = null,
+  loadingMore = false,
+  onLoadMore,
   onRowActivate,
   rowClassName,
 }: ResponsiveDataTableProps<Row>) {
@@ -101,6 +114,14 @@ export default function ResponsiveDataTable<Row>({
     activateRow(row, event);
   }
 
+  function handleListScroll(event: React.UIEvent<HTMLDivElement>) {
+    if (!onLoadMore || !hasMore || loadingMore || loading) return;
+    const element = event.currentTarget;
+    const nearEnd = element.scrollHeight - element.scrollTop - element.clientHeight <= 80;
+    if (!nearEnd) return;
+    void onLoadMore({ offset: nextOffset ?? rows.length, limit });
+  }
+
   if (loading) {
     return <div className={`card flex items-center justify-center border-dashed text-sm text-zinc-500 ${tableHeightClass}`}>Cargando...</div>;
   }
@@ -121,7 +142,7 @@ export default function ResponsiveDataTable<Row>({
   return (
     <div>
       <div className={`card hidden overflow-hidden md:block ${tableHeightClass}`}>
-        <div className="overflow-auto" style={{ maxHeight: "inherit" }}>
+        <div className="overflow-auto" style={{ maxHeight: "inherit" }} onScroll={handleListScroll}>
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-zinc-50 text-xs text-zinc-500">
               <tr>
@@ -155,6 +176,7 @@ export default function ResponsiveDataTable<Row>({
               })}
             </tbody>
           </table>
+          {loadingMore && <p className="border-t border-zinc-100 px-3 py-2 text-center text-xs text-zinc-500">Cargando más registros...</p>}
         </div>
       </div>
 

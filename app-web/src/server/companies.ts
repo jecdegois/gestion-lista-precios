@@ -20,6 +20,7 @@ export interface SqlObjetos {
   tablaVersionNivel: string;
   tablaArticuloPrecio: string;
   tablaArticulo: string;
+  tablaClasificacion: string;
   // Columnas de la UDF (por si difieren entre companias).
   colUdfCodigo: string;
   colUdfDescripcion: string;
@@ -63,6 +64,7 @@ function defaultsSql(): SqlObjetos {
     tablaVersionNivel: "VERSION_NIVEL",
     tablaArticuloPrecio: "ARTICULO_PRECIO",
     tablaArticulo: "ARTICULO",
+    tablaClasificacion: "CLASIFICACION",
     colUdfCodigo: "U_CODIGO",
     colUdfDescripcion: "U_DESCRIP",
     colUdfFactor: "U_FACTOR_REDUCCION",

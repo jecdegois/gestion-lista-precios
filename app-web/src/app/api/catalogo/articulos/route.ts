@@ -26,11 +26,16 @@ function toArticuloCatalogo(articulo: Articulo): ArticuloCatalogo {
       ? undefined
       : articulo.margenUtilidadMinPorcentaje / 100,
     categoria: articulo.clasificacion1 ?? "",
+    categoriaDescripcion: articulo.clasificacion1Descripcion ?? "",
     subcategoria: articulo.clasificacion2 ?? "",
+    subcategoriaDescripcion: articulo.clasificacion2Descripcion ?? "",
     grupo: clasificaciones.length > 0 ? clasificaciones.join(" › ") : "Sin clasificación",
     marca: articulo.clasificacion3 ?? "",
+    marcaDescripcion: articulo.clasificacion3Descripcion ?? "",
     marcaGrupoCompra: articulo.clasificacion4 ?? "",
+    marcaGrupoCompraDescripcion: articulo.clasificacion4Descripcion ?? "",
     bdf: articulo.clasificacion5 ?? "",
+    bdfDescripcion: articulo.clasificacion5Descripcion ?? "",
   };
 }
 

@@ -1475,3 +1475,66 @@ MENSAJE_ERROR
 **Context**: Construcción - revisión visual de altura de filas.
 
 ---
+## Aplicación de Dropdown y tabla reusable en Gestión Global
+**Timestamp**: 2026-09-16T17:48:00Z
+**User Input**: "aplica el componente ddl y tablas a la pestaña de gestion global\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\napp-web/src/components/NuevaSolicitud.tsx\napp-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se sustituyó el selector nivel-gg por Dropdown con searchable=false y se creó el adaptador nombrado TablaImpactoGestionGlobal para la tabla reusable de simulación. NuevaSolicitud lo usa únicamente en Gestión Global; Descuento manual conserva su adaptador y las demás rutas conservan TablaResultado. typecheck, diff check y smoke HTTP pasaron."
+**Context**: Construcción - homologación de componentes reusable en Gestión Global.
+
+---
+## Paginación incremental de Gestión Global y tabla de hallazgos
+**Timestamp**: 2026-09-16T17:57:53Z
+**User Input**: "La tabla de simulacion de impacto deberia tener un paginado que haga fetch cada 200 registros, cuando vaya llegando al final se pueden pedir los siguientes 200, cambia ésto en el componente global para que se comporten asi siempre cuando devuelven muchos datos.\n\nLos hallazgos de margen tambien conviertelos en una tabla que de la misma manera tenga su paginado y su scroll\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\napp-web/src/components/NuevaSolicitud.tsx\napp-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se implementó GET /api/simulacion/gestion-global con páginas de hasta 200 FilaPrecio calculadas en servidor. ResponsiveDataTable carga la siguiente página al llegar al final mediante hasMore/nextOffset/onLoadMore, con AbortController/requestId; Gestión Global bloquea el envío mientras existan páginas pendientes. Se creó TablaHallazgosMargen con scroll y paginación local de 200 y se reemplazó la lista de hallazgos en ResumenValidaciones. Se validó typecheck, diff check y smoke HTTP de primera/segunda página."
+**Context**: Construcción - paginación de simulación y visualización tabular de hallazgos.
+
+---
+## Resaltado de filas inválidas
+**Timestamp**: 2026-09-16T18:06:30Z
+**User Input**: "Los registros en error o que no cumplan con los criterios, marcalos en rojo claro, actualmente están en blanco\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\napp-web/src/components/NuevaSolicitud.tsx\napp-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Las filas válidas conservan bg-green-50 y las filas con validacion.valido=false ahora usan bg-red-50. Se actualizó table-reusable-component.md. typecheck, diff check y smoke HTTP pasaron."
+**Context**: Construcción - semántica visual de resultados de validación.
+
+---
+## Criterios independientes en Actualización Masiva
+**Timestamp**: 2026-09-16T18:20:27Z
+**User Input**: "En la pestaña de actualizacion masiva de precios hay solo un dropdown list con alguna mezcla de criterios, muestrame que criterios de articulo como la marca, al clasificacion, la lista de precio, etc obtienes desde la base de datos y con cada una debes hacer una ddl para ir armando un conjunto resultante para enviar a la simulacion y posterior aprobacion\n\naplica el componente ddl y tablas a la pestaña de gestion global\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\napp-web/src/components/NuevaSolicitud.tsx\napp-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/src/app/actions.ts</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se sustituyó el grupo único de Actualización Masiva por Lista de Precio y cinco Dropdowns dependientes basados en CLASIFICACION_1 a CLASIFICACION_5, con etiquetas de clasificación, marca, grupo de compra y BDF. Se calcula y muestra el conteo de artículos resultantes; la simulación recibe criterios y códigos materializados, y el envío conserva ambos. Se eliminó la dependencia de la UI respecto del grupo concatenado legado. README técnico actualizado; typecheck, diff check y smoke HTTP pasaron."
+**Context**: Construcción - criterios de selección de artículos y simulación de Actualización Masiva.
+
+---
+## Bloqueo por fuente descriptiva de clasificaciones
+**Timestamp**: 2026-09-16T18:30:00Z
+**User Input**: "Tienes los codigos de las clasificaciones pero necesito las descripciones\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\napp-web/src/components/NuevaSolicitud.tsx\napp-web/src/components/newComponents/TablaImpactoDescuentoManual.tsx\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/src/app/actions.ts</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se verificó que el modelo actual solo consulta ARTICULO.CLASIFICACION_1 a CLASIFICACION_5 y no contiene tablas, vistas ni campos de descripción para esos códigos. No se usará ARTICULO.DESCRIPCION como descripción de clasificación. Se creó aidlc-docs/inception/requirements/clasificaciones-descripciones-questions.md para definir la fuente real antes de modificar SQL o inventar etiquetas."
+**Context**: Incepción - aclaración de fuente maestra descriptiva.
+
+---
+## Descripciones de clasificaciones desde Softland
+**Timestamp**: 2026-09-16T19:22:55Z
+**User Input**: "La consulta para las clasificaciones esta en cargas-y-consultas-softland.md en la linea 72 \"Descripciones de Clasificaiones, adaptala y utilizala para llenar los desplegables de la pestaña de actualizacion masiva de precios\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\naidlc-docs/inception/requirements/cargas-y-consultas-softland.md\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>aidlc-docs/inception/requirements/cargas-y-consultas-softland.md\n</EnvironmentContext>"
+**AI Response**: "Se adaptó la consulta de CLASIFICACION C1..C5 usando el objeto configurable tablaClasificacion y joins por AGRUPACION=1..5. Se agregaron campos de descripción al catálogo y al endpoint, y los Dropdowns muestran código — descripción manteniendo el código como value y criterio enviado. La respuesta API real validó descripciones como Electricidad, Accesorios para lámparas, Bticino, (Z) Suspendidos y Comprador 11. typecheck y diff check pasaron."
+**Context**: Construcción - integración de descripciones Softland en criterios de Actualización Masiva.
+
+---
+## Tabla reusable en Actualización Masiva
+**Timestamp**: 2026-09-16T19:27:47Z
+**User Input**: "lleva las tablas de simulacion y hallazgos de la pestaña de actualizacion masiva de precios a la tabla del compoennente reutilizable como las otras pestañas\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\naidlc-docs/inception/requirements/cargas-y-consultas-softland.md\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>aidlc-docs/inception/requirements/cargas-y-consultas-softland.md</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se creó TablaImpactoActualizacionMasiva.tsx como adaptador nombrado del ResponsiveDataTable. NuevaSolicitud usa ese adaptador para MAYOREOD_MASIVO, incluyendo ResumenValidaciones y TablaHallazgosMargen; Gestión Global y Descuento manual conservan sus adaptadores y las demás rutas TablaResultado. typecheck, diff check y smoke HTTP pasaron."
+**Context**: Construcción - homologación de tablas de Actualización Masiva.
+
+---
+## Tabla reusable en detalle de solicitudes
+**Timestamp**: 2026-09-16T19:41:33Z
+**User Input**: "La tabla del modal de \"Ver detalle\" de las solicitudes enviadas, conviertela en una tabla reutilizable con su respectivo paginado etc\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\naidlc-docs/inception/requirements/cargas-y-consultas-softland.md\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>aidlc-docs/inception/requirements/cargas-y-consultas-softland.md</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se creó TablaResultadoModal.tsx basado en ResponsiveDataTable para soportar FilaPrecio/FilaMargen, columnas de detalle, scroll responsive y paginación local de 200 filas. Se sustituyó TablaResultado únicamente dentro de RevisionModal; se conservaron resumen, aprobación, rechazo y cierre. typecheck, diff check y smoke HTTP pasaron."
+**Context**: Construcción - tabla reusable para detalle de solicitudes.
+
+---
+## Corrección de datos en detalle del modal
+**Timestamp**: 2026-09-16T19:50:57Z
+**User Input**: "En la tabla de detalle de solicitud enviada (modal), No aparece la lista, variacion, factor, multiplicador ni margen promedio... asegurate de cargarlas correctamente.\n\nQuita las columnas de estado y validacion y mantén la logica de que si esta vaildado color verde, si no cumple, color rojo el fondo\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\naidlc-docs/inception/requirements/cargas-y-consultas-softland.md\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>aidlc-docs/inception/requirements/cargas-y-consultas-softland.md</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se alineó portal-repository.ts al DDL real de SOLICITUD_PRECIO_DETALLE: se corrigió el INSERT y el mapeo de lectura para ARTICULO, LISTA_CODIGO, TIPO_VARIACION, VARIACION_PORCENTAJE, FACTOR_MULTIPLICADOR, MULTIPLICADOR_MARGEN, PRECIO_CALCULADO, PRECIO_REDONDEADO, MARGEN_PROMEDIO, MARGEN_MINIMO, COSTO_MINIMO, VALIDO y CAUSA. TablaResultadoModal ahora elimina Estado/Validación y mantiene bg-green-50/bg-red-50 según validacion.valido. typecheck, diff check y smoke HTTP pasaron."
+**Context**: Construcción - corrección del detalle persistido de solicitudes.
+
+---

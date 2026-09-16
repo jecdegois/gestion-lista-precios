@@ -7,12 +7,14 @@ import {
   construirFilaMargenMasivo,
   construirFilasGestionGlobal,
   construirFilasMayoreodMasivo,
+  construirFilaDesdeVariacion,
   type CatalogoContext,
 } from "@/lib/engine";
 import { estaEnAmbito } from "@/lib/catalog";
 import type {
   FilaResultado,
   ArticuloCatalogo,
+  CriteriosArticulo,
   Identidad,
   ParametrosSolicitud,
   ProcesoKey,
@@ -23,7 +25,7 @@ import type {
 import type { NivelPrecio } from "@/lib/types";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
 import { esEjecucionSoftlandBloqueada, esModoDemo, esModoSoloLectura, esModoSoloPortal, objetoPortal } from "@/server/companies";
-import { listarCatalogo, listarNivelesPrecio } from "@/server/pricing-repository";
+import { listarCatalogo, listarCatalogoPaginado, listarNivelesPrecio } from "@/server/pricing-repository";
 import {
   actualizarSolicitud,
   agregarSolicitud,
@@ -125,11 +127,16 @@ function convertirArticuloMaestro(articulo: Awaited<ReturnType<typeof listarCata
     costoReposicion: articulo.costoPromedio,
     margenUtilidadMin: normalizarMargenUtilidadMinimo(articulo.margenUtilidadMinPorcentaje),
     categoria: articulo.clasificacion1 ?? "",
+    categoriaDescripcion: articulo.clasificacion1Descripcion ?? "",
     subcategoria: articulo.clasificacion2 ?? "",
+    subcategoriaDescripcion: articulo.clasificacion2Descripcion ?? "",
     grupo,
     marca: articulo.clasificacion3 ?? "",
+    marcaDescripcion: articulo.clasificacion3Descripcion ?? "",
     marcaGrupoCompra: articulo.clasificacion4 ?? "",
+    marcaGrupoCompraDescripcion: articulo.clasificacion4Descripcion ?? "",
     bdf: articulo.clasificacion5 ?? "",
+    bdfDescripcion: articulo.clasificacion5Descripcion ?? "",
   };
 }
 
@@ -336,6 +343,8 @@ export interface SimularManualInput {
   factor?: string;
   tipoVariacion?: TipoVariacion;
   grupoArticulos?: string;
+  criteriosArticulo?: CriteriosArticulo;
+  codigosArticulos?: string[];
   items?: { codigo: string; listaCodigo: string; tipoVariacion: TipoVariacion; variacionPorcentaje: string }[];
 }
 
@@ -360,6 +369,25 @@ export async function simularManual(input: SimularManualInput): Promise<{ ok: bo
   const nivelAplicable = resolverNivelPrecio(niveles, input.nivel);
   const nivelBaseAplicable = resolverNivelPrecio(niveles, input.nivelBase ?? input.nivel);
 
+  if (input.proceso === "MAYOREOD_MASIVO" && input.codigosArticulos) {
+    if (input.codigosArticulos.length === 0) return { ok: false, filas: [] };
+    const contexto = nivelBaseAplicable ? contextosPorLista.get(nivelBaseAplicable) ?? contextoVacio : contextoVacio;
+    const grupoCriterios = Object.values(input.criteriosArticulo ?? {}).filter(Boolean).join(" / ") || "Criterios seleccionados";
+    const filas = input.codigosArticulos.map((codigo, idx) => {
+      const fila = construirFilaDesdeVariacion(
+        { fila: idx + 1, codigo, tipoVariacion: tv, variacionPorcentaje: magnitud },
+        "factor",
+        contexto,
+      );
+      return {
+        ...fila,
+        lista: `${contexto.listaBase.nombre} / ${contexto.listaBase.nivelPrecio}`,
+        listaCodigo: contexto.listaBase.codigo || nivelBaseAplicable || "",
+        grupoArticulo: grupoCriterios,
+      };
+    });
+    return { ok: true, filas };
+  }
   if (input.proceso === "MAYOREOD_MASIVO" && input.grupoArticulos) {
     const contexto = nivelBaseAplicable ? contextosPorLista.get(nivelBaseAplicable) ?? contextoVacio : contextoVacio;
     return { ok: true, filas: construirFilasMayoreodMasivo(input.grupoArticulos, tv, magnitud, contexto) };
@@ -383,6 +411,51 @@ export async function simularManual(input: SimularManualInput): Promise<{ ok: bo
     return { ok: true, filas: construirFilasGestionGlobal(nivelAplicable, tv, magnitud, contexto) };
   }
   return { ok: true, filas: [] };
+}
+
+export interface SimularGestionGlobalPaginadoInput {
+  compania: string;
+  nivel: string;
+  factor?: string;
+  tipoVariacion?: TipoVariacion;
+  offset?: number;
+  maxRecords?: number;
+}
+
+export interface PaginaSimulacionGestionGlobal {
+  ok: boolean;
+  filas: import("@/lib/domain-types").FilaPrecio[];
+  offset: number;
+  maxRecords: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+  error?: string;
+}
+
+export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPaginadoInput): Promise<PaginaSimulacionGestionGlobal> {
+  const niveles = await listarNivelesPrecio(input.compania);
+  const nivel = resolverNivelPrecio(niveles, input.nivel);
+  if (!nivel) {
+    return { ok: false, filas: [], offset: 0, maxRecords: 200, hasMore: false, nextOffset: null, error: "La lista de precio no existe en los maestros de Softland." };
+  }
+  const offset = Number.isInteger(input.offset) && (input.offset ?? 0) >= 0 ? input.offset as number : 0;
+  const maxRecords = Number.isInteger(input.maxRecords) ? Math.min(Math.max(input.maxRecords as number, 1), 200) : 200;
+  const pagina = await listarCatalogoPaginado(input.compania, nivel, "", offset, maxRecords);
+  const contexto = crearContextoCatalogo(niveles, pagina.items, nivel);
+  const filas = construirFilasGestionGlobal(
+    nivel,
+    input.tipoVariacion ?? "AUMENTO",
+    input.factor ?? "",
+    contexto,
+  );
+  return {
+    ok: true,
+    filas,
+    offset: pagina.offset,
+    maxRecords: pagina.maxRecords,
+    hasMore: pagina.hasMore,
+    nextOffset: pagina.nextOffset,
+  };
 }
 
 // ---------------------------------------------------------------------------

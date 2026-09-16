@@ -11,10 +11,15 @@ export interface Articulo {
   nivelPrecio?: string;
   version?: number;
   clasificacion1?: string;
+  clasificacion1Descripcion?: string;
   clasificacion2?: string;
+  clasificacion2Descripcion?: string;
   clasificacion3?: string;
+  clasificacion3Descripcion?: string;
   clasificacion4?: string;
+  clasificacion4Descripcion?: string;
   clasificacion5?: string;
+  clasificacion5Descripcion?: string;
 }
 
 /** Nivel/lista de precio maestro de Softland. */
