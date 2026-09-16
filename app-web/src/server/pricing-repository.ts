@@ -106,6 +106,115 @@ export async function listarCatalogo(compania: string, nivelPrecio: string): Pro
   }));
 }
 
+export interface PaginaCatalogo {
+  items: Articulo[];
+  offset: number;
+  maxRecords: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+}
+
+export async function listarCatalogoPaginado(
+  compania: string,
+  nivelPrecio: string,
+  search = "",
+  offset = 0,
+  maxRecords = 50,
+): Promise<PaginaCatalogo> {
+  const nivel = nivelPrecio.trim();
+  if (!nivel) throw new Error("Debe indicar una lista de precio para consultar el catálogo.");
+  const pagina = Number.isInteger(offset) && offset >= 0 ? offset : 0;
+  const limite = Number.isInteger(maxRecords) ? Math.min(Math.max(maxRecords, 1), 100) : 50;
+  const termino = search.trim();
+
+  if (esModoDemo()) {
+    const terminoNormalizado = termino.toLowerCase();
+    const catalogo = catalogoDemo(compania)
+      .map((articulo) => ({ ...articulo, nivelPrecio: nivel, version: 1 }))
+      .filter((articulo) =>
+        !terminoNormalizado
+        || articulo.codigo.toLowerCase().includes(terminoNormalizado)
+        || articulo.descripcion.toLowerCase().includes(terminoNormalizado),
+      )
+      .sort((a, b) => a.codigo.localeCompare(b.codigo));
+    const paginaExtendida = catalogo.slice(pagina, pagina + limite + 1);
+    const hasMore = paginaExtendida.length > limite;
+    return {
+      items: paginaExtendida.slice(0, limite),
+      offset: pagina,
+      maxRecords: limite,
+      hasMore,
+      nextOffset: hasMore ? pagina + limite : null,
+    };
+  }
+
+  const pool = await getPool(compania);
+  const ap = objetoCalificado(compania, "tablaArticuloPrecio");
+  const art = objetoCalificado(compania, "tablaArticulo");
+  const versiones = objetoCalificado(compania, "tablaVersionNivel");
+  const mssql = await import("mssql");
+  const q = await pool
+    .request()
+    .input("nivelPrecio", mssql.VarChar(50), nivel)
+    .input("search", mssql.VarChar(200), termino)
+    .input("searchLike", mssql.VarChar(202), `%${termino}%`)
+    .input("offset", mssql.Int, pagina)
+    .input("take", mssql.Int, limite + 1)
+    .query(
+      `WITH VersionActiva AS
+       (
+         SELECT VN.NIVEL_PRECIO, MAX(VN.VERSION) AS VERSION
+           FROM ${versiones} VN
+          WHERE VN.ESTADO = 'A'
+            AND VN.NIVEL_PRECIO = @nivelPrecio
+          GROUP BY VN.NIVEL_PRECIO
+       )
+       SELECT AP.ARTICULO AS codigo,
+              A.DESCRIPCION AS descripcion,
+              CAST(AP.PRECIO AS FLOAT) AS precioLista,
+              CAST(A.COSTO_PROM_DOL AS FLOAT) AS costoPromedio,
+              AP.NIVEL_PRECIO AS nivelPrecio,
+              AP.VERSION AS version,
+              CAST(AP.MARGEN_UTILIDAD_MIN AS FLOAT) AS margenUtilidadMinPorcentaje,
+              A.CLASIFICACION_1 AS clasificacion1,
+              A.CLASIFICACION_2 AS clasificacion2,
+              A.CLASIFICACION_3 AS clasificacion3,
+              A.CLASIFICACION_4 AS clasificacion4,
+              A.CLASIFICACION_5 AS clasificacion5
+         FROM ${ap} AP
+         INNER JOIN VersionActiva VA
+                 ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
+                AND VA.VERSION = AP.VERSION
+         INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
+        WHERE AP.NIVEL_PRECIO = @nivelPrecio
+          AND (@search = '' OR AP.ARTICULO LIKE @searchLike OR A.DESCRIPCION LIKE @searchLike)
+        ORDER BY AP.ARTICULO
+        OFFSET @offset ROWS FETCH NEXT @take ROWS ONLY`,
+    );
+  const hasMore = q.recordset.length > limite;
+  const items = q.recordset.slice(0, limite).map((r: Record<string, unknown>) => ({
+    codigo: String(r.codigo),
+    descripcion: String(r.descripcion ?? ""),
+    precioLista: Number(r.precioLista ?? 0),
+    costoPromedio: Number(r.costoPromedio ?? 0),
+    nivelPrecio: r.nivelPrecio == null ? undefined : String(r.nivelPrecio),
+    version: r.version == null ? undefined : Number(r.version),
+    margenUtilidadMinPorcentaje: r.margenUtilidadMinPorcentaje == null ? null : Number(r.margenUtilidadMinPorcentaje),
+    clasificacion1: r.clasificacion1 == null ? undefined : String(r.clasificacion1),
+    clasificacion2: r.clasificacion2 == null ? undefined : String(r.clasificacion2),
+    clasificacion3: r.clasificacion3 == null ? undefined : String(r.clasificacion3),
+    clasificacion4: r.clasificacion4 == null ? undefined : String(r.clasificacion4),
+    clasificacion5: r.clasificacion5 == null ? undefined : String(r.clasificacion5),
+  }));
+  return {
+    items,
+    offset: pagina,
+    maxRecords: limite,
+    hasMore,
+    nextOffset: hasMore ? pagina + limite : null,
+  };
+}
+
 export async function buscarArticulo(compania: string, codigo: string, nivelPrecio: string): Promise<Articulo | undefined> {
   const nivel = nivelPrecio.trim();
   if (!nivel) throw new Error("Debe indicar una lista de precio para consultar un artículo.");

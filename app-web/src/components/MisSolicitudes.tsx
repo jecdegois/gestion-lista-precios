@@ -13,7 +13,8 @@ export default function MisSolicitudes({
   currentUser: Identidad;
   onVerDetalle: (id: string) => void;
 }) {
-  const propias = solicitudes.filter((s) => s.solicitanteEmail === currentUser.email);
+  const solicitudesSeguras = Array.isArray(solicitudes) ? solicitudes : [];
+  const propias = solicitudesSeguras.filter((s) => s.solicitanteEmail === currentUser.email);
   return (
     <div className="mt-8">
       <h2 className="text-base font-semibold mb-3">Mis solicitudes enviadas</h2>

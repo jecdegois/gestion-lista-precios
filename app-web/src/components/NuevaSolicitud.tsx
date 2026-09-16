@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import Combobox, { type ComboOption } from "./Combobox";
+import Dropdown, { type DropdownLoadParams, type SelectOption } from "./newComponents/Dropdown";
 import ExcelUploader from "./ExcelUploader";
 import { EstadoRedondeoBadge } from "./Badges";
 import { TablaResultado } from "./Tablas";
@@ -23,6 +24,14 @@ interface ItemManual {
   lista: string;
   tipoVariacion: TipoVariacion;
   variacionPorcentaje: string;
+}
+
+interface PaginaArticulosResponse {
+  items: ArticuloCatalogo[];
+  offset: number;
+  maxRecords: number;
+  hasMore: boolean;
+  nextOffset: number | null;
 }
 
 const ORDEN_PROCESOS: ProcesoKey[] = [
@@ -68,6 +77,13 @@ export default function NuevaSolicitud({
   const [gruposMaestros, setGruposMaestros] = useState<{ codigo: string; nombre: string; cantidad: number }[]>([]);
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null);
+  const [articulosHasMore, setArticulosHasMore] = useState(false);
+  const [articulosNextOffset, setArticulosNextOffset] = useState<number | null>(null);
+  const [cargandoArticulos, setCargandoArticulos] = useState(false);
+  const [cargandoMasArticulos, setCargandoMasArticulos] = useState(false);
+  const [articuloSeleccionado, setArticuloSeleccionado] = useState<ArticuloCatalogo | null>(null);
+  const articulosRequestRef = useRef(0);
+  const articulosAbortRef = useRef<AbortController | null>(null);
 
   const proceso = PROCESOS[tab];
   const esDescuento = tab === "DESCUENTO_LISTA_PRECIO";
@@ -76,12 +92,16 @@ export default function NuevaSolicitud({
   const esMargen = tab === "MARGEN_UTILIDAD_MASIVO";
   const permiteExcel = esDescuento;
 
-  const nivelOpts: ComboOption[] = nivelesPrecio
+  const nivelOpts: SelectOption[] = nivelesPrecio
     .filter((nivel) => esListaBase || nivel.codigo.toUpperCase() !== "MAYOREOD")
     .map((nivel) => ({ value: nivel.codigo, label: nivel.nombre || nivel.codigo }));
-  const articuloOpts: ComboOption[] = articulosMaestros.map((articulo) => ({
+  const articuloOpciones = articuloSeleccionado && !articulosMaestros.some((articulo) => articulo.codigo === articuloSeleccionado.codigo)
+    ? [articuloSeleccionado, ...articulosMaestros]
+    : articulosMaestros;
+  const articuloOpts: SelectOption[] = articuloOpciones.map((articulo) => ({
     value: articulo.codigo,
     label: `${articulo.codigo} — ${articulo.descripcion}`,
+    searchText: `${articulo.codigo} ${articulo.descripcion}`,
   }));
   const grupoOpts: ComboOption[] = gruposMaestros.map((grupo) => ({
     value: grupo.codigo,
@@ -93,7 +113,7 @@ export default function NuevaSolicitud({
   const factorInvalido = factor !== "" && !conversion.valido;
   const listaNoExisteEnMaestros = !!nivel && !nivelesPrecio.some((item) => item.codigo === nivel);
 
-  const articuloSel = codigoArticulo ? articulosMaestros.find((articulo) => articulo.codigo === codigoArticulo) : undefined;
+  const articuloSel = articuloSeleccionado ?? (codigoArticulo ? articulosMaestros.find((articulo) => articulo.codigo === codigoArticulo) : undefined);
   const previewArticulo = articuloSel && conversion.valido && conversion.factor != null
     ? redondeoPreview(articuloSel.precioActual * conversion.factor)
     : null;
@@ -103,6 +123,7 @@ export default function NuevaSolicitud({
     setModalidad("manual");
     setNivel("");
     setCodigoArticulo("");
+    setArticuloSeleccionado(null);
     setGrupoArticulo("");
     setFactor("");
     setItemsManual([]);
@@ -116,15 +137,64 @@ export default function NuevaSolicitud({
     setErrorCarga(null);
   }, [tab]);
 
+  const cargarArticulosPaginados = useCallback(async ({ query, offset, maxRecords }: DropdownLoadParams) => {
+    if (!esDescuento || modalidad !== "manual" || !nivel) return;
+    const requestId = ++articulosRequestRef.current;
+    articulosAbortRef.current?.abort();
+    const controller = new AbortController();
+    articulosAbortRef.current = controller;
+    const cargandoMas = offset > 0;
+    if (cargandoMas) setCargandoMasArticulos(true);
+    else setCargandoArticulos(true);
+
+    try {
+      const params = new URLSearchParams({
+        compania,
+        nivelPrecio: nivel,
+        search: query,
+        offset: String(offset),
+        maxRecords: String(maxRecords),
+      });
+      const response = await fetch(`/api/catalogo/articulos?${params.toString()}`, {
+        method: "GET",
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("No fue posible consultar los artículos de la lista de precio.");
+      const page = await response.json() as PaginaArticulosResponse;
+      if (requestId !== articulosRequestRef.current) return;
+      if (!Array.isArray(page.items)) throw new Error("La respuesta de artículos no tiene un formato válido.");
+
+      setArticulosMaestros((prev) => {
+        const base = offset === 0 ? page.items : [...prev, ...page.items];
+        return Array.from(new Map(base.map((articulo) => [articulo.codigo, articulo])).values());
+      });
+      setArticulosHasMore(Boolean(page.hasMore));
+      setArticulosNextOffset(page.nextOffset);
+      setErrorCatalogo(null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (requestId === articulosRequestRef.current) {
+        setErrorCatalogo(error instanceof Error ? error.message : "No fue posible consultar los artículos de la lista de precio.");
+      }
+    } finally {
+      if (requestId === articulosRequestRef.current) {
+        if (cargandoMas) setCargandoMasArticulos(false);
+        else setCargandoArticulos(false);
+      }
+    }
+  }, [compania, esDescuento, nivel, modalidad]);
+
   useEffect(() => {
     let vigente = true;
+    const cargarArticulosCompletos = !(esDescuento && modalidad === "manual");
     setCargandoCatalogo(true);
     setErrorCatalogo(null);
-    void obtenerCatalogoSolicitud(compania, nivel || undefined)
+    void obtenerCatalogoSolicitud(compania, nivel || undefined, cargarArticulosCompletos)
       .then((catalogo) => {
         if (!vigente) return;
         setNivelesPrecio(catalogo.niveles);
-        setArticulosMaestros(catalogo.articulos);
+        setArticulosMaestros(cargarArticulosCompletos ? catalogo.articulos : []);
         setGruposMaestros(catalogo.grupos);
       })
       .catch((error) => {
@@ -140,7 +210,29 @@ export default function NuevaSolicitud({
     return () => {
       vigente = false;
     };
-  }, [compania, nivel]);
+  }, [compania, esDescuento, modalidad, nivel]);
+
+  useEffect(() => {
+    const esCapturaManual = esDescuento && modalidad === "manual";
+    articulosAbortRef.current?.abort();
+    articulosRequestRef.current += 1;
+    setArticuloSeleccionado(null);
+    setCodigoArticulo("");
+    setArticulosHasMore(false);
+    setArticulosNextOffset(null);
+    setCargandoArticulos(false);
+    setCargandoMasArticulos(false);
+    if (!esCapturaManual || !nivel) {
+      setArticulosMaestros([]);
+      return;
+    }
+    setArticulosMaestros([]);
+    void cargarArticulosPaginados({ query: "", offset: 0, maxRecords: 50 });
+    return () => {
+      articulosAbortRef.current?.abort();
+      articulosRequestRef.current += 1;
+    };
+  }, [cargarArticulosPaginados, esDescuento, modalidad, nivel]);
 
   useEffect(() => {
     if ((esListaBase || esMargen) && !nivel && nivelesPrecio.length > 0) {
@@ -177,6 +269,7 @@ export default function NuevaSolicitud({
       ]),
     );
     setCodigoArticulo("");
+    setArticuloSeleccionado(null);
     setFactor("");
   }
 
@@ -367,14 +460,40 @@ export default function NuevaSolicitud({
       {esDescuento && modalidad === "manual" && (
         <div className="space-y-4 mb-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1.5">Lista de Precio</label>
-              <Combobox id="nivel-desc" value={nivel} onChange={(o) => setNivel(o.value)} options={nivelOpts} disabled={bloquearCaptura} placeholder="Seleccionar lista..." />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1.5">Código de Artículo</label>
-              <Combobox id="codigo-articulo" value={codigoArticulo} onChange={(o) => setCodigoArticulo(o.value)} options={articuloOpts} disabled={bloquearCaptura} placeholder="Buscar por código o nombre..." />
-            </div>
+            <Dropdown
+              id="nivel-desc"
+              modelValue={nivel}
+              onChange={(value) => setNivel(value)}
+              options={nivelOpts}
+              label="Lista de Precio"
+              placeholder="Seleccionar lista..."
+              searchable={false}
+              disabled={bloquearCaptura}
+              loading={cargandoCatalogo}
+            />
+            <Dropdown
+              id="codigo-articulo"
+              modelValue={codigoArticulo}
+              onChange={(value) => {
+                setCodigoArticulo(value);
+                setArticuloSeleccionado(articuloOpciones.find((articulo) => articulo.codigo === value) ?? null);
+              }}
+              options={articuloOpts}
+              label="Código de Artículo"
+              placeholder="Buscar por código o nombre..."
+              searchPlaceholder="Buscar por código o nombre..."
+              emptyText="No se encontraron artículos por código o nombre."
+              searchable
+              maxRecords={50}
+              hasMore={articulosHasMore}
+              nextOffset={articulosNextOffset}
+              loading={cargandoArticulos}
+              loadingMore={cargandoMasArticulos}
+              debounceMs={500}
+              onSearch={cargarArticulosPaginados}
+              onLoadMore={cargarArticulosPaginados}
+              disabled={bloquearCaptura}
+            />
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
               <input type="number" step="0.01" min="0" value={factor} disabled={bloquearCaptura} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
@@ -383,7 +502,7 @@ export default function NuevaSolicitud({
           {!nivel && !cargandoCatalogo && !errorCatalogo && nivelesPrecio.length > 0 && (
             <p className="text-xs text-zinc-500">Seleccione una lista de precio para consultar los artículos disponibles.</p>
           )}
-          {!!nivel && !cargandoCatalogo && !errorCatalogo && articulosMaestros.length === 0 && (
+          {!!nivel && !cargandoCatalogo && !cargandoArticulos && !errorCatalogo && articulosMaestros.length === 0 && (
             <p className="text-xs text-amber-700">La lista seleccionada no tiene artículos con versión activa.</p>
           )}
           {articuloSel && (
