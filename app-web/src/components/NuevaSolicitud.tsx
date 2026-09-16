@@ -7,6 +7,8 @@ import Dropdown, { type DropdownLoadParams, type SelectOption } from "./newCompo
 import ExcelUploader from "./ExcelUploader";
 import { EstadoRedondeoBadge } from "./Badges";
 import { TablaResultado } from "./Tablas";
+import TablaImpactoDescuentoManual from "./newComponents/TablaImpactoDescuentoManual";
+import TablaArticulosCapturaManual from "./newComponents/TablaArticulosCapturaManual";
 import { fmtMonto } from "@/lib/format";
 import {
   PROCESOS,
@@ -14,7 +16,7 @@ import {
 } from "@/lib/catalog";
 import { calcularVariacion, redondeoPreview } from "@/lib/preview";
 import { simularManual, enviarSolicitud, obtenerCatalogoSolicitud } from "@/app/actions";
-import type { ArticuloCatalogo, FilaResultado, Identidad, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
+import type { ArticuloCatalogo, FilaPrecio, FilaResultado, Identidad, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
 import type { NivelPrecio } from "@/lib/types";
 
 interface ItemManual {
@@ -510,7 +512,7 @@ export default function NuevaSolicitud({
               <Card label="Descripción" value={articuloSel.descripcion} />
               <Card label="Precio Actual" value={fmtMonto(articuloSel.precioActual)} />
               <Card label="Precio Calc. Base" value={previewArticulo ? fmtMonto(previewArticulo.precioOriginal) : "—"} />
-              <Card label="Precio Redondeado" value={previewArticulo?.precioRedondeado != null ? fmtMonto(previewArticulo.precioRedondeado) : "—"} />
+              <Card label="Precio Red." value={previewArticulo?.precioRedondeado != null ? fmtMonto(previewArticulo.precioRedondeado) : "—"} />
               <Card label="Costo Mínimo" value={fmtMonto(calcularCostoMinimoArticulo(articuloSel))} />
             </div>
           )}
@@ -520,34 +522,11 @@ export default function NuevaSolicitud({
           </button>
           {errorItem && <p className="text-[11px] text-red-600">{errorItem}</p>}
           {itemsManual.length > 0 && (
-            <div className="card overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-zinc-50 text-xs text-zinc-500">
-                  <tr>
-                    <th className="text-left font-medium px-3 py-2">#</th>
-                    <th className="text-left font-medium px-3 py-2">Código</th>
-                    <th className="text-left font-medium px-3 py-2">Lista</th>
-                    <th className="text-right font-medium px-3 py-2">Factor %</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {itemsManual.map((it) => (
-                    <tr key={it.codigo + it.listaCodigo}>
-                      <td className="px-3 py-2">{it.fila}</td>
-                      <td className="px-3 py-2 mono">{it.codigo}</td>
-                      <td className="px-3 py-2">{it.lista}</td>
-                      <td className="px-3 py-2 text-right mono">{it.variacionPorcentaje}</td>
-                      <td className="px-3 py-2 text-right">
-                        <button className="btn btn-ghost" onClick={() => quitarItem(it.codigo, it.listaCodigo)} disabled={bloquearCaptura}>
-                          <Icon name="trash" className="w-3.5 h-3.5 text-red-500" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <TablaArticulosCapturaManual
+              filas={itemsManual}
+              disabled={bloquearCaptura}
+              onRemove={quitarItem}
+            />
           )}
         </div>
       )}
@@ -629,7 +608,11 @@ export default function NuevaSolicitud({
           <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-xs text-green-800 mb-3 flex items-center gap-2">
             <Icon name="check" className="w-3.5 h-3.5" /> Simulación completada. Revise los valores resultantes antes de continuar.
           </div>
-          <TablaResultado filas={filas} />
+          {esDescuento && modalidad === "manual" ? (
+            <TablaImpactoDescuentoManual filas={filas as FilaPrecio[]} />
+          ) : (
+            <TablaResultado filas={filas} />
+          )}
         </div>
       )}
     </div>

@@ -72,17 +72,17 @@ El `<tr>` llama a `openDetail(p.id)` en `@click`. La versión móvil usa tarjeta
 
 ### Tamaño, desplazamiento y respuesta móvil
 
-El área de datos conserva una altura y una altura máxima dependientes del ancho de pantalla:
+El área de datos tiene altura natural y únicamente un máximo dependiente del ancho de pantalla:
 
 ```text
-Base: h-[56vh] max-h-[56vh]
-sm:   h-[58vh] max-h-[58vh]
-md:   h-[64vh] max-h-[64vh]
-lg:   h-[70vh] max-h-[70vh]
-xl:   h-[74vh] max-h-[74vh]
+Base: max-h-[56vh]
+sm:   max-h-[58vh]
+md:   max-h-[64vh]
+lg:   max-h-[70vh]
+xl:   max-h-[74vh]
 ```
 
-El contenedor exterior usa `overflow-hidden`; su contenido interno usa `overflow-auto`. Así, cabeceras y paginación externa no crecen indefinidamente y el listado se desplaza dentro del área disponible.
+Con pocos registros, el contenedor crece solo hasta la altura de su contenido. Cuando las filas superan el máximo responsive, el área interna activa `overflow-auto` y permite desplazarse sin que la tabla crezca indefinidamente.
 
 En pantallas menores a `md`, la tabla se oculta y se muestran tarjetas con el mismo contenido relevante. La tarjeta es pulsable únicamente porque la navegación por detalle está habilitada hoy.
 
@@ -138,6 +138,7 @@ const props = withDefaults(defineProps<{
   redirectOnRowClick?: boolean;
   getRowDestination?: (row: Row) => RouteLocationRaw | string;
   tableHeightClass?: string;
+  rowClassName?: (row: Row) => string;
 }>(), {
   loading: false,
   error: false,
@@ -146,7 +147,7 @@ const props = withDefaults(defineProps<{
   emptyDescription: 'Intenta ajustar los filtros.',
   pageSizes: () => [10, 20, 50],
   redirectOnRowClick: false,
-  tableHeightClass: 'h-[56vh] max-h-[56vh] sm:h-[58vh] sm:max-h-[58vh] md:h-[64vh] md:max-h-[64vh] lg:h-[70vh] lg:max-h-[70vh] xl:h-[74vh] xl:max-h-[74vh]',
+  tableHeightClass: 'max-h-[56vh] sm:max-h-[58vh] md:max-h-[64vh] lg:max-h-[70vh] xl:max-h-[74vh]',
 });
 
 const emit = defineEmits<{
@@ -157,6 +158,8 @@ const emit = defineEmits<{
 ```
 
 `Row` representa el tipo genérico de cada registro y `RouteLocationRaw` se importa desde `vue-router` si el proyecto utiliza Vue Router.
+
+`rowClassName` permite al padre aplicar clases visuales por registro sin acoplar el componente a un dominio específico. Por ejemplo, una fila validada puede devolver `"bg-green-50"`; una fila con error puede devolver una clase de alerta. Si no se devuelve ninguna clase, se mantiene el estilo neutro.
 
 ### Booleano de redirección por fila
 
@@ -236,6 +239,32 @@ const productColumns: TableColumn<Product>[] = [
 ```
 
 Usar `#cell-sku` para la imagen y el chip de serial, `#cell-name` para la descripción, `#cell-hasWarranty` y `#cell-isActive` para sus colores semánticos, y `#cell-actions` para el texto orientativo o acciones específicas.
+
+## Adaptador de artículos capturados en Captura Manual
+
+En **Descuento por Artículo → Captura Manual**, la tabla previa a la simulación utiliza el mismo `ResponsiveDataTable` mediante `TablaArticulosCapturaManual.tsx`.
+
+Columnas:
+
+- `#`
+- `Código`
+- `Lista`
+- `Factor %`
+- Acción de eliminar
+
+La acción de eliminar se entrega desde el padre mediante `onRemove(codigo, listaCodigo)`. El componente mantiene `redirectOnRowClick={false}` para que pulsar una fila no navegue; únicamente el botón de eliminar ejecuta la acción. El botón usa `type="button"`, `aria-label` y respeta el estado `disabled`.
+
+La tabla recibe el arreglo controlado `itemsManual` y conserva el comportamiento de altura dinámica: crece con las filas hasta el `max-height` responsive y permite desplazamiento cuando corresponde. Las demás tablas de la aplicación no se modifican.
+
+## Texto largo y una sola línea
+
+En la tabla de impacto de `Descuento por Artículo → Captura Manual`:
+
+- La columna `Código` usa `whitespace-nowrap` para evitar que el código se divida en varias líneas.
+- La columna `Descripción` usa un ancho máximo de `280px`, truncado visual y `whitespace-nowrap`.
+- El texto completo se conserva en el atributo `title`, por lo que se muestra al pasar el cursor sobre la descripción.
+
+Este patrón evita que una descripción extensa aumente el ancho o la altura de la fila, sin perder acceso al texto completo.
 
 ## Criterios de aceptación para otra IA
 
