@@ -37,7 +37,8 @@ export default function BandejaAprobacion({
     ...Object.keys(PROCESOS).map((k) => ({ value: k, label: PROCESOS[k as ProcesoKey].label })),
   ];
 
-  const visibles = solicitudes.filter((s) => {
+  const solicitudesSeguras = Array.isArray(solicitudes) ? solicitudes : [];
+  const visibles = solicitudesSeguras.filter((s) => {
     if (!estaEnAmbito(currentUser.compania, s.compania)) return false;
     if (filtroEstado !== "TODOS" && s.estado !== filtroEstado) return false;
     if (filtroProceso !== "TODOS" && s.proceso !== filtroProceso) return false;

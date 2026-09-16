@@ -1412,3 +1412,31 @@ MENSAJE_ERROR
 **Context**: Construcción - configuración de ejecución local y producción.
 
 ---
+## Integración de Dropdown en Captura Manual
+**Timestamp**: 2026-09-16T14:49:39Z
+**User Input**: "revisa en la carpeta app-web/src/components/newcomponents el archivo dropdown-component.\n\nEn base a ese archivo, crea el componente y comienza a sustituir los de la pestaña de DEscuento por Articulo/Captura Manual.\n\n<EnvironmentContext>\nThis information is provided as context about user environment. Only consider it if it's relevant to the user request ignore it otherwise.\n\n<OPEN-EDITOR-FILES>\napp-web/.env\nREADME.md\napp-web/src/components/newComponents/dropdown-component.md\napp-web/README.md\naidlc-docs/audit.md\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n\n<ACTIVE-EDITOR-FILE>\naidlc-docs/audit.md\n</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se creó `app-web/src/components/newComponents/Dropdown.tsx` como selector React controlado y accesible, basado en la especificación Markdown. Se sustituyeron únicamente los dropdowns de Lista de Precio y Código de Artículo en Descuento por Artículo > Captura Manual; los Combobox de las demás pestañas y componentes permanecen sin cambios. `npm.cmd run typecheck` y `git diff --check` pasaron. `npm.cmd run build` fue intentado, pero Windows devolvió EPERM al abrir `.next/trace` porque hay un servidor Next.js activo en el puerto 5000; no se detuvo para no interrumpir la sesión."
+**Context**: Construcción - creación e integración aislada del componente Dropdown.
+
+---
+## Corrección de solicitudes undefined
+**Timestamp**: 2026-09-16T14:53:00Z
+**User Input**: "TypeError: Cannot read properties of undefined (reading 'filter') - > 16 |   const propias = solicitudes.filter((s) => s.solicitanteEmail === currentUser.email)\n\n<EnvironmentContext>\nThis information is provided as context about user environment. Only consider it if it's relevant to the user request ignore it otherwise.\n\n<OPEN-EDITOR-FILES>\napp-web/.env\nREADME.md\napp-web/src/components/newComponents/dropdown-component.md\naidlc-docs/audit.md\napp-web/src/components/newComponents/Dropdown.tsx\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n\n<ACTIVE-EDITOR-FILE>\napp-web/src/components/newComponents/Dropdown.tsx\n</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se normalizó la respuesta de obtenerSolicitudes() a un arreglo, se agregó try/catch al refresco y polling de PortalApp para no asignar undefined ante respuestas inválidas o errores del Portal, y se protegieron MisSolicitudes y BandejaAprobacion antes de ejecutar filter. npm.cmd run typecheck y git diff --check finalizaron correctamente."
+**Context**: Construcción - corrección defensiva de carga de solicitudes.
+
+---
+## Corrección de assets 500 de Next.js
+**Timestamp**: 2026-09-16T14:57:26Z
+**User Input**: "GET /_next/static/css/app/layout.css?v=1789570403932 500 in 80ms\n\n GET /_next/static/chunks/main-app.js?v=1789570403932 500 in 75ms\n\n GET /_next/static/chunks/app-pages-internals.js 500 in 73ms\n\n<EnvironmentContext>\nThis information is provided as context about user environment. Only consider it if it's relevant to the user request ignore it otherwise.\n\n<OPEN-EDITOR-FILES>\napp-web/.env\nREADME.md\napp-web/src/components/newComponents/dropdown-component.md\naidlc-docs/audit.md\napp-web/src/components/newComponents/Dropdown.tsx\napp-web/src/components/newComponents/table-reusable-component.md\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n\n<ACTIVE-EDITOR-FILE>\napp-web/src/components/newComponents/table-reusable-component.md\n</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se obtuvo el error interno exacto: Cannot find module './948.js' desde .next/server/webpack-runtime.js. Se confirmó una salida incremental .next inconsistente. Los procesos dev locales quedaron detenidos, se eliminó únicamente la salida generada app-web/.next y se reinició npm.cmd run dev en el puerto 5000. La página, layout.css, main-app.js y app-pages-internals.js respondieron HTTP 200; npm.cmd run typecheck también pasó. No se modificó código fuente ni se accedió a SQL Server."
+**Context**: Construcción - recuperación de salida generada de Next.js.
+
+---
+## Carga incremental del Dropdown de artículos
+**Timestamp**: 2026-09-16T15:12:00Z
+**User Input**: "no, dejalo así.\n\nVamos a agregar una nueva propiedad al componente, es un maximo de registros a mostrar.\n\nEl de codigo de articulo carga miles de registros y es muy lento, vamos a colocar ese maximo y que cuando se vaya bajando a los ultimos registros se carguen los siguientes con un fetch a la api, no un filtro en pantalla, al igual que si voy tipeando en el buscador, colocarle un retardo de 0.5 o 1 segundo y hacer un fetch (puede funcionar un bounce en el input)\n\nademás, actualiza el md del componente en la carpeta newcomponents, paraque queden los cambios especificados\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\nREADME.md\napp-web/src/components/newComponents/dropdown-component.md\naidlc-docs/audit.md\napp-web/src/components/newComponents/Dropdown.tsx\napp-web/src/components/newComponents/table-reusable-component.md\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/src/components/newComponents/table-reusable-component.md</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se implementó carga incremental para Código de Artículo sin modificar el comportamiento de Lista de Precio (`searchable={false}`). Se agregó `maxRecords` por página, búsqueda server-side con debounce de 500 ms, paginación por offset y carga al acercarse al final del listbox. Se creó GET `/api/catalogo/articulos`, con consulta SQL Server parametrizada y soporte demo. Se añadió cancelación/requestId para descartar respuestas obsoletas, se evitó cargar el catálogo completo al entrar en Captura Manual y se preservó la validación completa en simulación/envío. Se actualizó `dropdown-component.md` con el contrato, API, flujo, límites y criterios de aceptación."
+**Context**: Construcción - optimización de catálogo y documentación del componente Dropdown.
+
+---

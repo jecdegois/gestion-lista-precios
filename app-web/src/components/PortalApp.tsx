@@ -35,7 +35,12 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
 
   const refrescarSolicitudes = useCallback(async () => {
     if (!user) return;
-    setSolicitudes(await obtenerSolicitudes(user.compania ?? undefined));
+    try {
+      const resultado = await obtenerSolicitudes(user.compania ?? undefined);
+      setSolicitudes(Array.isArray(resultado) ? resultado : []);
+    } catch (error) {
+      console.error("No fue posible cargar las solicitudes del Portal.", error);
+    }
   }, [user]);
 
   const refrescarAuditoria = useCallback(async () => {

@@ -1,121 +1,54 @@
-# Dropdown de categorías de Productos: funcionamiento y especificación reutilizable
+# Dropdown reutilizable de React/Next.js
 
 ## Propósito
 
-Este documento describe el selector de categorías de `ProductListPage.vue` y define un contrato para reproducirlo de forma reutilizable en otro proyecto. Es una guía de implementación; no modifica el componente actual.
+`Dropdown.tsx` es un selector controlado y accesible para la aplicación Next.js. El componente no conoce el dominio, SQL Server ni las rutas API: recibe opciones adaptadas por el padre y emite únicamente el `value` seleccionado.
 
-## Funcionamiento actual
+Actualmente se utiliza en `NuevaSolicitud.tsx` dentro de **Descuento por Artículo → Captura Manual**:
 
-### Origen de los datos
+- **Lista de Precio**: usa el mismo componente con `searchable={false}`. No tiene buscador por decisión funcional.
+- **Código de Artículo**: usa búsqueda remota, límite por página y carga incremental.
 
-1. La pantalla consulta `GET /products` mediante `useProductList(queryParams)`.
-2. La respuesta contiene productos paginados, contadores y `categories: string[]`.
-3. El backend obtiene `categories` como la lista distinta y ordenada de categorías de los productos que cumplen los filtros actuales.
-4. La pantalla adapta esa lista a la forma que consume el selector:
+Los demás selectores de la aplicación continúan utilizando `Combobox.tsx` y no deben verse afectados por este componente.
 
-```ts
-const categoryOptions = computed(() => [
-  { value: '', label: 'Todas las categorías' },
-  ...categories.value.map((category: string) => ({
-    value: category,
-    label: category,
-  })),
-]);
-```
-
-`value` es el valor técnico que se envía al API; `label` es el texto visible. Para categorías ambas cadenas coinciden, pero deben conservarse como propiedades separadas.
-
-### Selección y filtrado
-
-La pantalla mantiene el valor elegido en `categoryFilter`, inicialmente vacío:
-
-```ts
-const categoryFilter = ref('');
-```
-
-El uso visual es:
-
-```vue
-<SearchableSelect
-  v-model="categoryFilter"
-  :options="categoryOptions"
-  placeholder="Todas las categorías"
-/>
-```
-
-Al hacer clic en una opción, `SearchableSelect` emite `update:modelValue`. `categoryFilter` cambia, se reinicia la paginación a la primera página y `queryParams` se recalcula. El composable elimina los valores vacíos antes de llamar al API; por tanto:
-
-| Valor seleccionado | Parámetro enviado | Efecto |
-| --- | --- | --- |
-| `''` | No se envía `category` | Muestra todas las categorías. |
-| `'Electrónica'` | `category=Electrónica` | El backend filtra por coincidencia exacta. |
-
-La clave de Vue Query incluye `category`, por lo que el cambio del valor provoca una consulta nueva. El mismo filtro se reutiliza al exportar el CSV.
-
-### Comportamiento del selector actual
-
-- Muestra la etiqueta de la opción cuyo `value` coincide con el `v-model`.
-- Abre una lista flotante al pulsar el control.
-- Enfoca un campo de búsqueda al abrirse.
-- Filtra en memoria por coincidencia parcial y sin distinguir mayúsculas/minúsculas sobre `label`.
-- Emite el `value` de la opción al seleccionarla y cierra la lista.
-- Cierra la lista al pulsar fuera o con `Escape`.
-
-## Hallazgo relevante
-
-En la implementación actual, `categories` se calcula en el backend con todos los filtros activos, incluido `category`. Tras seleccionar una categoría, la siguiente respuesta normalmente contiene solamente esa categoría. Para cambiar directamente a otra, la persona debe elegir primero `Todas las categorías`.
-
-Para un componente reutilizable, las opciones no deben provenir de una respuesta ya restringida por el mismo selector. La alternativa recomendada es cargar el catálogo de categorías de manera independiente o pedir al API que devuelva facetas no afectadas por el filtro de su propia categoría.
-
-## Contrato de opciones reutilizable
-
-Usar siempre un arreglo de objetos, incluso cuando la fuente sea un enum, una lista local o una API. No pasar strings sueltos, mapas `Record`, entidades de API sin adaptar ni etiquetas como valor.
+## Contrato de opciones
 
 ```ts
 export type SelectValue = string;
 
 export interface SelectOption {
-  /** Identificador estable, serializable y enviado en el filtro o formulario. */
   value: SelectValue;
-  /** Texto principal que se ve en la lista y en el valor seleccionado. */
   label: string;
-  /** Texto adicional indexable; no modifica el valor que se emite. */
   searchText?: string;
-  /** Impide elegir la opción sin retirarla de la lista. */
   disabled?: boolean;
 }
 ```
 
-Reglas del contrato:
+Reglas:
 
-- `value` debe ser único, estable y de tipo `string`. Si la fuente usa números o booleanos, convertirlos en el adaptador (`String(id)`), no dentro del componente.
-- `label` debe estar listo para mostrarse y localizado en el idioma de la pantalla.
-- El componente nunca debe conocer campos propios del dominio como `id`, `name`, `categoryName` o `isActive`.
-- El padre transforma los datos externos una vez, cerca de la consulta. Ejemplo:
+- `value` es un identificador estable, serializable y único.
+- `label` es el texto visible.
+- `searchText` permite indexar texto adicional sin cambiar el valor emitido.
+- `disabled` impide seleccionar la opción, pero no la elimina del catálogo.
+- El componente no recibe entidades de dominio directamente; el padre las transforma a `SelectOption[]`.
+
+## API pública de `Dropdown.tsx`
 
 ```ts
-const categoryOptions = computed<SelectOption[]>(() => [
-  { value: '', label: 'Todas las categorías' },
-  ...availableCategories.value.map((category) => ({
-    value: category.id,
-    label: category.name,
-    searchText: `${category.name} ${category.code ?? ''}`,
-  })),
-]);
+export interface DropdownLoadParams {
+  query: string;
+  offset: number;
+  maxRecords: number;
+}
+
+type DropdownLoadHandler = (params: DropdownLoadParams) => void | Promise<void>;
 ```
 
-- Para un filtro opcional, representar “todos” o “sin filtro” como `{ value: '', label: 'Todas las categorías' }`.
-- Para un campo obligatorio, no incluir la opción vacía; iniciar el modelo en `''` y usar `placeholder="Seleccionar categoría"`.
-- No usar `null`, `undefined`, `false`, `0` ni el texto visible como valores especiales. El valor vacío es únicamente `''`.
-
-## Especificación del componente portable
-
-Nombre sugerido: `SearchableSelect.vue` o `AppSelect.vue`.
-
-### API pública
+Props principales:
 
 ```ts
-const props = withDefaults(defineProps<{
+interface DropdownProps {
+  id: string;
   modelValue: string;
   options: readonly SelectOption[];
   label: string;
@@ -125,106 +58,247 @@ const props = withDefaults(defineProps<{
   searchable?: boolean;
   disabled?: boolean;
   loading?: boolean;
+  loadingMore?: boolean;
+  maxRecords?: number;
+  hasMore?: boolean;
+  nextOffset?: number | null;
+  debounceMs?: number;
+  onSearch?: DropdownLoadHandler;
+  onLoadMore?: DropdownLoadHandler;
   clearOnOptionsChange?: boolean;
-}>(), {
-  placeholder: 'Seleccionar...',
-  searchPlaceholder: 'Buscar...',
-  emptyText: 'Sin resultados',
-  searchable: true,
-  disabled: false,
-  loading: false,
-  clearOnOptionsChange: false,
-});
-
-const emit = defineEmits<{
-  'update:modelValue': [value: string];
-  change: [value: string, option: SelectOption];
-  blur: [];
-}>();
+  onChange: (value: string, option: SelectOption) => void;
+  onBlur?: () => void;
+}
 ```
 
-Decisiones obligatorias:
+Valores predeterminados:
 
-- El componente es controlado: el padre es dueño de `modelValue`; el componente solo emite valores.
-- Debe admitir carga asíncrona: con `loading` activo no se deben borrar ni alterar automáticamente las selecciones existentes.
-- No emitir `update:modelValue` por una actualización transitoria de `options`. Si una opción queda inválida, el padre decide si limpia el filtro usando `clearOnOptionsChange` como política explícita.
-- Mantener selección simple en este componente. Crear un componente de selección múltiple separado si el producto lo requiere; así el tipo del modelo nunca alterna entre `string` y `string[]`.
+- `placeholder`: `Seleccionar...`
+- `searchPlaceholder`: `Buscar...`
+- `emptyText`: `Sin resultados`
+- `searchable`: `true`
+- `disabled`: `false`
+- `loading`: `false`
+- `loadingMore`: `false`
+- `maxRecords`: `50`
+- `debounceMs`: `500`
+- `hasMore`: `false`
+- `nextOffset`: `null`
+- `clearOnOptionsChange`: `false`
 
-### Accesibilidad e interacción
+## Modos de operación
 
-- El disparador debe ser un `<button type="button">`, no un `<div>` clicable.
-- Asociar el texto de `label` con el control mediante `id`, `aria-labelledby` o `aria-label`.
-- Declarar `role="combobox"`, `aria-expanded`, `aria-controls` y `aria-haspopup="listbox"` en el disparador.
-- Renderizar la lista con `role="listbox"`; cada opción usa `role="option"`, `aria-selected` y `aria-disabled` cuando corresponda.
-- Al abrir: enfocar la búsqueda si es visible, o la opción seleccionada si no hay búsqueda.
-- Soportar `ArrowDown`, `ArrowUp`, `Home`, `End`, `Enter`, `Space`, `Escape` y `Tab`.
-- Mantener el índice resaltado en estado reactivo (`highlightedIndex`); no manipular clases del DOM con `querySelector`.
-- Omitir opciones deshabilitadas durante la navegación y no permitir su selección.
-- Cerrar al hacer clic fuera, al pulsar `Escape`, al seleccionar y al perder foco hacia fuera; retirar listeners globales al desmontar.
-- Normalizar la búsqueda sin distinguir mayúsculas, acentos ni espacios extremos.
+### 1. Selector local
 
-### Flujo interno recomendado
+Cuando no se proporciona `onSearch` ni `onLoadMore`, el componente filtra en memoria las opciones recibidas:
 
-```text
-El padre adapta los datos a SelectOption[]
-  -> el componente recibe options y modelValue
-  -> el usuario abre, busca y navega las opciones
-  -> el componente emite el value seleccionado
-  -> el padre actualiza el filtro y solicita los datos
-  -> la respuesta actualiza la vista, sin reconstruir el catálogo desde datos ya filtrados
-```
-
-## Integración de referencia
-
-Separar los datos de opciones de la consulta de resultados:
-
-```ts
-const categoryFilter = ref('');
-
-const { data: categoryData, isFetching: categoriesLoading } = useCategoryCatalog();
-
-const categoryOptions = computed<SelectOption[]>(() => [
-  { value: '', label: 'Todas las categorías' },
-  ...(categoryData.value ?? []).map((category) => ({
-    value: category.id,
-    label: category.name,
-  })),
-]);
-
-const productQuery = computed(() => ({
-  page: page.value,
-  limit: limit.value,
-  category: categoryFilter.value || undefined,
-}));
-
-watch(categoryFilter, () => {
-  page.value = 1;
-});
-```
-
-```vue
-<AppSelect
-  v-model="categoryFilter"
-  label="Categoría"
-  :options="categoryOptions"
-  placeholder="Todas las categorías"
-  :loading="categoriesLoading"
+```tsx
+<Dropdown
+  id="nivel-desc"
+  modelValue={nivel}
+  options={nivelOpts}
+  label="Lista de Precio"
+  searchable={false}
+  onChange={(value) => setNivel(value)}
 />
 ```
 
-## Criterios de aceptación para otra IA
+En este modo `maxRecords` limita las opciones visibles localmente.
 
-- El componente solo acepta `SelectOption[]` y emite solo `string`.
-- Seleccionar una categoría actualiza el filtro y reinicia la página a `1`.
-- Elegir la opción con `value: ''` elimina el parámetro del filtro.
-- Las categorías disponibles permanecen seleccionables aunque la lista de productos esté filtrada por una de ellas.
-- La búsqueda encuentra etiquetas con diferencias de mayúsculas o acentos.
-- El control es completamente operable con teclado y expone los atributos ARIA indicados.
-- No hay listeners globales, estados de foco ni opciones residuales después de desmontar el componente.
+### 2. Selector remoto e incremental
 
-## Archivos de referencia en este proyecto
+Cuando se proporciona `onSearch` o `onLoadMore`, el componente no filtra el catálogo en pantalla. Las opciones visibles son las páginas recibidas del servidor.
 
-- `frontend/src/modules/products/pages/ProductListPage.vue`
-- `frontend/src/shared/components/SearchableSelect.vue`
-- `frontend/src/modules/products/composables/useProducts.ts`
-- `backend/src/modules/products/products.service.ts`
+Al escribir en el buscador:
+
+1. Se actualiza el texto local.
+2. Se espera `debounceMs` milisegundos.
+3. Se ejecuta `onSearch({ query, offset: 0, maxRecords })`.
+4. El padre reemplaza las opciones por la nueva página.
+
+Al acercarse al final del `listbox`:
+
+1. Se detecta que quedan aproximadamente 80 píxeles.
+2. Si `hasMore` es verdadero y no hay otra carga en curso, se ejecuta `onLoadMore`.
+3. El padre solicita `nextOffset`.
+4. Las opciones nuevas se agregan y se deduplican por `value`.
+
+Ejemplo utilizado para artículos:
+
+```tsx
+<Dropdown
+  id="codigo-articulo"
+  modelValue={codigoArticulo}
+  options={articuloOpts}
+  label="Código de Artículo"
+  searchable
+  maxRecords={50}
+  hasMore={articulosHasMore}
+  nextOffset={articulosNextOffset}
+  loading={cargandoArticulos}
+  loadingMore={cargandoMasArticulos}
+  debounceMs={500}
+  onSearch={cargarArticulosPaginados}
+  onLoadMore={cargarArticulosPaginados}
+  onChange={(value) => setCodigoArticulo(value)}
+/>
+```
+
+## API de artículos
+
+La búsqueda remota utiliza exclusivamente lecturas mediante:
+
+```text
+GET /api/catalogo/articulos
+```
+
+Parámetros:
+
+| Parámetro | Obligatorio | Descripción |
+|---|---:|---|
+| `compania` | Sí | Compañía activa, por ejemplo `FEBECA`. |
+| `nivelPrecio` | Sí | Código de la lista de precio. |
+| `search` | No | Texto a buscar en código o descripción. |
+| `offset` | No | Desplazamiento de la página, predeterminado `0`. |
+| `maxRecords` | No | Tamaño solicitado de página, predeterminado `50`. El servidor lo limita a `100`. |
+
+Ejemplo:
+
+```text
+/api/catalogo/articulos?compania=FEBECA&nivelPrecio=MAYOREOB&search=nevera&offset=0&maxRecords=50
+```
+
+Respuesta:
+
+```ts
+{
+  items: ArticuloCatalogo[];
+  offset: number;
+  maxRecords: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+}
+```
+
+El servidor consulta como máximo `maxRecords + 1` registros. El registro adicional determina `hasMore`, sin ejecutar un `COUNT` costoso para cada búsqueda.
+
+### SQL Server
+
+En modo real, `listarCatalogoPaginado()`:
+
+- Consulta la versión activa máxima de la lista.
+- Busca por `AP.ARTICULO` o `A.DESCRIPCION` usando parámetros SQL.
+- Ordena por código de artículo.
+- Utiliza `OFFSET ... FETCH NEXT ...`.
+- Mantiene el esquema y los objetos configurables por compañía.
+
+La consulta no recibe nombres de tablas desde el navegador. Estos se obtienen del mapa seguro de configuración de compañía.
+
+### Modo demo
+
+En `DEMO_MODE=true`:
+
+- Se usa el catálogo en memoria.
+- La búsqueda se realiza en el servidor sobre el catálogo demo.
+- Se aplica el mismo `offset`, `maxRecords`, orden y respuesta `hasMore`.
+- No se conecta a SQL Server.
+
+## Protección contra respuestas obsoletas
+
+`NuevaSolicitud.tsx` mantiene:
+
+- Un contador `articulosRequestRef` para identificar la solicitud vigente.
+- Un `AbortController` para cancelar la consulta anterior cuando cambia la búsqueda o la lista.
+- Verificación del `requestId` antes de aplicar una respuesta.
+
+Esto evita que una búsqueda anterior sobrescriba los resultados de una búsqueda más reciente.
+
+La búsqueda remota debe mantener siempre esta regla:
+
+```text
+respuesta aplicada solo si corresponde a la combinación vigente de:
+compania + nivelPrecio + search + offset
+```
+
+## Preservación de selección
+
+El padre conserva temporalmente el artículo seleccionado en `articuloSeleccionado`. Esto evita que la etiqueta seleccionada desaparezca si una nueva búsqueda reemplaza la página actual y ya no contiene ese artículo.
+
+La selección sigue enviando únicamente el código del artículo. El precio, costo y demás datos se usan para la vista previa cuando están disponibles.
+
+## Simulación y envío
+
+La paginación del dropdown solo controla la experiencia de búsqueda. No sustituye las validaciones de negocio.
+
+Al simular:
+
+- `simularManual()` vuelve a consultar el catálogo completo en el servidor.
+- Verifica que el artículo pertenezca a la lista seleccionada.
+- Construye las filas de impacto con precio, costo, margen y redondeo.
+
+Al enviar:
+
+- `enviarSolicitud()` vuelve a consultar los maestros de Softland.
+- Verifica nuevamente lista y artículo.
+- No confía en que el cliente haya recibido la página completa.
+
+Por tanto, nunca se debe usar la página parcial del dropdown como contexto para simulación, Excel, grupos o validación final.
+
+## Accesibilidad e interacción
+
+El componente implementa:
+
+- Botón real con `type="button"`.
+- `role="combobox"`.
+- `aria-expanded`.
+- `aria-controls`.
+- `aria-haspopup="listbox"`.
+- Lista con `role="listbox"`.
+- Opciones con `role="option"`, `aria-selected` y `aria-disabled`.
+- Navegación con `ArrowDown`, `ArrowUp`, `Home`, `End`, `Enter`, `Space`, `Escape` y `Tab`.
+- Cierre al hacer clic fuera.
+- Cierre al perder foco.
+- Limpieza de listeners al desmontar.
+- Normalización de búsqueda para ignorar mayúsculas, acentos y espacios extremos.
+
+## Reglas específicas de Captura Manual
+
+### Lista de Precio
+
+Debe conservarse sin buscador:
+
+```tsx
+searchable={false}
+```
+
+Su selección reinicia la página de artículos y solicita la primera página de la nueva lista.
+
+### Código de Artículo
+
+Debe utilizar:
+
+```tsx
+searchable
+maxRecords={50}
+debounceMs={500}
+onSearch={cargarArticulosPaginados}
+onLoadMore={cargarArticulosPaginados}
+```
+
+El límite `50` es el tamaño de cada carga, no un límite total del catálogo. Las páginas posteriores se agregan cuando el usuario se aproxima al final de la lista.
+
+## Criterios de aceptación
+
+- Lista de Precio utiliza `Dropdown` y sigue sin mostrar buscador.
+- Código de Artículo no carga miles de registros al abrir la pantalla.
+- La primera consulta devuelve como máximo 50 artículos.
+- Al escribir, se espera 500 ms antes de consultar la API.
+- La búsqueda se ejecuta en servidor por código o descripción.
+- Al llegar al final se solicita la siguiente página.
+- No se duplican artículos al concatenar páginas.
+- Una búsqueda anterior no puede sobrescribir una búsqueda posterior.
+- Cambiar de lista cancela las consultas anteriores y reinicia el offset.
+- La selección actual permanece visible aunque cambie la página de resultados.
+- Simulación y envío continúan validando contra el catálogo completo en el servidor.
+- El endpoint no recibe ni expone credenciales SQL.
+- `Combobox.tsx` y los selectores de las demás pestañas no se modifican.

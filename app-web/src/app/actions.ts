@@ -197,10 +197,14 @@ export interface CatalogoSolicitud {
   grupos: { codigo: string; nombre: string; cantidad: number }[];
 }
 
-export async function obtenerCatalogoSolicitud(compania: string, nivelPrecio?: string): Promise<CatalogoSolicitud> {
+export async function obtenerCatalogoSolicitud(
+  compania: string,
+  nivelPrecio?: string,
+  incluirArticulos = true,
+): Promise<CatalogoSolicitud> {
   const niveles = await listarNivelesPrecio(compania);
   const nivelSeleccionado = resolverNivelPrecio(niveles, nivelPrecio) ?? null;
-  const maestros = nivelSeleccionado ? await listarCatalogo(compania, nivelSeleccionado) : [];
+  const maestros = incluirArticulos && nivelSeleccionado ? await listarCatalogo(compania, nivelSeleccionado) : [];
   const contexto = crearContextoCatalogo(niveles, maestros);
   return {
     niveles,
@@ -214,7 +218,8 @@ export async function obtenerCatalogoSolicitud(compania: string, nivelPrecio?: s
 // Consultas (lectura de estado del flujo)
 // ---------------------------------------------------------------------------
 export async function obtenerSolicitudes(compania?: string): Promise<Solicitud[]> {
-  return await listarSolicitudes(compania);
+  const resultado = await listarSolicitudes(compania);
+  return Array.isArray(resultado) ? resultado : [];
 }
 
 export async function obtenerAuditoria(compania?: string) {
