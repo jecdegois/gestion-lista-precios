@@ -46,12 +46,15 @@ const ENCABEZADO_LEGADO = "factor reduccion";
  */
 export async function resolverIdentidad(email: string, compania?: string): Promise<Identidad | undefined> {
   const normalizado = email.trim().toLowerCase();
-  if (!normalizado) return undefined;
+  const companiaNormalizada = (compania ?? "").trim().toUpperCase();
+  if (!normalizado || !companiaNormalizada) return undefined;
+
   const pool = await getPortalPool();
   const mssql = await import("mssql");
   const q = await pool
     .request()
     .input("email", mssql.VarChar(120), normalizado)
+    .input("compania", mssql.VarChar(20), companiaNormalizada)
     .query(
       `SELECT TOP (1)
               U.IDP_SUBJECT,
@@ -59,15 +62,17 @@ export async function resolverIdentidad(email: string, compania?: string): Promi
               U.NOMBRE,
               U.ROL_GLOBAL
          FROM ${objetoPortal("USUARIO")} U
+         INNER JOIN ${objetoPortal("USUARIO_AMBITO")} UA
+                 ON UA.ID_USUARIO = U.ID_USUARIO
         WHERE LOWER(U.EMAIL) = @email
+          AND U.ACTIVO = 'S'
+          AND UA.COMPANIA = @compania
           AND U.ROL_GLOBAL IN ('OPERADOR', 'APROBADOR')
         ORDER BY U.ROL_GLOBAL`,
     );
   const r = q.recordset[0] as Record<string, unknown> | undefined;
   if (!r) return undefined;
   const rol = String(r.ROL_GLOBAL ?? "");
-  const companiaNormalizada = (compania ?? "").trim().toUpperCase();
-  if (!companiaNormalizada) return undefined;
   if (rol !== "OPERADOR" && rol !== "APROBADOR") return undefined;
   return {
     email: String(r.EMAIL),

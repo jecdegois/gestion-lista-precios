@@ -175,6 +175,7 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
       precioRedondeado: redondeo.precioRedondeado,
       estadoRedondeo: redondeo.estado === "CALCULADO" ? "ALERTA_MARGEN" : redondeo.estado,
       bandaRedondeo: redondeo.banda,
+      margenMinimo,
       costo,
       costoMinimo,
       causa: `El precio final (${fmtMonto(precioParaValidar)}) es menor que el Costo Mínimo del Artículo (${fmtMonto(costoMinimo)}).`,
@@ -188,6 +189,7 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
     precioRedondeado: redondeo.precioRedondeado,
     estadoRedondeo: redondeo.estado,
     bandaRedondeo: redondeo.banda,
+    margenMinimo,
     costo,
     costoMinimo,
     causa: null,
@@ -308,7 +310,9 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
 
   const precioLista = articulo.precioActual;
   const margenPromedio = precioLista > 0 && costo != null ? (precioLista - costo) / precioLista : null;
-  const margenMinimo = multiplicadorMargen != null ? Math.max(0, margenMinimoBase * multiplicadorMargen) : null;
+  const margenMinimo = margenMinimoBase != null && multiplicadorMargen != null
+    ? Math.max(0, margenMinimoBase * multiplicadorMargen)
+    : null;
   const redondeo = redondearPrecioComercial(precioLista);
   const precioRedondeado = redondeo.precioRedondeado;
   const margenSobrePrecioRedondeado = precioRedondeado != null && precioRedondeado > 0 && costo != null ? 1 - costo / precioRedondeado : null;

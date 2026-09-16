@@ -1377,3 +1377,24 @@ MENSAJE_ERROR
 **Context**: Construcción - validación de documentación de flujo operativo
 
 ---
+## Diagnóstico de autenticación con nuevo usuario SQL
+**Timestamp**: 2026-09-15T17:33:15Z
+**User Input**: "GET / 200 in 1362ms\n\n ⨯ ConnectionError: Login failed for user 'INT0000499'.\n\n    at Object.onceWrapper (node:events:634:26)\n\n    at Connection.emit (node:events:519:28)\n\ndigest: \"821249314\"\n\n POST / 500 in 807ms\n\n<EnvironmentContext>\n<file name=\"c:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\app-web\\.env\" />\n<file name=\"c:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\app-web\\src\\app\\actions.ts\" />\n<ACTIVE-EDITOR-FILE>\nNo se especificó contenido adicional.\n</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se detectó que la contraseña configurada para INT0000499 contenía un carácter $ sin escapar y Next.js la cargaba truncada/alterada. Se escapó el carácter, se confirmó que el pool mssql abre correctamente sin ejecutar consultas y se restauró la consulta de identidad para usar USUARIO_AMBITO, compañía y estados activos. El typecheck finalizó correctamente; no se ejecutaron operaciones SQL de lectura o escritura."
+**Context**: Construcción - diagnóstico de autenticación y corrección segura de configuración local.
+
+---
+## Diagnóstico de identidad Portal contra esquema real
+**Timestamp**: 2026-09-15T17:38:40Z
+**User Input**: "tengo este mensaje en la interfaz del login: No fue posible consultar la identidad en el Portal. Verifique la configuración de SQL Server.\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\naidlc-docs/audit.md\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>aidlc-docs/audit.md</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se diagnosticó con lecturas controladas que la base real contiene USUARIO con ROL_GLOBAL y USUARIO_AMBITO únicamente con ID_AMBITO, COMPANIA e ID_USUARIO. La consulta se ajustó al esquema real, eliminando referencias inexistentes a UA.ROL, UA.ACTIVO y U.COLOR. La consulta exacta del login con correo ficticio compiló y devolvió cero filas; el typecheck terminó correctamente. No se ejecutaron INSERT, UPDATE ni DELETE."
+**Context**: Construcción - corrección de consulta de identidad contra esquema SQL real.
+
+---
+## Diagnóstico de auditoría Portal
+**Timestamp**: 2026-09-15T17:56:21Z
+**User Input**: "Error: Invalid object name 'PORTAL_PRECIOS.AUDITORIA_EVENTOS'.\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\naidlc-docs/audit.md\napp-web/.gitignore\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>app-web/src/app/actions.ts</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se consultaron únicamente metadatos y se confirmó que la base real contiene PORTAL_PRECIOS.AUDITORIA_PRECIOS con columnas ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON y FECHA_EVENTO. Se ajustó portal-repository.ts para registrar y listar auditoría con ese contrato, incluyendo compañía y solicitud dentro de PAYLOAD_JSON. La consulta SELECT de auditoría con TOP (0) terminó correctamente y el typecheck pasó. No se ejecutaron escrituras."
+**Context**: Construcción - alineación del repositorio de auditoría con el esquema SQL real.
+
+---
