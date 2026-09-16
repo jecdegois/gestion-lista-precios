@@ -1398,3 +1398,17 @@ MENSAJE_ERROR
 **Context**: Construcción - alineación del repositorio de auditoría con el esquema SQL real.
 
 ---
+## Diagnóstico de botón Enviar a Aprobación — Descuento manual
+**Timestamp**: 2026-09-15T18:10:00Z
+**User Input**: "Necesito saber cuales son las condiciones para activar los botones de \"Enviar Aprobacion\" o como sería el flujo, ya que agrego articulos, simulo impacto y el boton sigue inhabilitado.\n\n\nComienza por el de la pestaña \"Descuento por Articulo\" -> \"Carga Manual\"\n\n<EnvironmentContext>\nThis information is provided as context about user environment. Only consider it if it's relevant to the user request ignore it otherwise.\n\n<OPEN-EDITOR-FILES>\napp-web/.env\naidlc-docs/audit.md\napp-web/.gitignore\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n\n<ACTIVE-EDITOR-FILE>\napp-web/.env\n</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se rastreó el flujo de Descuento por Artículo > Captura Manual. El botón requiere simulado=true, al menos un artículo, una lista válida, no estar enviando y READ_ONLY_MODE=false. La configuración actual tiene READ_ONLY_MODE=true y PORTAL_ONLY_MODE=true: por eso permite capturar/simular, pero bloquea intencionalmente Enviar a Aprobación. No se modificó código ni configuración."
+**Context**: Construcción - diagnóstico funcional del flujo de envío a aprobación.
+
+---
+## Cambio de puerto de ejecución web
+**Timestamp**: 2026-09-16T14:25:00Z
+**User Input**: "cambialo\n\n<EnvironmentContext>\n<OPEN-EDITOR-FILES>\napp-web/.env\nREADME.md\naidlc-docs/audit.md\napp-web/src/app/actions.ts\n</OPEN-EDITOR-FILES>\n<ACTIVE-EDITOR-FILE>README.md</ACTIVE-EDITOR-FILE>\n</EnvironmentContext>"
+**AI Response**: "Se cambió el puerto de Next.js de 3000 a 5000 en los scripts dev/start de app-web/package.json y se actualizaron las instrucciones de acceso en README.md y app-web/README.md. El package.json se validó y npm.cmd run typecheck finalizó correctamente."
+**Context**: Construcción - configuración de ejecución local y producción.
+
+---

@@ -18,7 +18,7 @@ cp .env.example .env.local   # en Windows: copy .env.example .env.local
 npm run dev
 ```
 
-Abra <http://localhost:3000>.
+Abra <http://localhost:5000>.
 
 Otros scripts: `npm run build` (producción), `npm start` (servir build), `npm run typecheck` (tsc).
 
