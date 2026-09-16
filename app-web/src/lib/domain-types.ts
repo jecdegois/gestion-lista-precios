@@ -38,11 +38,16 @@ export interface ArticuloCatalogo {
   costoReposicion: number;
   margenUtilidadMin?: number;
   categoria: string;
+  categoriaDescripcion?: string;
   subcategoria: string;
+  subcategoriaDescripcion?: string;
   grupo: string;
   marca: string;
+  marcaDescripcion?: string;
   marcaGrupoCompra: string;
+  marcaGrupoCompraDescripcion?: string;
   bdf: string;
+  bdfDescripcion?: string;
 }
 
 /** Validación de una fila de precio (modo "factor"). */
@@ -122,6 +127,14 @@ export type EstadoSolicitud =
   | "RECHAZADO"
   | "ERROR_EJECUCION";
 
+export interface CriteriosArticulo {
+  clasificacion1?: string;
+  clasificacion2?: string;
+  clasificacion3?: string;
+  clasificacion4?: string;
+  clasificacion5?: string;
+}
+
 export interface ParametrosSolicitud {
   nivel?: string | null;
   factor?: string | null;
@@ -130,6 +143,8 @@ export interface ParametrosSolicitud {
   listaBase?: string;
   nivelPrecio?: string;
   grupoArticulos?: string;
+  criteriosArticulo?: CriteriosArticulo;
+  codigosArticulos?: string[];
   articulos?: FilaResultado[];
 }
 

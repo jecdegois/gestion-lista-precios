@@ -284,3 +284,88 @@ Este patrón evita que una descripción extensa aumente el ancho o la altura de 
 - `frontend/src/modules/products/pages/ProductListPage.vue`
 - `frontend/src/modules/products/composables/useProducts.ts`
 - `frontend/src/shared/components/Pagination.vue`
+
+## Paginación incremental de impacto
+
+`ResponsiveDataTable` admite carga incremental server-side mediante:
+
+```ts
+hasMore?: boolean;
+nextOffset?: number | null;
+loadingMore?: boolean;
+onLoadMore?: (params: { offset: number; limit: number }) => void | Promise<void>;
+```
+
+Cuando el scroll llega aproximadamente a los últimos 80 píxeles, el componente ejecuta `onLoadMore` si `hasMore` es verdadero y no existe otra carga en curso. El padre concatena la página recibida y conserva la validación del lote completo.
+
+Gestión Global utiliza páginas de `200` filas mediante:
+
+```text
+GET /api/simulacion/gestion-global
+```
+
+La respuesta contiene `filas`, `offset`, `maxRecords`, `hasMore` y `nextOffset`. Las filas se calculan y validan en servidor antes de enviarse al componente. El envío de la solicitud no debe utilizar únicamente la página visible.
+
+## Tabla de hallazgos de margen
+
+Los hallazgos de margen se presentan mediante `TablaHallazgosMargen.tsx`, otro adaptador de `ResponsiveDataTable`. La tabla muestra código, descripción, causa, precio actual y precio mínimo, con scroll responsive y páginas locales de `200` filas. El cálculo de hallazgos se realiza sobre el conjunto completo recibido, no solo sobre la página visible.
+
+## Simulación global por páginas de 200
+
+Gestión Global usa `GET /api/simulacion/gestion-global` para obtener `FilaPrecio[]` calculadas en servidor por páginas de hasta `200` registros.
+
+```text
+GET /api/simulacion/gestion-global
+  ?compania=FEBECA
+  &nivel=MAYOREOB
+  &factor=10
+  &tipoVariacion=AUMENTO
+  &offset=0
+  &maxRecords=200
+```
+
+`ResponsiveDataTable` acumula las páginas y solicita `nextOffset` cuando el scroll llega al final. Mientras `hasMore` sea verdadero, el envío de Gestión Global permanece bloqueado para evitar enviar un lote parcial. Las respuestas se protegen con `AbortController` y un identificador de solicitud.
+
+## Hallazgos de margen como tabla
+
+`TablaHallazgosMargen.tsx` reemplaza la lista textual de hallazgos. Usa `ResponsiveDataTable` con scroll responsive y paginación local de `200` filas. El conteo se calcula sobre todos los hallazgos; la tabla solo muestra la página actual.
+
+## Colores de validación de filas
+
+En las tablas de impacto, el padre puede usar `rowClassName` para distinguir resultados:
+
+- `bg-green-50`: fila válida, cumple los criterios de validación.
+- `bg-red-50`: fila inválida, contiene un error o no cumple un criterio de negocio.
+
+La regla aplicada en los adaptadores de impacto es:
+
+```tsx
+rowClassName={(fila) => fila.validacion.valido ? "bg-green-50" : "bg-red-50"}
+```
+
+## Adaptador de Actualización Masiva
+
+`TablaImpactoActualizacionMasiva.tsx` utiliza el mismo `ResponsiveDataTable` y el mismo resumen de validaciones/hallazgos para `MAYOREOD_MASIVO`. Así, Actualización Masiva, Gestión Global y Descuento manual comparten la presentación reusable de impacto, mientras `RevisionModal` y las demás rutas conservan sus consumidores existentes.
+
+## Detalle de solicitudes en RevisionModal
+
+`TablaResultadoModal.tsx` usa `ResponsiveDataTable` para el detalle de `FilaPrecio` y `FilaMargen` dentro de `RevisionModal`.
+
+- Conserva las columnas de precios, variación, margen, estado y validación.
+- Divide localmente el detalle en páginas de `200` filas.
+- Mantiene scroll responsive y encabezado sticky.
+- Conserva `ResumenValidaciones` sobre el conjunto completo.
+- Usa `redirectOnRowClick={false}` para no interferir con aprobar, rechazar o cerrar el modal.
+- `TablaResultado` permanece disponible para las demás pantallas.
+
+## Datos persistidos del detalle del modal
+
+El detalle de `TablaResultadoModal` se alimenta de las columnas reales de `SOLICITUD_PRECIO_DETALLE`:
+
+- `LISTA_CODIGO` y `TIPO_VARIACION` para lista y variación.
+- `FACTOR_MULTIPLICADOR` para factor de precio.
+- `FACTOR_REDUCCION_NORM` y `MULTIPLICADOR_MARGEN` para procesos de margen.
+- `MARGEN_PROMEDIO`, `MARGEN_MINIMO` y `COSTO_MINIMO` para los valores de margen.
+- `PRECIO_CALCULADO`, `PRECIO_REDONDEADO`, `BANDA_NUMERO` y `BANDA_REDONDEO` para el impacto.
+
+El modal no muestra columnas independientes de Estado o Validación. La fila se pinta con `bg-green-50` cuando `VALIDO = 'S'` y con `bg-red-50` cuando no cumple los criterios.

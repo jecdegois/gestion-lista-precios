@@ -123,3 +123,22 @@ app-web/
 ## Nota de seguridad (dependencia)
 
 `next` 14.2.x muestra un aviso de CVEs recientes del protocolo RSC (diciembre 2025). Para producción, actualice a la versión parcheada que Vercel publique para la línea que use (14.2.x LTS o 15.x) siguiendo <https://nextjs.org/blog/security-update-2025-12-11>. La actualización es de dependencia y no requiere cambios en el código de este proyecto.
+
+## Actualización Masiva de Precios: criterios del conjunto
+
+La pestaña **Actualización Masiva de Precios** construye el conjunto de artículos a partir de los maestros de Softland:
+
+- Lista/nivel de precio con versión activa.
+- `CLASIFICACION_1` — Clasificación 1.
+- `CLASIFICACION_2` — Clasificación 2.
+- `CLASIFICACION_3` — Marca / Clasificación 3.
+- `CLASIFICACION_4` — Grupo de compra / Clasificación 4.
+- `CLASIFICACION_5` — BDF / Clasificación 5.
+
+Los cinco criterios se muestran como Dropdowns dependientes. Al seleccionar un criterio se limpian los criterios inferiores y se recalculan las opciones disponibles. La pantalla muestra el número de artículos que coincide con la combinación.
+
+La simulación recibe la lista, criterios y códigos resultantes. El servidor vuelve a resolver el catálogo completo y genera las filas de impacto; no se confía únicamente en el filtro del navegador. El envío conserva los criterios y los códigos materializados junto con las filas de simulación.
+
+### Descripciones de clasificaciones
+
+Las opciones de clasificación de Actualización Masiva se obtienen mediante `CLASIFICACION_1` a `CLASIFICACION_5` de `ARTICULO` y joins a la tabla configurable `CLASIFICACION`, usando `AGRUPACION = 1..5`. El Dropdown conserva el código como `value` y muestra `Código — DESCRIPCION` como etiqueta. Si una descripción no existe, se muestra únicamente el código.

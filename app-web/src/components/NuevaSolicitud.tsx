@@ -8,15 +8,18 @@ import ExcelUploader from "./ExcelUploader";
 import { EstadoRedondeoBadge } from "./Badges";
 import { TablaResultado } from "./Tablas";
 import TablaImpactoDescuentoManual from "./newComponents/TablaImpactoDescuentoManual";
+import TablaImpactoActualizacionMasiva from "./newComponents/TablaImpactoActualizacionMasiva";
+import TablaImpactoGestionGlobal from "./newComponents/TablaImpactoGestionGlobal";
 import TablaArticulosCapturaManual from "./newComponents/TablaArticulosCapturaManual";
+import { type TableLoadParams } from "./newComponents/ResponsiveDataTable";
 import { fmtMonto } from "@/lib/format";
 import {
   PROCESOS,
   calcularCostoMinimoArticulo,
 } from "@/lib/catalog";
 import { calcularVariacion, redondeoPreview } from "@/lib/preview";
-import { simularManual, enviarSolicitud, obtenerCatalogoSolicitud } from "@/app/actions";
-import type { ArticuloCatalogo, FilaPrecio, FilaResultado, Identidad, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
+import { simularManual, simularGestionGlobalPaginado, enviarSolicitud, obtenerCatalogoSolicitud } from "@/app/actions";
+import type { ArticuloCatalogo, CriteriosArticulo, FilaPrecio, FilaResultado, Identidad, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
 import type { NivelPrecio } from "@/lib/types";
 
 interface ItemManual {
@@ -35,6 +38,40 @@ interface PaginaArticulosResponse {
   hasMore: boolean;
   nextOffset: number | null;
 }
+
+interface PaginaSimulacionGestionGlobalResponse {
+  ok: boolean;
+  filas: FilaPrecio[];
+  offset: number;
+  maxRecords: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+  error?: string;
+}
+
+const CLASIFICACION_KEYS = ["clasificacion1", "clasificacion2", "clasificacion3", "clasificacion4", "clasificacion5"] as const;
+type ClasificacionKey = (typeof CLASIFICACION_KEYS)[number];
+const CLASIFICACION_LABELS: Record<ClasificacionKey, string> = {
+  clasificacion1: "Clasificación 1",
+  clasificacion2: "Clasificación 2",
+  clasificacion3: "Marca / Clasificación 3",
+  clasificacion4: "Grupo Compra / Clasificación 4",
+  clasificacion5: "BDF / Clasificación 5",
+};
+const ARTICULO_CLASIFICACION_KEYS: Record<ClasificacionKey, keyof ArticuloCatalogo> = {
+  clasificacion1: "categoria",
+  clasificacion2: "subcategoria",
+  clasificacion3: "marca",
+  clasificacion4: "marcaGrupoCompra",
+  clasificacion5: "bdf",
+};
+const ARTICULO_CLASIFICACION_DESCRIPTION_KEYS: Record<ClasificacionKey, keyof ArticuloCatalogo> = {
+  clasificacion1: "categoriaDescripcion",
+  clasificacion2: "subcategoriaDescripcion",
+  clasificacion3: "marcaDescripcion",
+  clasificacion4: "marcaGrupoCompraDescripcion",
+  clasificacion5: "bdfDescripcion",
+};
 
 const ORDEN_PROCESOS: ProcesoKey[] = [
   "FACTOR_PRECIO",
@@ -62,7 +99,7 @@ export default function NuevaSolicitud({
   const [modalidad, setModalidad] = useState<"manual" | "excel">("manual");
   const [nivel, setNivel] = useState("");
   const [codigoArticulo, setCodigoArticulo] = useState("");
-  const [grupoArticulo, setGrupoArticulo] = useState("");
+  const [criteriosArticulo, setCriteriosArticulo] = useState<CriteriosArticulo>({});
   const [factor, setFactor] = useState("");
   const [itemsManual, setItemsManual] = useState<ItemManual[]>([]);
   const [errorItem, setErrorItem] = useState<string | null>(null);
@@ -76,7 +113,6 @@ export default function NuevaSolicitud({
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [nivelesPrecio, setNivelesPrecio] = useState<NivelPrecio[]>([]);
   const [articulosMaestros, setArticulosMaestros] = useState<ArticuloCatalogo[]>([]);
-  const [gruposMaestros, setGruposMaestros] = useState<{ codigo: string; nombre: string; cantidad: number }[]>([]);
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null);
   const [articulosHasMore, setArticulosHasMore] = useState(false);
@@ -84,8 +120,14 @@ export default function NuevaSolicitud({
   const [cargandoArticulos, setCargandoArticulos] = useState(false);
   const [cargandoMasArticulos, setCargandoMasArticulos] = useState(false);
   const [articuloSeleccionado, setArticuloSeleccionado] = useState<ArticuloCatalogo | null>(null);
+  const [simulacionGlobalHasMore, setSimulacionGlobalHasMore] = useState(false);
+  const [simulacionGlobalNextOffset, setSimulacionGlobalNextOffset] = useState<number | null>(null);
+  const [cargandoSimulacionGlobal, setCargandoSimulacionGlobal] = useState(false);
+  const [cargandoMasSimulacionGlobal, setCargandoMasSimulacionGlobal] = useState(false);
   const articulosRequestRef = useRef(0);
   const articulosAbortRef = useRef<AbortController | null>(null);
+  const simulacionGlobalRequestRef = useRef(0);
+  const simulacionGlobalAbortRef = useRef<AbortController | null>(null);
 
   const proceso = PROCESOS[tab];
   const esDescuento = tab === "DESCUENTO_LISTA_PRECIO";
@@ -105,10 +147,49 @@ export default function NuevaSolicitud({
     label: `${articulo.codigo} — ${articulo.descripcion}`,
     searchText: `${articulo.codigo} ${articulo.descripcion}`,
   }));
-  const grupoOpts: ComboOption[] = gruposMaestros.map((grupo) => ({
-    value: grupo.codigo,
-    label: `${grupo.nombre} (${grupo.cantidad} artículos)`,
+  function articulosParaClasificacionHasta(indice: number): ArticuloCatalogo[] {
+    return articulosMaestros.filter((articulo) =>
+      CLASIFICACION_KEYS.slice(0, indice).every((key) => {
+        const valor = criteriosArticulo[key];
+        return !valor || String(articulo[ARTICULO_CLASIFICACION_KEYS[key]] ?? "") === valor;
+      }),
+    );
+  }
+
+  function opcionesClasificacion(key: ClasificacionKey): SelectOption[] {
+    const indice = CLASIFICACION_KEYS.indexOf(key);
+    const valores = new Set(
+      articulosParaClasificacionHasta(indice)
+        .map((articulo) => String(articulo[ARTICULO_CLASIFICACION_KEYS[key]] ?? "").trim())
+        .filter(Boolean),
+    );
+    return Array.from(valores).sort((a, b) => a.localeCompare(b)).map((value) => {
+      const articuloConValor = articulosParaClasificacionHasta(indice).find(
+        (articulo) => String(articulo[ARTICULO_CLASIFICACION_KEYS[key]] ?? "").trim() === value,
+      );
+      const descripcion = articuloConValor
+        ? String(articuloConValor[ARTICULO_CLASIFICACION_DESCRIPTION_KEYS[key]] ?? "").trim()
+        : "";
+      return {
+        value,
+        label: descripcion ? `${value} — ${descripcion}` : value,
+        searchText: `${value} ${descripcion}`,
+      };
+    });
+  }
+
+  const opcionesClasificaciones = CLASIFICACION_KEYS.map((key) => ({
+    key,
+    label: CLASIFICACION_LABELS[key],
+    options: opcionesClasificacion(key),
   }));
+  const articulosCriterio = articulosMaestros.filter((articulo) =>
+    CLASIFICACION_KEYS.every((key) => {
+      const valor = criteriosArticulo[key];
+      return !valor || String(articulo[ARTICULO_CLASIFICACION_KEYS[key]] ?? "") === valor;
+    }),
+  );
+  const codigosArticulosCriterio = articulosCriterio.map((articulo) => articulo.codigo);
 
   const nombreNivel = (codigo: string) => nivelesPrecio.find((nivel) => nivel.codigo === codigo)?.nombre || codigo;
   const conversion = useMemo(() => calcularVariacion("AUMENTO", factor), [factor]);
@@ -126,7 +207,7 @@ export default function NuevaSolicitud({
     setNivel("");
     setCodigoArticulo("");
     setArticuloSeleccionado(null);
-    setGrupoArticulo("");
+    setCriteriosArticulo({});
     setFactor("");
     setItemsManual([]);
     setErrorItem(null);
@@ -187,6 +268,57 @@ export default function NuevaSolicitud({
     }
   }, [compania, esDescuento, nivel, modalidad]);
 
+  const cargarPaginaGestionGlobal = useCallback(async ({ offset, limit }: TableLoadParams) => {
+    if (!esGestionGlobal || !nivel) return;
+    const requestId = ++simulacionGlobalRequestRef.current;
+    simulacionGlobalAbortRef.current?.abort();
+    const controller = new AbortController();
+    simulacionGlobalAbortRef.current = controller;
+    const cargandoMas = offset > 0;
+    if (cargandoMas) setCargandoMasSimulacionGlobal(true);
+    else setCargandoSimulacionGlobal(true);
+
+    try {
+      const params = new URLSearchParams({
+        compania,
+        nivel,
+        factor,
+        tipoVariacion: "AUMENTO",
+        offset: String(offset),
+        maxRecords: String(limit),
+      });
+      const response = await fetch(`/api/simulacion/gestion-global?${params.toString()}`, {
+        method: "GET",
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("No fue posible calcular la página de impacto de Gestión Global.");
+      const page = await response.json() as PaginaSimulacionGestionGlobalResponse;
+      if (requestId !== simulacionGlobalRequestRef.current) return;
+      if (!page.ok || !Array.isArray(page.filas)) throw new Error(page.error ?? "La respuesta de simulación no tiene un formato válido.");
+      const filasPagina = page.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
+      setFilas((prev) => offset === 0 ? filasPagina : [...(prev ?? []), ...filasPagina]);
+      setSimulacionGlobalHasMore(Boolean(page.hasMore));
+      setSimulacionGlobalNextOffset(page.nextOffset);
+      setErrorItem(null);
+      setSimulado(true);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (requestId === simulacionGlobalRequestRef.current) {
+        setErrorItem(error instanceof Error ? error.message : "No fue posible calcular la página de impacto de Gestión Global.");
+        if (!cargandoMas) {
+          setFilas([]);
+          setSimulado(false);
+        }
+      }
+    } finally {
+      if (requestId === simulacionGlobalRequestRef.current) {
+        if (cargandoMas) setCargandoMasSimulacionGlobal(false);
+        else setCargandoSimulacionGlobal(false);
+      }
+    }
+  }, [compania, esGestionGlobal, factor, nivel]);
+
   useEffect(() => {
     let vigente = true;
     const cargarArticulosCompletos = !(esDescuento && modalidad === "manual");
@@ -197,13 +329,11 @@ export default function NuevaSolicitud({
         if (!vigente) return;
         setNivelesPrecio(catalogo.niveles);
         setArticulosMaestros(cargarArticulosCompletos ? catalogo.articulos : []);
-        setGruposMaestros(catalogo.grupos);
       })
       .catch((error) => {
         if (!vigente) return;
         setNivelesPrecio([]);
         setArticulosMaestros([]);
-        setGruposMaestros([]);
         setErrorCatalogo((error as Error).message || "No fue posible consultar los maestros de Softland.");
       })
       .finally(() => {
@@ -237,6 +367,10 @@ export default function NuevaSolicitud({
   }, [cargarArticulosPaginados, esDescuento, modalidad, nivel]);
 
   useEffect(() => {
+    setCriteriosArticulo({});
+  }, [nivel]);
+
+  useEffect(() => {
     if ((esListaBase || esMargen) && !nivel && nivelesPrecio.length > 0) {
       const base = nivelesPrecio.find((item) => item.codigo.toUpperCase() === "MAYOREOD") ?? nivelesPrecio[0];
       setNivel(base.codigo);
@@ -247,7 +381,16 @@ export default function NuevaSolicitud({
   useEffect(() => {
     setSimulado(false);
     setSent(false);
-  }, [nivel, grupoArticulo, factor, itemsManual]);
+    if (esGestionGlobal) {
+      simulacionGlobalAbortRef.current?.abort();
+      simulacionGlobalRequestRef.current += 1;
+      setFilas(null);
+      setSimulacionGlobalHasMore(false);
+      setSimulacionGlobalNextOffset(null);
+      setCargandoSimulacionGlobal(false);
+      setCargandoMasSimulacionGlobal(false);
+    }
+  }, [criteriosArticulo, esGestionGlobal, factor, itemsManual, nivel]);
 
   function agregarItem() {
     if (bloquearCaptura) return;
@@ -281,8 +424,19 @@ export default function NuevaSolicitud({
     );
   }
 
+  function cambiarCriterio(key: ClasificacionKey, value: string) {
+    const indice = CLASIFICACION_KEYS.indexOf(key);
+    setCriteriosArticulo((actual) => {
+      const siguiente: CriteriosArticulo = { ...actual, [key]: value || undefined };
+      CLASIFICACION_KEYS.slice(indice + 1).forEach((dependiente) => {
+        siguiente[dependiente] = undefined;
+      });
+      return siguiente;
+    });
+  }
+
   function camposManualCompletos(): boolean {
-    if (esListaBase) return !!grupoArticulo && conversion.valido && ack;
+    if (esListaBase) return codigosArticulosCriterio.length > 0 && conversion.valido && ack;
     if (esDescuento) return itemsManual.length > 0 && !!nivel && !listaNoExisteEnMaestros;
     return !!nivel && conversion.valido && !listaNoExisteEnMaestros; // Gestión Global
   }
@@ -294,10 +448,14 @@ export default function NuevaSolicitud({
   }
 
   function puedeEnviar(): boolean {
-    return simulado && camposCompletos() && !readOnly;
+    return simulado && camposCompletos() && !readOnly && (!esGestionGlobal || (!simulacionGlobalHasMore && !cargandoSimulacionGlobal && !cargandoMasSimulacionGlobal));
   }
 
   async function handleSimular() {
+    if (esGestionGlobal) {
+      await cargarPaginaGestionGlobal({ offset: 0, limit: 200 });
+      return;
+    }
     if (esMargen || (modalidad === "excel" && permiteExcel)) {
       // Ya hay filas cargadas por el uploader.
       setSimulado(true);
@@ -310,7 +468,9 @@ export default function NuevaSolicitud({
       nivelBase: esListaBase ? nivel : undefined,
       factor,
       tipoVariacion: "AUMENTO" as TipoVariacion,
-      grupoArticulos: grupoArticulo,
+      grupoArticulos: esListaBase ? "Criterios seleccionados" : undefined,
+      criteriosArticulo: esListaBase ? criteriosArticulo : undefined,
+      codigosArticulos: esListaBase ? codigosArticulosCriterio : undefined,
       items: esDescuento ? itemsManual.map((it) => ({ codigo: it.codigo, listaCodigo: it.listaCodigo, tipoVariacion: it.tipoVariacion, variacionPorcentaje: it.variacionPorcentaje })) : undefined,
     };
     const res = await simularManual(input);
@@ -360,7 +520,9 @@ export default function NuevaSolicitud({
       variacionPorcentaje: factor,
       listaBase: esListaBase ? nivel : undefined,
       nivelPrecio: nivel || undefined,
-      grupoArticulos: esListaBase ? grupoArticulo : undefined,
+      grupoArticulos: esListaBase ? "Criterios seleccionados" : undefined,
+      criteriosArticulo: esListaBase ? criteriosArticulo : undefined,
+      codigosArticulos: esListaBase ? codigosArticulosCriterio : undefined,
       articulos: esDescuento ? filas ?? [] : undefined,
     };
     const res = await enviarSolicitud({
@@ -389,7 +551,7 @@ export default function NuevaSolicitud({
       setItemsManual([]);
       setFactor("");
       setNivel("");
-      setGrupoArticulo("");
+      setCriteriosArticulo({});
       setAck(false);
       setSent(false);
       setArchivoNombre(null);
@@ -444,8 +606,17 @@ export default function NuevaSolicitud({
       {esGestionGlobal && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mb-4">
           <div>
-            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Lista de Precio</label>
-            <Combobox id="nivel-gg" value={nivel} onChange={(o) => setNivel(o.value)} options={nivelOpts} disabled={bloquearCaptura} placeholder="Seleccionar lista..." />
+            <Dropdown
+              id="nivel-gg"
+              modelValue={nivel}
+              onChange={(value) => setNivel(value)}
+              options={nivelOpts}
+              label="Lista de Precio"
+              placeholder="Seleccionar lista..."
+              searchable={false}
+              disabled={bloquearCaptura}
+              loading={cargandoCatalogo}
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
@@ -537,20 +708,45 @@ export default function NuevaSolicitud({
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
             <p className="font-semibold">⚠️ Atención: esta actualización aplicará cambios sobre la lista {nombreNivel(nivel)} cuando sea autorizada.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-            <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1.5">Grupo de Artículos</label>
-              <Combobox id="grupo-mayoreod" value={grupoArticulo} onChange={(o) => setGrupoArticulo(o.value)} options={grupoOpts} disabled={bloquearCaptura} placeholder="Seleccionar grupo..." />
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
+            <Dropdown
+              id="nivel-mayoreod"
+              modelValue={nivel}
+              onChange={(value) => setNivel(value)}
+              options={nivelOpts}
+              label="Lista de Precio"
+              placeholder="Seleccionar lista..."
+              searchable={false}
+              disabled={bloquearCaptura}
+              loading={cargandoCatalogo}
+            />
+            {opcionesClasificaciones.map((criterio) => (
+              <Dropdown
+                key={criterio.key}
+                id={`criterio-${criterio.key}`}
+                modelValue={criteriosArticulo[criterio.key] ?? ""}
+                onChange={(value) => cambiarCriterio(criterio.key, value)}
+                options={criterio.options}
+                label={criterio.label}
+                placeholder={`Seleccionar ${criterio.label.toLowerCase()}...`}
+                searchable
+                disabled={bloquearCaptura || !nivel || criterio.options.length === 0}
+                loading={cargandoCatalogo}
+              />
+            ))}
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
               <input type="number" step="0.01" min="0" value={factor} disabled={bloquearCaptura} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
               {factorInvalido && <p className="text-[11px] text-red-600 mt-1">{conversion.causa}</p>}
             </div>
           </div>
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+            <b>{codigosArticulosCriterio.length}</b> artículo(s) coinciden con la lista y los criterios seleccionados.
+            {codigosArticulosCriterio.length === 0 && <p className="mt-1 text-xs text-amber-700">Seleccione criterios con artículos resultantes antes de simular.</p>}
+          </div>
           <label className="flex items-start gap-3 rounded-lg border border-zinc-200 p-3 cursor-pointer select-none max-w-xl">
             <input type="checkbox" checked={ack} disabled={bloquearCaptura} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 h-4 w-4" />
-            <span className="text-sm">Entiendo que esta solicitud aplicará cambios sobre la lista {nombreNivel(nivel)} para el grupo seleccionado cuando un aprobador la autorice.</span>
+            <span className="text-sm">Entiendo que esta solicitud aplicará cambios sobre los <b>{codigosArticulosCriterio.length}</b> artículos resultantes de la lista y criterios seleccionados cuando un aprobador la autorice.</span>
           </label>
         </div>
       )}
@@ -590,7 +786,7 @@ export default function NuevaSolicitud({
 
       {/* Botones */}
       <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
-        <button className="btn btn-outline" disabled={bloquearCaptura || !camposCompletos()} onClick={handleSimular}>
+        <button className="btn btn-outline" disabled={bloquearCaptura || !camposCompletos() || cargandoSimulacionGlobal || cargandoMasSimulacionGlobal} onClick={handleSimular}>
           <Icon name="search" className="w-3.5 h-3.5" /> {(modalidad === "excel" && permiteExcel) || esMargen ? "Precalcular impacto" : "Simular impacto"}
         </button>
         <button className={"btn " + (esListaBase ? "btn-destructive" : "btn-default")} disabled={!puedeEnviar() || sending} onClick={handleEnviar}>
@@ -608,7 +804,17 @@ export default function NuevaSolicitud({
           <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-xs text-green-800 mb-3 flex items-center gap-2">
             <Icon name="check" className="w-3.5 h-3.5" /> Simulación completada. Revise los valores resultantes antes de continuar.
           </div>
-          {esDescuento && modalidad === "manual" ? (
+          {esGestionGlobal ? (
+            <TablaImpactoGestionGlobal
+              filas={filas as FilaPrecio[]}
+              hasMore={simulacionGlobalHasMore}
+              nextOffset={simulacionGlobalNextOffset}
+              loadingMore={cargandoMasSimulacionGlobal}
+              onLoadMore={cargarPaginaGestionGlobal}
+            />
+          ) : esListaBase ? (
+            <TablaImpactoActualizacionMasiva filas={filas as FilaPrecio[]} />
+          ) : esDescuento && modalidad === "manual" ? (
             <TablaImpactoDescuentoManual filas={filas as FilaPrecio[]} />
           ) : (
             <TablaResultado filas={filas} />

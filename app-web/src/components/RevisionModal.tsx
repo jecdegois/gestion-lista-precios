@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
-import { TablaResultado } from "./Tablas";
+import TablaResultadoModal from "./newComponents/TablaResultadoModal";
 import { PROCESOS } from "@/lib/catalog";
 import { textoResultadoAuditoria } from "@/lib/events";
 import type { Identidad, Solicitud } from "@/lib/domain-types";
@@ -125,7 +125,7 @@ export default function RevisionModal({
 
         {/* Diff / tabla */}
         {filas.length > 0 ? (
-          <TablaResultado filas={filas} />
+          <TablaResultadoModal filas={filas} />
         ) : (
           <p className="text-sm text-zinc-500">Esta solicitud no conserva el detalle de las filas.</p>
         )}

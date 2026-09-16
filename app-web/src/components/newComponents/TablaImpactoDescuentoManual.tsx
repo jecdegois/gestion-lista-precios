@@ -4,7 +4,7 @@ import { esHallazgoDeNegocio, ResumenValidaciones } from "../Tablas";
 import { TIPOS_VARIACION } from "@/lib/catalog";
 import { fmtMonto } from "@/lib/format";
 import type { FilaPrecio } from "@/lib/domain-types";
-import ResponsiveDataTable, { type TableColumn } from "./ResponsiveDataTable";
+import ResponsiveDataTable, { type TableColumn, type TableLoadParams } from "./ResponsiveDataTable";
 
 const columns: readonly TableColumn<FilaPrecio>[] = [
   { key: "codigo", header: "Código", value: (fila) => <span className="mono whitespace-nowrap">{fila.codigo}</span> },
@@ -32,7 +32,21 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
   { key: "costoMinimo", header: "Precio Mín.", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.costoMinimo)}</span> },
 ];
 
-export default function TablaImpactoDescuentoManual({ filas }: { filas: FilaPrecio[] }) {
+interface TablaImpactoDescuentoManualProps {
+  filas: FilaPrecio[];
+  hasMore?: boolean;
+  nextOffset?: number | null;
+  loadingMore?: boolean;
+  onLoadMore?: (params: TableLoadParams) => void | Promise<void>;
+}
+
+export default function TablaImpactoDescuentoManual({
+  filas,
+  hasMore = false,
+  nextOffset = null,
+  loadingMore = false,
+  onLoadMore,
+}: TablaImpactoDescuentoManualProps) {
   const hallazgos = filas.filter(esHallazgoDeNegocio).length;
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila)).length;
 
@@ -50,7 +64,12 @@ export default function TablaImpactoDescuentoManual({ filas }: { filas: FilaPrec
         emptyTitle="No hay filas de simulación"
         emptyDescription="Agregue artículos y ejecute la simulación para ver el impacto."
         redirectOnRowClick={false}
-        rowClassName={(fila) => fila.validacion.valido ? "bg-green-50" : ""}
+        limit={200}
+        hasMore={hasMore}
+        nextOffset={nextOffset}
+        loadingMore={loadingMore}
+        onLoadMore={onLoadMore}
+        rowClassName={(fila) => fila.validacion.valido ? "bg-green-50" : "bg-red-50"}
       />
       <ResumenValidaciones filas={filas} />
     </div>

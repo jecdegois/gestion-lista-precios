@@ -78,15 +78,25 @@ export async function listarCatalogo(compania: string, nivelPrecio: string): Pro
               AP.VERSION AS version,
               CAST(AP.MARGEN_UTILIDAD_MIN AS FLOAT) AS margenUtilidadMinPorcentaje,
               A.CLASIFICACION_1 AS clasificacion1,
+              C1.DESCRIPCION AS clasificacion1Descripcion,
               A.CLASIFICACION_2 AS clasificacion2,
+              C2.DESCRIPCION AS clasificacion2Descripcion,
               A.CLASIFICACION_3 AS clasificacion3,
+              C3.DESCRIPCION AS clasificacion3Descripcion,
               A.CLASIFICACION_4 AS clasificacion4,
-              A.CLASIFICACION_5 AS clasificacion5
+              C4.DESCRIPCION AS clasificacion4Descripcion,
+              A.CLASIFICACION_5 AS clasificacion5,
+              C5.DESCRIPCION AS clasificacion5Descripcion
          FROM ${ap} AP
          INNER JOIN VersionActiva VA
                  ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
                 AND VA.VERSION = AP.VERSION
          INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C1 ON A.CLASIFICACION_1 = C1.CLASIFICACION AND C1.AGRUPACION = 1
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C2 ON A.CLASIFICACION_2 = C2.CLASIFICACION AND C2.AGRUPACION = 2
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C3 ON A.CLASIFICACION_3 = C3.CLASIFICACION AND C3.AGRUPACION = 3
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C4 ON A.CLASIFICACION_4 = C4.CLASIFICACION AND C4.AGRUPACION = 4
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C5 ON A.CLASIFICACION_5 = C5.CLASIFICACION AND C5.AGRUPACION = 5
         WHERE AP.NIVEL_PRECIO = @nivelPrecio
         ORDER BY AP.ARTICULO`,
     );
@@ -99,10 +109,15 @@ export async function listarCatalogo(compania: string, nivelPrecio: string): Pro
     version: r.version == null ? undefined : Number(r.version),
     margenUtilidadMinPorcentaje: r.margenUtilidadMinPorcentaje == null ? null : Number(r.margenUtilidadMinPorcentaje),
     clasificacion1: r.clasificacion1 == null ? undefined : String(r.clasificacion1),
+    clasificacion1Descripcion: r.clasificacion1Descripcion == null ? undefined : String(r.clasificacion1Descripcion),
     clasificacion2: r.clasificacion2 == null ? undefined : String(r.clasificacion2),
+    clasificacion2Descripcion: r.clasificacion2Descripcion == null ? undefined : String(r.clasificacion2Descripcion),
     clasificacion3: r.clasificacion3 == null ? undefined : String(r.clasificacion3),
+    clasificacion3Descripcion: r.clasificacion3Descripcion == null ? undefined : String(r.clasificacion3Descripcion),
     clasificacion4: r.clasificacion4 == null ? undefined : String(r.clasificacion4),
+    clasificacion4Descripcion: r.clasificacion4Descripcion == null ? undefined : String(r.clasificacion4Descripcion),
     clasificacion5: r.clasificacion5 == null ? undefined : String(r.clasificacion5),
+    clasificacion5Descripcion: r.clasificacion5Descripcion == null ? undefined : String(r.clasificacion5Descripcion),
   }));
 }
 
@@ -124,7 +139,7 @@ export async function listarCatalogoPaginado(
   const nivel = nivelPrecio.trim();
   if (!nivel) throw new Error("Debe indicar una lista de precio para consultar el catálogo.");
   const pagina = Number.isInteger(offset) && offset >= 0 ? offset : 0;
-  const limite = Number.isInteger(maxRecords) ? Math.min(Math.max(maxRecords, 1), 100) : 50;
+  const limite = Number.isInteger(maxRecords) ? Math.min(Math.max(maxRecords, 1), 200) : 50;
   const termino = search.trim();
 
   if (esModoDemo()) {
@@ -177,15 +192,25 @@ export async function listarCatalogoPaginado(
               AP.VERSION AS version,
               CAST(AP.MARGEN_UTILIDAD_MIN AS FLOAT) AS margenUtilidadMinPorcentaje,
               A.CLASIFICACION_1 AS clasificacion1,
+              C1.DESCRIPCION AS clasificacion1Descripcion,
               A.CLASIFICACION_2 AS clasificacion2,
+              C2.DESCRIPCION AS clasificacion2Descripcion,
               A.CLASIFICACION_3 AS clasificacion3,
+              C3.DESCRIPCION AS clasificacion3Descripcion,
               A.CLASIFICACION_4 AS clasificacion4,
-              A.CLASIFICACION_5 AS clasificacion5
+              C4.DESCRIPCION AS clasificacion4Descripcion,
+              A.CLASIFICACION_5 AS clasificacion5,
+              C5.DESCRIPCION AS clasificacion5Descripcion
          FROM ${ap} AP
          INNER JOIN VersionActiva VA
                  ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
                 AND VA.VERSION = AP.VERSION
          INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C1 ON A.CLASIFICACION_1 = C1.CLASIFICACION AND C1.AGRUPACION = 1
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C2 ON A.CLASIFICACION_2 = C2.CLASIFICACION AND C2.AGRUPACION = 2
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C3 ON A.CLASIFICACION_3 = C3.CLASIFICACION AND C3.AGRUPACION = 3
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C4 ON A.CLASIFICACION_4 = C4.CLASIFICACION AND C4.AGRUPACION = 4
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C5 ON A.CLASIFICACION_5 = C5.CLASIFICACION AND C5.AGRUPACION = 5
         WHERE AP.NIVEL_PRECIO = @nivelPrecio
           AND (@search = '' OR AP.ARTICULO LIKE @searchLike OR A.DESCRIPCION LIKE @searchLike)
         ORDER BY AP.ARTICULO
@@ -201,10 +226,15 @@ export async function listarCatalogoPaginado(
     version: r.version == null ? undefined : Number(r.version),
     margenUtilidadMinPorcentaje: r.margenUtilidadMinPorcentaje == null ? null : Number(r.margenUtilidadMinPorcentaje),
     clasificacion1: r.clasificacion1 == null ? undefined : String(r.clasificacion1),
+    clasificacion1Descripcion: r.clasificacion1Descripcion == null ? undefined : String(r.clasificacion1Descripcion),
     clasificacion2: r.clasificacion2 == null ? undefined : String(r.clasificacion2),
+    clasificacion2Descripcion: r.clasificacion2Descripcion == null ? undefined : String(r.clasificacion2Descripcion),
     clasificacion3: r.clasificacion3 == null ? undefined : String(r.clasificacion3),
+    clasificacion3Descripcion: r.clasificacion3Descripcion == null ? undefined : String(r.clasificacion3Descripcion),
     clasificacion4: r.clasificacion4 == null ? undefined : String(r.clasificacion4),
+    clasificacion4Descripcion: r.clasificacion4Descripcion == null ? undefined : String(r.clasificacion4Descripcion),
     clasificacion5: r.clasificacion5 == null ? undefined : String(r.clasificacion5),
+    clasificacion5Descripcion: r.clasificacion5Descripcion == null ? undefined : String(r.clasificacion5Descripcion),
   }));
   return {
     items,
@@ -252,6 +282,11 @@ export async function buscarArticulo(compania: string, codigo: string, nivelPrec
                  ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
                 AND VA.VERSION = AP.VERSION
          INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C1 ON A.CLASIFICACION_1 = C1.CLASIFICACION AND C1.AGRUPACION = 1
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C2 ON A.CLASIFICACION_2 = C2.CLASIFICACION AND C2.AGRUPACION = 2
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C3 ON A.CLASIFICACION_3 = C3.CLASIFICACION AND C3.AGRUPACION = 3
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C4 ON A.CLASIFICACION_4 = C4.CLASIFICACION AND C4.AGRUPACION = 4
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C5 ON A.CLASIFICACION_5 = C5.CLASIFICACION AND C5.AGRUPACION = 5
         WHERE AP.ARTICULO = @articulo
           AND AP.NIVEL_PRECIO = @nivelPrecio`,
     );
