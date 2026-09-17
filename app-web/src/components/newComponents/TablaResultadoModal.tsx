@@ -32,13 +32,13 @@ const columns: readonly TableColumn<FilaResultado>[] = [
     key: "factor",
     header: "Factor",
     align: "right",
-    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.factorReduccion) : fila.valorPropuestoRaw ?? "—"}</span>,
+    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.factorPropuesto) : fila.valorPropuestoRaw ?? "—"}</span>,
   },
   {
     key: "multiplicador",
     header: "Multiplicador",
     align: "right",
-    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.multiplicadorMargen) : "—"}</span>,
+    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.multiplicador) : "—"}</span>,
   },
   {
     key: "precioActual",
@@ -64,7 +64,7 @@ const columns: readonly TableColumn<FilaResultado>[] = [
     key: "precioMinimo",
     header: "Precio Mínimo",
     align: "right",
-    value: (fila) => <span className="mono">{fmtMonto(fila.validacion.costoMinimo)}</span>,
+    value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioMin)}</span>,
   },
   {
     key: "margen",

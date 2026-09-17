@@ -56,6 +56,7 @@ export default function RevisionModal({
   const [motivo, setMotivo] = useState("");
 
   const filas = solicitud.filas;
+  console.log(filas);
   const puedeDecidir =
     !readOnly && currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
   const puedeAprobar = puedeDecidir && filas.length > 0;

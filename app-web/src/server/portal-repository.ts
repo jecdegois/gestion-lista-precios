@@ -42,11 +42,11 @@ export async function listarSolicitudes(compania?: string): Promise<Solicitud[]>
     ? await pool
       .request()
       .input("comp", mssql.VarChar(20), companiaNormalizada)
-      .query(`SELECT D.* FROM ${spd} D INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp`)
+      .query(`SELECT D.*,S.LISTA_PRECIO FROM ${spd} D INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp`)
     : await pool.request().query(`SELECT * FROM ${spd}`);
 
   return cab.recordset.map((r: Record<string, unknown>) =>
-    mapSolicitud(r, det.recordset.filter((d: Record<string, unknown>) => d.ID_SOLICITUD === r.ID_SOLICITUD)),
+    mapSolicitud(r, det.recordset.filter((d: Record<string, unknown>) => d.ID_SOLICITUD === r.ID_SOLICITUD)),    
   );
 }
 
@@ -66,7 +66,6 @@ export async function obtenerSolicitud(codigo: string): Promise<Solicitud | unde
     .query(`SELECT * FROM ${spd} D INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp AND ID_SOLICITUD = @idSolicitud ORDER BY ID_DETALLE
       
       `);
-      //SELECT * FROM ${spd} WHERE ID_SOLICITUD = @idSolicitud ORDER BY ID_DETALLE
   return mapSolicitud(r, det.recordset);
 }
 
@@ -88,7 +87,7 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
   const sp = objetoPortal("SOLICITUD");
   const spd = objetoPortal("SOLICITUD_DETALLE");
   const mssql = await import("mssql");
-  const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
+  const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();  
   const idUsuarioSolicitante = enteroSeguro(
     await buscarIdUsuario(pool, s.solicitanteEmail),
     "ID_USUARIO_SOLICITANTE",
@@ -97,6 +96,7 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
     .request()
     .input("cod", mssql.VarChar(20), s.id)
     .input("comp", mssql.VarChar(20), s.compania)
+    .input("factor", mssql.VarChar(20), s.parametros.factor)
     .input("proceso", mssql.VarChar(30), s.proceso)
     .input("mod", mssql.VarChar(10), s.modalidad)
     .input("lista", mssql.VarChar(30), lista || null)
@@ -107,7 +107,7 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
     .input("archNom", mssql.VarChar(260), s.archivoNombre)
     .input("archS3", mssql.VarChar(400), s.archivoS3Key);
   const ins = await req.query(
-    `INSERT INTO ${sp} (CODIGO_SOLICITUD, COMPANIA, PROCESO, MODALIDAD, LISTA, ID_USUARIO_SOLICITANTE,
+    `INSERT INTO ${sp} (CODIGO_SOLICITUD, COMPANIA, PROCESO, MODALIDAD, LISTA_PRECIO, ID_USUARIO_SOLICITANTE,
                         SOLICITANTE_EMAIL, SOLICITANTE_NOMBRE, ESTADO, PARAMETROS_JSON,
                         ARCHIVO_NOMBRE, ARCHIVO_S3_KEY)
      OUTPUT INSERTED.ID_SOLICITUD
@@ -240,49 +240,28 @@ async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, 
 
   await pool
     .request()
+    .input("sku", mssql.VarChar(20), f.codigo || "SIN_CODIGO")
+    .input("descripcion", mssql.VarChar(200), f.descripcion || "")
+    .input("precioActual", mssql.Decimal(28, 8), numero(v.precioActual) ?? 0)
+    .input("costo", mssql.Decimal(28, 8), numero(v.costo) ?? 0)
+    .input("factorAplicado", mssql.Decimal(9, 6), 0)
+    .input("precioSimulado", mssql.Decimal(28, 8), numero(v.precioRedondeado ?? v.precioPropuesto) ?? 0)
+    .input("porcentajeMargen", mssql.Decimal(9, 6), vMargen?.margenPromedio ?? v.margenMinimo ?? 0)
+    .input("estadoFila", mssql.VarChar(20), v.valido ? "VALIDO" : "INVALIDO")
+    .input("mensajeError", mssql.VarChar(400), !v.valido ? v.causa ?? "Error no identificado" : v.estadoRedondeo ?? "")
     .input("idSolicitud", mssql.Int, idSolicitud)
-    .input("fila", mssql.Int, f.fila)
-    .input("articulo", mssql.VarChar(20), f.codigo)
-    .input("descripcion", mssql.VarChar(200), f.descripcion || null)
-    .input("listaCodigo", mssql.VarChar(30), filaPrecio?.listaCodigo ?? null)
-    .input("grupoArticulo", mssql.VarChar(60), "grupoArticulo" in f ? f.grupoArticulo ?? null : null)
-    .input("tipoVariacion", mssql.VarChar(15), filaPrecio?.tipoVariacion ?? null)
-    .input("variacionPorcentaje", mssql.Decimal(9, 4), filaPrecio?.variacionPorcentaje ?? null)
-    .input("porcentajeReduccion", mssql.Decimal(9, 4), vMargen?.porcentajeReduccion ?? null)
-    .input("factorReduccionNorm", mssql.Decimal(9, 6), vMargen?.factorReduccion ?? null)
-    .input("factorMultiplicador", mssql.Decimal(9, 6), Number.isFinite(factorPrecio ?? Number.NaN) ? factorPrecio : null)
-    .input("multiplicadorMargen", mssql.Decimal(9, 6), vMargen?.multiplicadorMargen ?? null)
-    .input("precioActual", mssql.Decimal(28, 8), numero(v.precioActual))
-    .input("precioCalculado", mssql.Decimal(28, 8), numero(v.precioPropuesto))
-    .input("precioTecnico", mssql.Decimal(28, 8), numero(v.precioPropuesto))
-    .input("precioRedondeado", mssql.Decimal(28, 8), numero(v.precioRedondeado))
-    .input("bandaNumero", mssql.TinyInt, banda?.numero ?? null)
-    .input("bandaRedondeo", mssql.VarChar(60), banda?.intervalo ?? null)
-    .input("estadoRedondeo", mssql.VarChar(20), v.estadoRedondeo ?? null)
-    .input("margenPromedio", mssql.Decimal(9, 6), vMargen?.margenPromedio ?? null)
-    .input("margenSobrePrecioRedondeado", mssql.Decimal(9, 6), vMargen?.margenSobrePrecioRedondeado ?? null)
-    .input("margenMinimo", mssql.Decimal(9, 6), v.margenMinimo ?? null)
-    .input("costoMinimo", mssql.Decimal(28, 8), v.costoMinimo ?? null)
-    .input("valido", mssql.Char(1), v.valido ? "S" : "N")
-    .input("codigoRechazo", mssql.VarChar(40), vMargen?.codigoRechazo ?? null)
-    .input("causa", mssql.VarChar(400), v.causa ?? null)
+    .input("factorSolicitado", mssql.Decimal(9, 6), "variacionPorcentaje" in f ? Number(f.variacionPorcentaje ?? 1) : 1)
+    .input("listaPrecio", mssql.VarChar(400), f.lista ?? "")
+    .input("causa", mssql.VarChar(400), v.causa ?? "")
     .query(
       `INSERT INTO ${spd} (
-         ID_SOLICITUD, FILA, ARTICULO, DESCRIPCION, LISTA_CODIGO, GRUPO_ARTICULO,
-         TIPO_VARIACION, VARIACION_PORCENTAJE, PORCENTAJE_REDUCCION,
-         FACTOR_REDUCCION_NORM, FACTOR_MULTIPLICADOR, MULTIPLICADOR_MARGEN,
-         PRECIO_ACTUAL, PRECIO_CALCULADO, PRECIO_TECNICO, PRECIO_REDONDEADO,
-         BANDA_NUMERO, BANDA_REDONDEO, ESTADO_REDONDEO, MARGEN_PROMEDIO,
-         MARGEN_SOBRE_PRECIO_REDONDEADO, MARGEN_MINIMO, COSTO_MINIMO,
-         VALIDO, CODIGO_RECHAZO, CAUSA
+         SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO, FACTOR_APLICADO,
+         PRECIO_SIMULADO, PORCENTAJE_MARGEN, ESTADO_FILA, MENSAJE_ERROR,
+         ID_SOLICITUD, FACTOR_SOLICITADO, LISTA_PRECIO, CAUSA
        ) VALUES (
-         @idSolicitud,@fila,@articulo,@descripcion,@listaCodigo,@grupoArticulo,
-         @tipoVariacion,@variacionPorcentaje,@porcentajeReduccion,
-         @factorReduccionNorm,@factorMultiplicador,@multiplicadorMargen,
-         @precioActual,@precioCalculado,@precioTecnico,@precioRedondeado,
-         @bandaNumero,@bandaRedondeo,@estadoRedondeo,@margenPromedio,
-         @margenSobrePrecioRedondeado,@margenMinimo,@costoMinimo,
-         @valido,@codigoRechazo,@causa
+         @sku, @descripcion, @precioActual, @costo, @factorAplicado,
+         @precioSimulado, @porcentajeMargen, @estadoFila, @mensajeError,
+         @idSolicitud, @factorSolicitado, @listaPrecio, @causa
        );`,
     );
 }
@@ -317,6 +296,7 @@ function mapSolicitud(r: Record<string, unknown>, detalle: Record<string, unknow
     proceso: r.PROCESO as Solicitud["proceso"],
     modalidad: r.MODALIDAD as Solicitud["modalidad"],
     compania: String(r.COMPANIA),
+    lista: String(r.LISTA_PRECIO),
     solicitanteNombre: String(r.SOLICITANTE_NOMBRE),
     solicitanteEmail: String(r.SOLICITANTE_EMAIL),
     idpOperador: null,
@@ -343,69 +323,66 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
     return null;
   };
   const texto = (valor: unknown): string | undefined => valor == null ? undefined : String(valor);
-  const valido = String(d.VALIDO ?? "S").toUpperCase() === "S";
-  const precioActual = numero(d.PRECIO_ACTUAL);
-  const precioCalculado = numero(d.PRECIO_CALCULADO);
-  const precioRedondeado = numero(d.PRECIO_REDONDEADO);
-  const bandaNumero = numero(d.BANDA_NUMERO);
-  const bandaTexto = texto(d.BANDA_REDONDEO);
-  const bandaRedondeo = bandaNumero == null && !bandaTexto
-    ? null
-    : { numero: bandaNumero ?? 0, intervalo: bandaTexto ?? "" };
-  const estadoRedondeo: EstadoRedondeo | null = d.ESTADO_REDONDEO === "CALCULADO" || d.ESTADO_REDONDEO === "FUERA_DE_RANGO" || d.ESTADO_REDONDEO === "ALERTA_MARGEN"
-    ? d.ESTADO_REDONDEO
-    : precioRedondeado == null ? null : "CALCULADO";
-  const esMargen = proceso === "MARGEN_UTILIDAD_MASIVO"
-    || d.PORCENTAJE_REDUCCION != null
-    || d.FACTOR_REDUCCION_NORM != null
-    || d.MULTIPLICADOR_MARGEN != null;
+  const valido = String(d.ESTADO_FILA ?? "INVALIDO").toUpperCase() === "VALIDO";
+  const precioActual = numero(d.PRECIO_ACTUAL);  
+  const precioPropuesto = numero(d.PRECIO_SIMULADO);
+  const factorPropuesto = numero(d.FACTOR_SOLICITADO);
+  const precioRedondeado = numero(d.PRECIO_SIMULADO);
+  const esMargen = proceso === "MARGEN_UTILIDAD_MASIVO";
   const validacionBase: ValidacionPrecio = {
     valido,
     precioActual,
-    precioPropuesto: precioCalculado,
+    precioPropuesto,
+    factorPropuesto,
     precioRedondeado,
-    estadoRedondeo,
-    bandaRedondeo,
-    margenMinimo: numero(d.MARGEN_MINIMO),
-    costo: null,
-    costoMinimo: numero(d.COSTO_MINIMO),
+    estadoRedondeo: null,
+    factorReduccion: null,
+    multiplicador: null,
+    bandaRedondeo: null,
+    margenMinimo: null,
+    costo: numero(d.COSTO),
+    costoMinimo: numero(d.COSTO),
+    precioMin: numero(d.COSTO),
     causa: texto(d.CAUSA) ?? null,
   };
 
   if (esMargen) {
     return {
-      fila: numero(d.FILA) ?? numero(d.ID_DETALLE) ?? 0,
-      codigo: String(d.ARTICULO ?? d.SKU ?? ""),
+      fila: numero(d.ID_DETALLE) ?? 0,
+      codigo: String(d.SKU ?? ""),
       descripcion: String(d.DESCRIPCION ?? ""),
-      porcentajeReduccion: numero(d.PORCENTAJE_REDUCCION),
-      factorReduccion: numero(d.FACTOR_REDUCCION_NORM),
-      multiplicadorMargen: numero(d.MULTIPLICADOR_MARGEN),
+      porcentajeReduccion: null,
+      factorReduccion: null,
+      multiplicadorMargen: null,
       validacion: {
         ...validacionBase,
         costoMinimoBase: null,
-        costoMinimo: numero(d.COSTO_MINIMO),
-        margenPromedio: numero(d.MARGEN_PROMEDIO),
-        margenSobrePrecioRedondeado: numero(d.MARGEN_SOBRE_PRECIO_REDONDEADO),
+        costoMinimo: numero(d.COSTO),
+        margenPromedio: numero(d.PORCENTAJE_MARGEN),
+        margenSobrePrecioRedondeado: null,
         margenMinimoBase: null,
-        porcentajeReduccion: numero(d.PORCENTAJE_REDUCCION),
-        factorReduccion: numero(d.FACTOR_REDUCCION_NORM),
-        multiplicadorMargen: numero(d.MULTIPLICADOR_MARGEN),
-        codigoRechazo: texto(d.CODIGO_RECHAZO) ?? null,
+        porcentajeReduccion: null,
+        factorReduccion: null,
+        multiplicadorMargen: null,
+        codigoRechazo: null,
         causa: texto(d.CAUSA) ?? null,
       },
     };
   }
 
   return {
-    fila: numero(d.FILA) ?? numero(d.ID_DETALLE) ?? 0,
-    codigo: String(d.ARTICULO ?? d.SKU ?? ""),
+    fila: numero(d.ID_DETALLE) ?? 0,
+    codigo: String(d.SKU ?? ""),
     descripcion: String(d.DESCRIPCION ?? ""),
-    listaCodigo: texto(d.LISTA_CODIGO),
-    grupoArticulo: texto(d.GRUPO_ARTICULO),
-    tipoVariacion: d.TIPO_VARIACION === "DISMINUCION" ? "DISMINUCION" : d.TIPO_VARIACION === "AUMENTO" ? "AUMENTO" : undefined,
-    variacionPorcentaje: numero(d.VARIACION_PORCENTAJE) ?? undefined,
-    valorPropuestoRaw: texto(d.FACTOR_MULTIPLICADOR) ?? texto(d.VARIACION_PORCENTAJE),
-    lista: texto(d.LISTA_CODIGO),
+    listaCodigo: texto(d.LISTA_PRECIO),
+    grupoArticulo: null,
+    tipoVariacion: undefined,
+    variacionPorcentaje: numero(d.FACTOR_APLICADO) ?? undefined,
+    valorPropuestoRaw: texto(d.FACTOR_APLICADO),
+    lista: texto(d.LISTA_PRECIO),
+    precioCalculado: numero(d.PRECIO_SIMULADO) ?? 0,
     validacion: validacionBase,
+    precioMin : numero(d.COSTO) ?? 0,
+    factorPropuesto: numero(d.FACTOR_SOLICITADO) ?? 0
   };
 }

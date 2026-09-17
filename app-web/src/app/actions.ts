@@ -530,6 +530,18 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
     return { ok: false, error: "La solicitud contiene un artículo que no existe en la lista de precio seleccionada en Softland." };
   }
 
+  // Enriquecer filas con la lista/nivel correspondiente
+  const filasConLista: FilaResultado[] = input.filas.map((fila) => {
+    const listaFila = "listaCodigo" in fila && fila.listaCodigo
+      ? resolverNivelPrecio(niveles, fila.listaCodigo)
+      : listaPredeterminada;
+    
+    return {
+      ...fila,
+      lista: listaFila,
+    };
+  });
+
   const codigo = await siguienteCodigoSolicitud();
   const solicitud: Solicitud = {
     id: codigo,
@@ -540,13 +552,14 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
     solicitanteEmail: identidadPortal.email,
     idpOperador,
     parametros: input.parametros,
-    filas: input.filas,
+    filas: filasConLista,
     archivoNombre: input.archivoNombre ?? null,
     archivoS3Key: input.archivoS3Key ?? null,
     fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
     estado: "PENDIENTE",
     motivoRechazo: null,
     idProcesoSP: null,
+    lista: listaPredeterminada || ""
   };
   try {
     await agregarSolicitud(solicitud);
