@@ -25,17 +25,18 @@ function toArticuloCatalogo(articulo: Articulo): ArticuloCatalogo {
     margenUtilidadMin: articulo.margenUtilidadMinPorcentaje == null
       ? undefined
       : articulo.margenUtilidadMinPorcentaje / 100,
-    categoria: articulo.clasificacion1 ?? "",
-    categoriaDescripcion: articulo.clasificacion1Descripcion ?? "",
+    categoria: "",
+    categoriaDescripcion: "",
     subcategoria: articulo.clasificacion2 ?? "",
     subcategoriaDescripcion: articulo.clasificacion2Descripcion ?? "",
-    grupo: clasificaciones.length > 0 ? clasificaciones.join(" › ") : "Sin clasificación",
+    grupo: articulo.clasificacion1 ?? "",
+    grupoDescripcion: articulo.clasificacion1Descripcion ?? "",
     marca: articulo.clasificacion3 ?? "",
     marcaDescripcion: articulo.clasificacion3Descripcion ?? "",
-    marcaGrupoCompra: articulo.clasificacion4 ?? "",
-    marcaGrupoCompraDescripcion: articulo.clasificacion4Descripcion ?? "",
-    bdf: articulo.clasificacion5 ?? "",
-    bdfDescripcion: articulo.clasificacion5Descripcion ?? "",
+    marcaGrupoCompra: articulo.clasificacion5 ?? "",
+    marcaGrupoCompraDescripcion: articulo.clasificacion5Descripcion ?? "",
+    bdf: articulo.clasificacion4 ?? "",
+    bdfDescripcion: articulo.clasificacion4Descripcion ?? "",
   };
 }
 

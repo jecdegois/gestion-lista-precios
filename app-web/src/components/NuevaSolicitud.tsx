@@ -53,25 +53,25 @@ interface PaginaSimulacionGestionGlobalResponse {
 const CLASIFICACION_KEYS = ["clasificacion1", "clasificacion2", "clasificacion3", "clasificacion4", "clasificacion5"] as const;
 type ClasificacionKey = (typeof CLASIFICACION_KEYS)[number];
 const CLASIFICACION_LABELS: Record<ClasificacionKey, string> = {
-  clasificacion1: "Clasificación 1",
-  clasificacion2: "Clasificación 2",
-  clasificacion3: "Marca / Clasificación 3",
-  clasificacion4: "Grupo Compra / Clasificación 4",
-  clasificacion5: "BDF / Clasificación 5",
+  clasificacion1: "Grupo",
+  clasificacion2: "Categoria",
+  clasificacion3: "Marca",
+  clasificacion4: "BDF",
+  clasificacion5: "Grupo Compra",
 };
 const ARTICULO_CLASIFICACION_KEYS: Record<ClasificacionKey, keyof ArticuloCatalogo> = {
-  clasificacion1: "categoria",
+  clasificacion1: "grupo",
   clasificacion2: "subcategoria",
   clasificacion3: "marca",
-  clasificacion4: "marcaGrupoCompra",
-  clasificacion5: "bdf",
+  clasificacion4: "bdf",
+  clasificacion5: "marcaGrupoCompra",
 };
 const ARTICULO_CLASIFICACION_DESCRIPTION_KEYS: Record<ClasificacionKey, keyof ArticuloCatalogo> = {
-  clasificacion1: "categoriaDescripcion",
+  clasificacion1: "grupoDescripcion",
   clasificacion2: "subcategoriaDescripcion",
   clasificacion3: "marcaDescripcion",
-  clasificacion4: "marcaGrupoCompraDescripcion",
-  clasificacion5: "bdfDescripcion",
+  clasificacion4: "bdfDescripcion",
+  clasificacion5: "marcaGrupoCompraDescripcion",
 };
 
 const ORDEN_PROCESOS: ProcesoKey[] = [
