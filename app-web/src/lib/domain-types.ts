@@ -42,6 +42,7 @@ export interface ArticuloCatalogo {
   subcategoria: string;
   subcategoriaDescripcion?: string;
   grupo: string;
+  grupoDescripcion?: string;
   marca: string;
   marcaDescripcion?: string;
   marcaGrupoCompra: string;
