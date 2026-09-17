@@ -55,15 +55,19 @@ export interface ValidacionPrecio {
   valido: boolean;
   precioActual: number | null;
   precioPropuesto: number | null;
+  factorPropuesto: number | null;
+  multiplicador: number | null;
+  factorReduccion: number | null;
   precioRedondeado: number | null;
   estadoRedondeo: EstadoRedondeo | null;
   bandaRedondeo: { numero: number; intervalo: string } | null;
   /** Factor decimal del margen mínimo de ARTICULO_PRECIO (ej. 0.20 = 20%). */
   margenMinimo: number | null;
+  costoMinimo: number | null;  
   /** Costo de reposición usado para validar y persistir el detalle. */
   costo: number | null;
   /** Precio mínimo equivalente: costo / (1 - margen mínimo). */
-  costoMinimo: number | null;
+  precioMin: number | null;
   causa: string | null;
 }
 
@@ -71,7 +75,9 @@ export interface ValidacionPrecio {
 export interface ValidacionMargen {
   valido: boolean;
   precioActual: number | null;
+  multiplicador: number | null;
   precioPropuesto: number | null;
+  factorPropuesto: number | null;
   precioRedondeado: number | null;
   estadoRedondeo: EstadoRedondeo | null;
   bandaRedondeo: { numero: number; intervalo: string } | null;
@@ -81,6 +87,7 @@ export interface ValidacionMargen {
   costoMinimoBase: number | null;
   /** Precio mínimo equivalente después de aplicar la reducción simulada. */
   costoMinimo: number | null;
+  precioMin: number | null;
   margenPromedio: number | null;
   margenSobrePrecioRedondeado: number | null;
   /** Margen base leído de ARTICULO_PRECIO o fallback global si está nulo. */
@@ -103,8 +110,11 @@ export interface FilaPrecio {
   tipoVariacion?: TipoVariacion;
   variacionPorcentaje?: number | string;
   valorPropuestoRaw?: string;
+  precioCalculado?: number;
   grupoArticulo?: string;
   validacion: ValidacionPrecio;
+  precioMin: number;
+  factorPropuesto: number;
 }
 
 export interface FilaMargen {
@@ -115,6 +125,7 @@ export interface FilaMargen {
   factorReduccion: number | null;
   multiplicadorMargen: number | null;
   validacion: ValidacionMargen;
+  lista?: string;
 }
 
 export type FilaResultado = FilaPrecio | FilaMargen;
@@ -164,6 +175,7 @@ export interface Solicitud {
   proceso: ProcesoKey;
   modalidad: "manual" | "excel";
   compania: string;
+  lista:string;
   solicitanteNombre: string;
   solicitanteEmail: string;
   /** Identificador IdP obligatorio del usuario que crea la solicitud Portal. */
