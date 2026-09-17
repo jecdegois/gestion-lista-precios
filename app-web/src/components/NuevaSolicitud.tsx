@@ -10,6 +10,7 @@ import { TablaResultado } from "./Tablas";
 import TablaImpactoDescuentoManual from "./newComponents/TablaImpactoDescuentoManual";
 import TablaImpactoActualizacionMasiva from "./newComponents/TablaImpactoActualizacionMasiva";
 import TablaImpactoGestionGlobal from "./newComponents/TablaImpactoGestionGlobal";
+import TablaImpactoMargen from "./newComponents/TablaImpactoMargen";
 import TablaArticulosCapturaManual from "./newComponents/TablaArticulosCapturaManual";
 import { type TableLoadParams } from "./newComponents/ResponsiveDataTable";
 import { fmtMonto } from "@/lib/format";
@@ -496,7 +497,7 @@ export default function NuevaSolicitud({
         return { ...f, validacion: { ...f.validacion, valido: false, causa: "La lista no existe en los maestros de Softland." } };
       }
       return f;
-    });
+    }) as FilaResultado[];
     setFilas(ajustadas);
     setArchivoNombre(nombre);
     setArchivoS3Key(s3Key);
@@ -816,6 +817,8 @@ export default function NuevaSolicitud({
             <TablaImpactoActualizacionMasiva filas={filas as FilaPrecio[]} />
           ) : esDescuento ? (
             <TablaImpactoDescuentoManual filas={filas as FilaPrecio[]} />
+          ) : esMargen ? (
+            <TablaImpactoMargen filas={filas as any[]} />
           ) : (
             <TablaResultado filas={filas} />
           )}
