@@ -814,7 +814,7 @@ export default function NuevaSolicitud({
             />
           ) : esListaBase ? (
             <TablaImpactoActualizacionMasiva filas={filas as FilaPrecio[]} />
-          ) : esDescuento && modalidad === "manual" ? (
+          ) : esDescuento ? (
             <TablaImpactoDescuentoManual filas={filas as FilaPrecio[]} />
           ) : (
             <TablaResultado filas={filas} />
