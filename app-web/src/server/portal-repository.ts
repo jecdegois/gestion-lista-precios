@@ -32,18 +32,23 @@ export async function listarSolicitudes(compania?: string): Promise<Solicitud[]>
   const sp = objetoPortal("SOLICITUD");
   const spd = objetoPortal("SOLICITUD_DETALLE");
   const mssql = await import("mssql");
+  
+  // Obtener cabeceras de solicitudes
   const cab = companiaNormalizada
     ? await pool
       .request()
       .input("comp", mssql.VarChar(20), companiaNormalizada)
       .query(`SELECT * FROM ${sp} WHERE COMPANIA = @comp ORDER BY FECHA_ENVIO DESC`)
     : await pool.request().query(`SELECT * FROM ${sp} ORDER BY FECHA_ENVIO DESC`);
-  const det = companiaNormalizada
-    ? await pool
-      .request()
-      .input("comp", mssql.VarChar(20), companiaNormalizada)
-      .query(`SELECT D.*,S.LISTA_PRECIO FROM ${spd} D INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp`)
-    : await pool.request().query(`SELECT * FROM ${spd}`);
+  
+  // Obtener detalles - join siempre necesario para mapear filas a solicitudes
+  const detRequest = pool.request();
+  const detQuery = companiaNormalizada
+    ? (detRequest.input("comp", mssql.VarChar(20), companiaNormalizada),
+       `SELECT D.* FROM ${spd} D INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp`)
+    : `SELECT D.* FROM ${spd} D ORDER BY D.ID_SOLICITUD, D.ID_DETALLE`;
+  
+  const det = await detRequest.query(detQuery);
 
   return cab.recordset.map((r: Record<string, unknown>) =>
     mapSolicitud(r, det.recordset.filter((d: Record<string, unknown>) => d.ID_SOLICITUD === r.ID_SOLICITUD)),    
@@ -63,9 +68,7 @@ export async function obtenerSolicitud(codigo: string): Promise<Solicitud | unde
   const det = await pool
     .request()
     .input("idSolicitud", mssql.Int, idSolicitud)
-    .query(`SELECT * FROM ${spd} D INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp AND ID_SOLICITUD = @idSolicitud ORDER BY ID_DETALLE
-      
-      `);
+    .query(`SELECT D.* FROM ${spd} D WHERE D.ID_SOLICITUD = @idSolicitud ORDER BY D.ID_DETALLE`);
   return mapSolicitud(r, det.recordset);
 }
 

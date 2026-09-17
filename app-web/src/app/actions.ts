@@ -305,15 +305,22 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
   const filas = dataRows.map((r, idx) => {
     if (esDescuento) {
       const listaCodigo = resolverNivelPrecio(niveles, String(r[0] ?? "").trim());
+      // Convertir porcentaje a factor (10 -> 0.1 para factor de 1.1)
+      const porcentajeRaw = r[2] !== undefined ? String(r[2]).trim() : "";
+      const porcentaje = Number.parseFloat(porcentajeRaw.replace(",", "."));
+      const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(\.\d+)?$/.test(porcentajeRaw);
+      const factorConvertido = formatoValido ? 1 + (porcentaje / 100) : null;
+      const factorTexto = factorConvertido !== null ? String(factorConvertido) : porcentajeRaw;
+      
       return construirFilaDescuentoMasivo(
         {
           fila: idx + 1,
           listaCodigo: r[0] !== undefined ? String(r[0]).trim() : null,
           codigo: r[1] !== undefined ? String(r[1]).trim() : "",
           tipoVariacion: "AUMENTO",
-          valorPropuestoRaw: r[2] !== undefined ? String(r[2]).trim() : "",
+          valorPropuestoRaw: factorTexto,
         },
-        true,
+        true, // factorDirecto = true, ahora valorPropuestoRaw contiene el factor convertido
         listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
       );
     }

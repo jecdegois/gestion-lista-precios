@@ -235,6 +235,8 @@ export function construirFilaDescuentoMasivo(
   factorDirecto?: boolean,
   context: CatalogoContext = CATALOGO_POR_DEFECTO,
 ): FilaPrecio {
+  // Si viene de Excel (factorDirecto === true), tratar como factor directo
+  // Si viene de manual (factorDirecto === false), tratar como variación porcentual
   const fila = factorDirecto
     ? construirFilaCompleta(row, "factor", context)
     : construirFilaDesdeVariacion(row, "factor", context);

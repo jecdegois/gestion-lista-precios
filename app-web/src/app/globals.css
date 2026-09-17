@@ -46,7 +46,7 @@ body { background: #f8f9fb; color: #0a0a0a; font-family: Inter, ui-sans-serif, s
 
 .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; }
 .tab-trigger { font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 8px; color: #71717a; cursor: pointer; user-select: none; }
-.tab-trigger.active { background: #fff; color: #18181b; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.tab-trigger.active { background: #18181b; color: #fff; }
 .tabs-list { background: #f4f4f5; padding: 4px; border-radius: 10px; display: inline-flex; gap: 2px; flex-wrap: wrap; }
 .subtab { font-size: 12.5px; font-weight: 500; padding: 6px 12px; border-radius: 999px; border: 1px solid #e4e4e7; color: #52525b; cursor: pointer; }
 .subtab.active { background: #18181b; color: #fff; border-color: #18181b; }
