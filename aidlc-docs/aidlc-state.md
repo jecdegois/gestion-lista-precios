@@ -126,24 +126,20 @@
 | 07_validar_constraints.sql | Validar funcionamiento de constraints | ✅ Ejecutado | Todas las pruebas EXITOSAS |
 | 08_validar_indices.sql | Validar índices y queries de aprobación | ✅ Ejecutado | Índices optimizados |
 
-## Next Phase: PASO 2 (Server-Side Scope Validation)
+## Next Phase: PASO 4 (Integración Real con Softland)
 
-### Tareas Programadas:
-1. Desarrollar Stored Procedures (SP_APROBAR_SOLICITUD, etc.)
-2. Crear API endpoints para aprobación
-3. Implementar backend logic para auditoría
-4. Desarrollar componentes React para bandeja de aprobación
-5. Implementar procesamiento asincrónico de reintentos
-
-**Estimado:** 40-50 horas de desarrollo
+### Único Pendiente:
+Conectar el flujo de aprobación de la app con los SPs ya validados en BD.
+Ver plan detallado en: `aidlc-docs/construction/planes/paso4-plan-trabajo.md`
 
 ## Audit Trail
 
 **Sesión de Trabajo:**
 - Inicio: 2026-09-18
-- Fase Actual: PASO 2 - Consolidación Pre-Commit
-- Progreso: 100% (8/8 tareas completadas + limpieza)
-- Estado: ✅ LISTO PARA COMMIT
+- Revisión de Estado: 2026-09-18 (código real auditado, state corregido)
+- Fase Actual: PASO 4 - Integración Real con Softland
+- Progreso PASO 3: ✅ COMPLETO (verificado en código)
+- Estado: ✅ LISTO PARA INICIAR PASO 4
 
 **Validaciones Completadas:**
 - ✅ Schema actualizado (SOFTLANDQA.PORTAL_PRECIOS)
@@ -284,3 +280,104 @@
 - `PASO2_TAREA8_INSTRUCCIONES.md` - Guía completa de ejecución
 - `COMMIT_SUMMARY_PASO2_TAREA8.md` - Resumen ejecutivo
 
+
+
+---
+
+## PASO 3: Full-Stack Next.js - Solicitudes + Simulación (✅ COMPLETO)
+
+> **Nota:** Estado actualizado el 2026-09-18 mediante revisión directa del código fuente en `app-web/src/`. Las entradas previas en este documento estaban desactualizadas y no reflejaban la implementación real.
+
+**Stack:** Next.js 14 + React 18 (Full-Stack en app-web/, sin backend separado)  
+**Última Actualización:** 2026-09-18
+
+### Estado Real por Funcionalidad (verificado en código)
+
+| Funcionalidad | Archivo(s) Clave | Estado |
+|---|---|---|
+| Login y resolución de identidad por compañía | `LoginScreen.tsx`, `companies.ts` | ✅ Implementado |
+| Crear solicitudes — 4 procesos | `NuevaSolicitud.tsx`, `actions.ts` | ✅ Implementado |
+| Simulación de impacto (SELECT Softland) | `pricing-repository.ts`, API routes `/api/simulacion/*` | ✅ Implementado |
+| INSERT real en BD portal al enviar | `portal-repository.ts` → `agregarSolicitud()` | ✅ Implementado |
+| Bandeja de aprobación con filtros | `BandejaAprobacion.tsx` | ✅ Implementado |
+| Segregación de funciones (no autoaprobación) | `actions.ts` → `aprobarSolicitud()` | ✅ Implementado |
+| RevisionModal — detalle + aprobar/rechazar | `RevisionModal.tsx`, `PortalApp.tsx` | ✅ Implementado |
+| Rechazo con motivo obligatorio | `actions.ts` → `rechazarSolicitud()` | ✅ Implementado |
+| Auditoría de eventos maker-checker | `portal-repository.ts` → `registrarEvento()` | ✅ Implementado |
+| Polling automático de estados | `PortalApp.tsx` (2.5s / 8s) | ✅ Implementado |
+| Carga masiva por Excel + validación | `ExcelUploader.tsx`, `actions.ts` | ✅ Implementado |
+| Multi-compañía | `companies.ts`, `COMPANIES_CONFIG` env var | ✅ Implementado |
+| Modo demo (sin SQL Server) | `requests-store.ts`, `esModoDemo()` | ✅ Implementado |
+
+### Bloqueo Crítico Identificado — Pendiente PASO 4
+
+En `app-web/src/server/companies.ts` existe un guard **hardcoded** que siempre bloquea la ejecución de SPs en Softland:
+
+```typescript
+export function esEjecucionSoftlandBloqueada(): boolean {
+  return true; // permanentemente bloqueado
+}
+```
+
+Al aprobar una solicitud hoy, el flujo **simulado** es:
+1. ✅ Registra evento `EJECUCION_ENCOLADA` en auditoría
+2. ✅ Cambia estado a `EN_PROCESO` en portal BD
+3. ❌ Espera 6 segundos (`setTimeout` demo)
+4. ❌ Marca como `PROCESADO` — **sin tocar Softland ni ejecutar SPs**
+
+Los SPs `SP_APROBADOR_APRUEBA_RECHAZA`, `SP_EJECUTAR_SOLICITUD_APROBADA` y `FN_OBTENER_BANDEJA_APROBACION` existen y están validados en SOFTLANDQA (PASO 2), pero **no están referenciados en ningún archivo TypeScript**.
+
+**Ver plan de trabajo para PASO 4:** `aidlc-docs/construction/planes/paso4-plan-trabajo.md`
+
+
+---
+
+## PASO 4: Integración Real con Softland (⏳ PENDIENTE — PRÓXIMA SESIÓN)
+
+**Status:** Plan aprobado — listo para iniciar  
+**Última Actualización:** 2026-09-18  
+**Documento del Plan:** `aidlc-docs/construction/planes/paso4-plan-trabajo.md`
+
+### Objetivo
+
+Reemplazar la simulación demo del flujo de aprobación por llamadas reales a los SPs ya validados en SOFTLANDQA. El único cambio de comportamiento observable es que, al aprobar una solicitud, se ejecuten los Stored Procedures reales y los precios se actualicen efectivamente en las tablas de Softland.
+
+### Tareas
+
+| # | Tarea | Archivo Principal | Horas Est. | Status |
+|---|-------|-------------------|-----------|--------|
+| 1 | Desbloquear guardia vía env var `SOFTLAND_EXECUTION_ENABLED` | `companies.ts` | 0.5h | ⏳ |
+| 2 | Crear `approval-repository.ts` con llamadas a SPs | `approval-repository.ts` (nuevo) | 2h | ⏳ |
+| 3 | Conectar flujo real en `actions.ts` | `actions.ts` | 2h | ⏳ |
+| 4 | Agregar `obtenerIdNumericoSolicitud()` | `portal-repository.ts` | 0.75h | ⏳ |
+| 5 | Pruebas E2E en SOFTLANDQA (7 escenarios) | — | 2h | ⏳ |
+| **TOTAL** | | | **~7.25h** | |
+
+### Orden de Ejecución
+
+```
+T1 (guard env var) → T4 (ID numérico) → T2 (approval-repository) → T3 (actions.ts) → T5 (pruebas)
+```
+
+### SPs Involucrados (ya en SOFTLANDQA, validados)
+
+| SP / Function | Archivo SQL validado | Tests |
+|---|---|---|
+| `SP_APROBADOR_APRUEBA_RECHAZA` | `PASO2_TAREA8_EJECUTAR_TODO_FINAL.sql` | 5/5 PASS |
+| `SP_EJECUTAR_SOLICITUD_APROBADA` | `PASO2_TAREA9_FINAL.sql` | 5/5 PASS |
+| `FN_OBTENER_BANDEJA_APROBACION` | `PASO2_TAREA7_FN_OBTENER_BANDEJA_APROBACION.sql` | Creada |
+
+### Punto de Entrada para la Próxima Sesión
+
+Iniciar con **Tarea 1**: modificar `app-web/src/server/companies.ts`, función `esEjecucionSoftlandBloqueada()`, de `return true` hardcoded a:
+
+```typescript
+return (process.env.SOFTLAND_EXECUTION_ENABLED ?? "false").trim().toLowerCase() !== "true";
+```
+
+Y agregar en `app-web/.env`:
+```env
+SOFTLAND_EXECUTION_ENABLED=false
+```
+
+Ver especificación completa de cada tarea en `paso4-plan-trabajo.md`.
