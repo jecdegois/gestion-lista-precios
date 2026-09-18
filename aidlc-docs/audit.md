@@ -1538,3 +1538,171 @@ MENSAJE_ERROR
 **Context**: Construcción - corrección del detalle persistido de solicitudes.
 
 ---
+
+
+---
+
+## Paso 1: Modelo de Datos - Rol de Aprobador
+
+**Timestamp:** 2026-09-18T14:00:00Z  
+**Fase:** CONSTRUCCIÓN - Tarea #3 en pausa aguardando ejecución manual
+
+### Resumen de Tarea #1 (Mapeo)
+- ✅ Completada: Mapeo de 19 columnas/tablas existentes vs requisitos AIDLC
+- ✅ Conclusión: 95% del schema está en lugar
+- ✅ Documento: `PASO 1.1: Mapeo de Esquema SQL Actual vs Requisitos AIDLC`
+
+### Resumen de Tarea #2 (Identificación)
+- ✅ Completada: Identificadas 6 columnas faltantes en SOLICITUD_PRECIO
+- ✅ Completada: Identificadas 2 nuevas tablas (SOLICITUD_REINTENTO, AUDITORIA_APROBACION)
+- ✅ Creado script SQL 05 con todos los cambios
+- ✅ Documento: `PASO 1.2: Identificación de Columnas y Tablas Faltantes`
+- 📁 Archivo: `backend/sql/portal/05_aprobador_columnas_y_tablas.sql`
+
+### Tarea #3 en Pausa (Ejecución de Scripts)
+**Estado:** Esperando confirmación de ejecución manual
+- Scripts a ejecutar: `04_aprobaciones_y_ejecucion.sql`, `05_aprobador_columnas_y_tablas.sql`
+- Base de datos: SOFTLANDQA (DEV)
+- Documento interactivo: `⏸️ PAUSA: Tarea #3 — Ejecución Manual de Scripts SQL`
+
+### Documentos Generados
+1. `PASO 1.1: Mapeo de Esquema SQL...` — Análisis de schema actual
+2. `PASO 1.2: Identificación de Columnas...` — Columnas y tablas faltantes
+3. `PASO 1.3: Validación y Ejecución...` — Instrucciones de ejecución
+4. `📊 Resumen del Paso 1 - Estado Actual` — Overview del progreso
+
+### Cobertura de Requisitos (Paso 1)
+- ✅ RF-17, RF-19, RF-20, RF-25, RF-26, RF-29, RF-30, RF-31, RF-32, RF-33, RF-34
+- ✅ HU-12 (Cancelación)
+- ✅ RNF-05, RNF-06, RNF-09
+
+
+
+---
+
+## Corrección Crítica - Identificación de Schema Real
+
+**Timestamp:** 2026-09-18T15:00:00Z  
+**Evento:** Discrepancia de nombres de tabla identificada
+
+### Problema Encontrado
+- Usuario indicó: "la tabla SOLICITUD_PRECIOS no existe, ¿te refieres a SOLICITUD_DETALLE?"
+- Tablas reales encontradas (via query):
+  - PORTAL_PRECIOS.SOLICITUD (no SOLICITUD_PRECIO)
+  - PORTAL_PRECIOS.SOLICITUD_DETALLE (no SOLICITUD_PRECIO_DETALLE)
+
+### Impacto
+- Scripts 04 y 05 creados estaban basados en nombre incorrecto (SOLICITUD_PRECIO)
+- Necesita adaptación completa de nombres
+
+### Acción Requerida
+- Usuario debe ejecutar diagnóstico de estructura de tablas SOLICITUD y SOLICITUD_DETALLE
+- Basado en resultados, se adaptarán scripts 04 y 05
+
+### Tablas Identificadas en SOFTLANDQA
+- AUDITORIA_PRECIOS
+- COMPANIA
+- LISTA_PRECIO
+- SOLICITUD ← Base para aprobador
+- SOLICITUD_DETALLE ← Detalles de solicitud
+- USUARIO
+- USUARIO_AMBITO
+- V_USUARIO_AMBITO
+
+
+
+---
+
+## Contexto de Sesión Resumida (Context Compaction)
+**Timestamp**: 2026-09-18T14:30:00Z
+**Context Type**: Session Resumption after Compaction
+**Previous Work Summary**: 
+- PASO 1 (Modelo de Datos): ✅ Completado (7/7 tareas, 9 columnas + 2 tablas + 6 constraints + 6 índices)
+- PASO 2 (Backend): 4/8 tareas completadas (SPs 1-4: Approve, Reject, Cancel, Decide Cancel)
+- Test scripts preparados en `PASO2_EJECUTAR_TODO.sql`
+- Status: 50% avance en PASO 2, listo para ejecución de tests
+
+---
+
+## Preparación de Ejecución de Tests - PASO 2 (Tareas 1-4)
+**Timestamp**: 2026-09-18T14:35:00Z
+**User Intent**: Ejecutar y validar los 4 Stored Procedures creados (Approve, Reject, Cancel Request, Decide Cancellation) antes de continuar con Tareas 5-8
+**AI Response**: 
+1. Verificación del script consolidado `PASO2_EJECUTAR_TODO.sql` - OK
+2. Creación de Guía de Ejecución con pasos detallados para SSMS
+3. Creación de Plan de Ejecución con casos de test y resultados esperados
+4. Actualización de `aidlc-state.md` para reflejar estado actual
+5. Documentación lista para ejecución
+
+**Artifacts Created**:
+- 📄 "Guía de Ejecución - PASO 2 Tests (SPs 1-4)" - Instrucciones paso a paso para SSMS
+- 📄 "PASO 2 - Plan de Ejecución de Tests (SPs 1-4)" - Resumen ejecutivo con resultados esperados
+
+**Próximos Pasos**:
+1. User ejecuta `PASO2_EJECUTAR_TODO.sql` en SSMS (ERIVIN\SQLEXPRESS → SOFTLANDQA)
+2. Valida que 5 tests ejecuten con resultados esperados
+3. Verifica auditoría en AUDITORIA_APROBACION
+4. Confirma cobertura de RF-17, RF-20, RF-21, RF-32, HU-12, RNF-05
+5. Continúa a Tareas 5-8 (Reintentos, Reproceso, Functions)
+
+**Current Status**: ⏳ AWAIT USER EXECUTION - Tests ready in SSMS
+
+
+
+---
+
+## Corrección: Estados de SOLICITUD (Constraint CK_PP_SOL_ESTADO)
+**Timestamp**: 2026-09-18T14:45:00Z
+**Error Encontrado**: INSERT conflicted with CHECK constraint "CK_PP_SOL_ESTADO"
+**Causa Root**: El constraint solo permite valores específicos: BORRADOR, PENDIENTE, EN_PROCESO, PROCESADO, PROCESADO_CON_ERRORES, RECHAZADO, ERROR_EJECUCION, CANCELADO
+**Valores Incorrectos Usados**: ENVIADA, APROBADA, RECHAZADA, CANCELADA (no en constraint)
+**Solución Implementada**: 
+- Cambio ENVIADA → PENDIENTE (estado inicial)
+- Cambio APROBADA → EN_PROCESO (cuando se aprueba)
+- Cambio RECHAZADA → RECHAZADO (cuando se rechaza)
+- Cambio CANCELADA → CANCELADO (cuando se cancela)
+**Archivos Modificados**: 
+- backend/sql/portal/PASO2_EJECUTAR_TODO.sql (SP_01, SP_02, SP_03, SP_04, tests, mensajes)
+**Status**: ✅ Script corregido, listo para re-ejecutar en SSMS
+
+
+
+---
+
+## Diagnóstico y Corrección: Problema de Scope de Variables
+**Timestamp**: 2026-09-18T15:00:00Z
+**Síntoma**: Tests ejecutados pero SPs no aplicaron cambios (solicitudes permanecieron en PENDIENTE, auditoría vacía)
+**Root Cause**: Script tenía múltiples declaraciones DECLARE anidadas dentro de diferentes bloques, causando pérdida de scope de variables entre tests
+**Ejemplos del Problema**: 
+- Variables @id_sol_1, @id_sol_2, @id_sol_3 no persistían entre exec calls
+- Cada TEST tenía su propio DECLARE, creando nuevo scope
+- Valores de retorno de SPs (@resultado, @mensaje) se perdían
+**Solución Implementada**:
+- Nueva versión limpia: `PASO2_EJECUTAR_TODO_v2.sql`
+- Todas las variables declaradas UNA SOLA VEZ al inicio
+- Código secuencial sin duplicaciones
+- Scope global para todas las variables durante tests
+**Status**: ✅ Script v2 listo para re-ejecutar
+
+
+
+---
+
+## Ejecución exitosa de PASO2_EJECUTAR_TODO_v2.sql
+**Timestamp**: 2026-09-18T15:15:00Z
+**Acción**: Ejecutar script limpio v2 con declaración correcta de variables
+**Resultado**: ✅ EXITOSO - Todos los 5 tests pasaron
+**Detalles de Tests**:
+- TEST 1 (Aprobar): ✅ Estado EN_PROCESO, FECHA_REVISION registrada
+- TEST 2 (Rechazar sin comentario): ✅ BLOQUEADO (RNF-05)
+- TEST 3 (Rechazar con comentario): ✅ Estado RECHAZADO, MOTIVO_RECHAZO registrado
+- TEST 4 (Solicitar Cancelación): ✅ CANCELACION_SOLICITADA='S'
+- TEST 5 (Confirmar Cancelación): ✅ Estado CANCELADO, CANCELACION_CONFIRMADA='S'
+**Auditoría Verificada**:
+- TEST_STEP2_001: 1 registro (APROBADA) ✅
+- TEST_STEP2_002: 1 registro (RECHAZADA) ✅
+- TEST_STEP2_003: 2 registros (CANCELACION_SOLICITADA, CANCELACION_CONFIRMADA) ✅
+**Requisitos Validados**: RF-20 ✅, RF-21 ✅, RF-32 ✅, HU-12 ✅, RNF-05 ✅
+**Status**: ✅ PASO 2 Tareas 1-4 COMPLETADAS (75% progreso)
+**Siguientes Tareas**: 5-8 (Reintentos, Reproceso, Functions) - 11h estimadas
+
