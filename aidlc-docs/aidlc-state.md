@@ -381,3 +381,180 @@ SOFTLAND_EXECUTION_ENABLED=false
 ```
 
 Ver especificación completa de cada tarea en `paso4-plan-trabajo.md`.
+
+
+---
+
+## REVISIÓN DE COBERTURA REAL PRE-PASO 4
+
+**Fecha:** 2026-09-18  
+**Método:** Lectura directa del código fuente en `app-web/src/` (no autorreportado)  
+**Alcance:** Todos los RFs y RNFs de `aidlc-docs/inception/requirements/requirements.md`
+
+---
+
+### Leyenda
+
+| Símbolo | Significado |
+|---------|-------------|
+| ✅ | Implementado y verificado en código |
+| ⚠️ | Parcialmente implementado — funciona pero con limitaciones conocidas |
+| ❌ | No implementado — ausente del código actual |
+| 🔒 | Bloqueado intencionalmente — pendiente PASO 4 |
+
+---
+
+### Sección 3: Alcance Funcional
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RF-01 | Tres procesos: global, masivo Excel, individual | ✅ | `NuevaSolicitud.tsx` — 4 tabs: FACTOR_PRECIO, MAYOREOD_MASIVO, DESCUENTO_LISTA_PRECIO, MARGEN_UTILIDAD_MASIVO |
+| RF-02 | Operar dentro de compañía y roles autorizados; validar lista/categoría | ✅ | `actions.ts → enviarSolicitud()`: valida identidad en portal, compañía, listas en maestros Softland y artículos |
+| RF-03 | Backend impide operar fuera del ámbito | ✅ | `estaEnAmbito()` en `actions.ts`; validación server-side en `resolverIdentidad()` + `enviarSolicitud()` |
+
+---
+
+### Sección 3.2: Gestión Global por Lista
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RF-04 | Seleccionar lista y definir factor multiplicador | ✅ | `NuevaSolicitud.tsx` — tab FACTOR_PRECIO con selector de nivel y campo Factor % |
+| RF-05 | Regla de factor: 0<v<=2, bloquear <=0 | ✅ | `engine.ts → convertirPorcentajeAFactor()`: `factor > 0 && factor <= 2`; input con `min="0"` en UI |
+| RF-06 | Simulación obligatoria antes de enviar | ✅ | `NuevaSolicitud.tsx → puedeEnviar()`: requiere `simulado === true` |
+| RF-07 | Simulación muestra precio actual, factor, precio sugerido, total artículos | ✅ | `TablaImpactoGestionGlobal` renderiza resultado paginado de `simularGestionGlobalPaginado()` |
+| RF-08 | Bloquear si simulación detecta inconsistencias | ✅ | `puedeEnviar()` requiere `filas.every(f => f.validacion.valido)`; filas inválidas bloquean el envío |
+
+---
+
+### Sección 3.3: Actualización Masiva
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RF-09 | Descargar plantilla oficial y cargar `.xlsx` | ✅ | `NuevaSolicitud.tsx`: enlace a `/api/plantilla`; `ExcelUploader.tsx` procesa `.xlsx` |
+| RF-10 | Validar estructura, campos obligatorios y formatos antes de enviar | ✅ | `actions.ts → parsearExcel()` + `ExcelUploader`; filas inválidas identificadas por tipo |
+| RF-11 | Si hay filas inválidas, rechazar carga completa y reportar por fila | ✅ | `NuevaSolicitud.tsx`: `conteoErrores > 0` bloquea envío y muestra banner de errores; tabla muestra fila a fila |
+| RF-12 | Mostrar resumen de impacto antes del envío | ✅ | `TablaImpactoDescuentoManual` / `TablaImpactoMargen` renderizan previsualización completa post-parseo |
+
+---
+
+### Sección 3.4: Gestión Individual
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RF-13 | Identificar artículo/SKU, asociarlo a lista e indicar factor | ✅ | `NuevaSolicitud.tsx` — tab DESCUENTO_LISTA_PRECIO: combobox de artículo + lista + campo Factor % |
+| RF-14 | Calcular y mostrar precio final en tiempo real | ✅ | `previewArticulo` se recalcula con `useMemo` en cada cambio de factor; Card muestra "Precio Red." en tiempo real |
+| RF-15 | Factor numérico, mayor que cero, rango de negocio | ✅ | `convertirPorcentajeAFactor()` + `input min="0"` en UI |
+| RF-16 | Mostrar artículo, precio base, factor, precio final y advertencias antes del envío | ✅ | Cards individuales + `TablaImpactoDescuentoManual` + `EstadoRedondeoBadge` |
+
+---
+
+### Sección 4: Flujo de Control de Cambios
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RF-17 | Estados: Borrador, Pendiente, Aprobada, Ejecutando, Ejecutada, Rechazada, Error | ⚠️ | `domain-types.ts`: existen PENDIENTE, EN_PROCESO, PROCESADO, PROCESADO_CON_ERRORES, RECHAZADO, ERROR_EJECUCION. **Falta: BORRADOR** (no hay funcionalidad de guardar borrador). Estado "Aprobada" se maneja internamente como transición, no como estado persistido. |
+| RF-18 | Solicitud pendiente no puede modificarse | ✅ | `enviarSolicitud()` crea nuevas solicitudes; no existe endpoint de edición. Estado PENDIENTE es inmutable una vez creado. |
+| RF-19 | Rechazo exige comentario obligatorio y conserva simulación | ✅ | `actions.ts → rechazarSolicitud()`: valida `motivo.trim().length > 0`; `RevisionModal.tsx`: botón Rechazar deshabilitado si motivo vacío; filas conservadas en BD |
+| RF-20 | Modal de confirmación para aprobar con detalle del impacto | ✅ | `RevisionModal.tsx`: muestra proceso, compañía, filas evaluadas, hallazgos, modalidad, ejecución; botón "Procesar Solicitud" requiere interacción explícita |
+
+---
+
+### Sección 5: Ejecución y Gobernanza de Datos
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RF-21 | Para masivos/globales, ejecutar exclusivamente el SP autorizado | 🔒 | `actions.ts → aprobarSolicitud()`: llama `simularProcesamientoDemo()` — **DEMO, no ejecuta SP real**. Bloqueado por `esEjecucionSoftlandBloqueada() = true`. Pendiente PASO 4. |
+| RF-22 | Para individuales autorizados, actualización directa permitida | 🔒 | No implementado en PASO 3. Forma parte del alcance de PASO 4 (tipo DESCUENTO_LISTA_PRECIO individual). |
+| RF-23 | Actualización individual solo tras aprobación con validaciones | 🔒 | Sin implementación actual; depende de RF-22. |
+| RF-24 | Interfaz no ofrece mecanismos de cambio productivo antes de aprobación | ✅ | `esEjecucionSoftlandBloqueada()` + `assertEscrituraSoftlandHabilitada()` bloquean toda mutación Softland desde TypeScript |
+| RF-25 | Al aprobar, pasar a estado "Ejecutando" antes de iniciar ejecución | ✅ | `aprobarSolicitud()`: `actualizarSolicitud(id, { estado: "EN_PROCESO" })` antes de lanzar el worker |
+| RF-26 | Finalizar en Completado/Con errores/Error según resultado | ✅ | `finalizarProcesamiento()`: lógica `fallidos===0 → PROCESADO`, `fallidos===total → ERROR_EJECUCION`, else `PROCESADO_CON_ERRORES` |
+
+---
+
+### Sección 5.2: Resultado y Recuperación
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RF-27 | Resultado incluye id ejecución, estado, totales y detalle de errores | ✅ | `ResultadoEjecucion` en `domain-types.ts`: totalLote, exitosos, fallidos, filas, estadoFinal, logS3Key, aprobadoPor |
+| RF-28 | Resultado conservado como evidencia de trazabilidad | ✅ | `actualizarSolicitud()` persiste `resultado` completo en `PORTAL_PRECIOS.SOLICITUD_DETALLE` |
+| RF-29 | Reintentos hasta 3 veces ante errores transitorios | 🔒 | SP `SP_EJECUTAR_SOLICITUD_APROBADA` en BD tiene backoff (5/15/60 min, máx 3 intentos). **Sin conexión a la app** — pendiente PASO 4. |
+| RF-30 | Tras tercer fallo pasar a ERROR_EJECUCION con evidencia técnica | 🔒 | Mismo caso que RF-29. SP validado en BD pero no conectado desde TypeScript. |
+| RF-31 | No reintentar errores funcionales/validación/autorización | 🔒 | Lógica en SP de BD (`SP_EJECUTAR_SOLICITUD_APROBADA`). Sin conexión desde app. |
+
+---
+
+### Sección 6: Auditoría y Trazabilidad
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RF-32 | Bitácora registra: creación, edición, cancelación, envío, apertura, aprobación/rechazo, ejecución y resultado | ⚠️ | `EventoTipo` cubre: SOLICITUD_ENVIADA, SOLICITUD_RECHAZADA, SIMULACION_REVISADA, EJECUCION_ENCOLADA, EJECUCION_FINALIZADA. **Faltan:** evento de cancelación (`SOLICITUD_CANCELADA`) y evento de edición/borrador. Cobertura: 5/7 eventos del RF. |
+| RF-33 | Solicitantes ven solo sus solicitudes; Aprobadores las de su ámbito; Auditores solo lectura | ⚠️ | `MisSolicitudes.tsx` filtra `s.solicitanteEmail === currentUser.email` ✅. `BandejaAprobacion.tsx` filtra por `estaEnAmbito()` ✅. **Falta:** rol Auditor/Admin no existe en el código (`domain-types.ts → Rol` solo tiene OPERADOR/APROBADOR/SIN_PERMISO). Auditoría visible para todos los roles activos. |
+| RF-34 | Auditoría conserva impacto simulado, decisión, comentario de rechazo y resultado ejecución | ✅ | `registrarEvento()` guarda usuario/rol/evento/solicitudId/idProcesoSP. Impacto en `SOLICITUD_DETALLE`, motivo en `SOLICITUD.MOTIVO_RECHAZO`, resultado en `SOLICITUD.RESULTADO_JSON`. |
+
+---
+
+### Sección 7: Seguridad y Control de Acceso
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RNF-01 | SSO / IdP corporativo y red corporativa/VPN | ❌ | `LoginScreen.tsx`: autenticación directa por email+compañía en tabla USUARIO del portal. Sin OIDC/SAML/OAuth. Sin validación de red/VPN. `idpSubject` existe en el modelo pero siempre llega `null` desde el login actual. |
+| RNF-02 | Credencial de aplicación administrada como secreto; no en URL ni navegador | ⚠️ | Variables de entorno para BD están en `.env` (no expuestas al navegador). Sin endpoint de autenticación protegido (no aplica SSO). Riesgo: email se ingresa en campo de texto sin token firmado. |
+| RNF-03 | Portal entrega identidad via mecanismo firmado/tokenizado de corta duración | ❌ | No implementado. `resolverIdentidad()` recibe email plain text sin token ni firma. |
+| RNF-04 | Validar existencia, identidad, roles y ámbitos antes de conceder acceso | ✅ | `resolverIdentidad()` hace SELECT en USUARIO + JOIN USUARIO_AMBITO filtrando por email, compañía, ACTIVO='S' y ROL_GLOBAL IN ('OPERADOR','APROBADOR') |
+| RNF-05 | Roles Solicitante/Aprobador separados; backend impide autoaprobación | ✅ | `aprobarSolicitud()`: `s.solicitanteEmail === input.aprobadorEmail → error`; `input.aprobadorRol !== 'APROBADOR' → error` |
+| RNF-06 | Control de ámbito por compañía en interfaz y backend | ✅ | `estaEnAmbito()` en `enviarSolicitud()` y en `BandejaAprobacion.tsx`; `resolverIdentidad()` valida compañía en USUARIO_AMBITO |
+| RNF-07 | Línea base de seguridad para solución productiva | ❌ | No hay extensión de seguridad habilitada en `aidlc-state.md`. Sin headers de seguridad HTTP, sin CSP, sin validación CSRF, sin rate limiting documentado. |
+
+---
+
+### Sección 8: Resiliencia, Observabilidad y Calidad
+
+| ID | Requisito resumido | Estado | Evidencia en código |
+|----|-------------------|--------|---------------------|
+| RNF-08 | Línea base de resiliencia: reintentos limitados, recuperación, no duplicados | ⚠️ | Control de estados implementado. Reintentos en SP de BD (PASO 2). **Sin idempotencia explícita en TypeScript** para prevenir doble aprobación (aunque el guard de estado PENDIENTE lo mitiga). |
+| RNF-09 | Ejecuciones observables con identificadores correlacionables | ✅ | `nuevoIdProcesoSP()` genera ID único; persiste en SOLICITUD.ID_PROCESO_SP y en todos los eventos de auditoría |
+| RNF-10 | Mensajes funcionales sin exponer info sensible | ✅ | Errores muestran mensajes de negocio; `assertEscrituraSoftlandHabilitada()` retorna mensajes genéricos. No se exponen stack traces en UI. |
+| RNF-11 | Pruebas basadas en propiedades para cálculos deterministas | ❌ | Sin tests en el proyecto (`app-web/` no tiene archivos `*.test.ts` ni `*.spec.ts`). |
+| RNF-12 | Comprobar límites de factor: v<=0 inválido, 0<v<1 rebaja, v=1 sin cambio, 1<v<=2 aumento | ✅ | `engine.ts → convertirPorcentajeAFactor()` + `calcularVariacion()` cubre todos los casos. Lógica determinista. |
+
+---
+
+### Resumen Ejecutivo de Cobertura
+
+| Categoría | ✅ Implementado | ⚠️ Parcial | 🔒 Bloqueado (PASO 4) | ❌ No implementado | Total |
+|-----------|----------------|-----------|----------------------|-------------------|-------|
+| Funcional (RF) | 20 | 3 | 5 | 0 | 28 |
+| Seguridad (RNF-01 a 07) | 3 | 1 | 0 | 3 | 7 |
+| Resiliencia/Calidad (RNF-08 a 12) | 3 | 1 | 0 | 1 | 5 |
+| **TOTAL** | **26** | **5** | **5** | **4** | **40** |
+
+---
+
+### Hallazgos Críticos Pre-PASO 4
+
+**Bloqueantes para criterios de aceptación QA (no pueden ir a QA sin resolverse):**
+
+1. **RF-21 / RF-22 / RF-23 / RF-29 / RF-30 / RF-31** — Todo el flujo de ejecución real contra Softland está en demo. Los SPs están validados en BD pero desconectados de la app. → **PASO 4 lo resuelve.**
+
+2. **RNF-01 / RNF-03** — Sin SSO ni token firmado. El login actual es email plain text directo a BD. Esto es una deuda de seguridad para entorno productivo. → **Decisión pendiente de diseño (sección 11 de requirements.md) aún abierta.**
+
+**No bloqueantes para PASO 4 pero requieren atención:**
+
+3. **RF-17** — No existe estado BORRADOR. La app va directo de formulario a PENDIENTE. Aceptable si el equipo decide que el borrador está fuera del MVP, pero el requisito formal lo menciona.
+
+4. **RF-32 / RF-33** — Eventos de cancelación no registrados (no hay flujo de cancelación implementado). Rol Auditor/Admin no existe en el código.
+
+5. **RNF-07 / RNF-11** — Sin línea base de seguridad HTTP ni suite de pruebas automatizadas.
+
+---
+
+### Decisión recomendada para PASO 4
+
+Antes de ejecutar PASO 4, confirmar:
+
+- [ ] RF-17 BORRADOR: ¿se implementa o se declara fuera de MVP?
+- [ ] RNF-01/03 SSO: ¿cuándo entra? ¿es bloqueante para QA o es post-MVP?
+- [ ] RF-32 Cancelación: ¿entra en el alcance del PASO 4 o es un PASO 5?
+- [ ] RNF-11 Pruebas: ¿se agregan tests unitarios en PASO 4 o en un paso separado?
+

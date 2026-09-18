@@ -1992,3 +1992,58 @@ MENSAJE_ERROR
 **Context**: Cierre de sesión — próxima sesión inicia con PASO 4 Tarea 1
 
 ---
+
+
+---
+
+## Revisión de Cobertura Real Pre-PASO 4
+**Timestamp**: 2026-09-18T00:00:00Z
+**User Input**: "si, revisa el codigo antes de hacer el paso 4"
+**AI Response**: "Se realizó lectura directa del código fuente en app-web/src/ para cruzar cada RF y RNF del documento de requisitos aprobado contra la implementación real. Se generó un inventario de cobertura con 26 requisitos implementados, 5 parciales, 5 bloqueados pendientes de PASO 4, y 4 no implementados. Los hallazgos fueron registrados en aidlc-state.md bajo la sección 'REVISIÓN DE COBERTURA REAL PRE-PASO 4'. Se identificaron 4 decisiones de alcance que requieren confirmación antes de iniciar PASO 4."
+**Context**: Pre-PASO 4 — auditoría de cobertura de requisitos mediante revisión directa de código
+
+**Archivos revisados:**
+- `app-web/src/app/actions.ts` — flujo principal de negocio (enviar, aprobar, rechazar)
+- `app-web/src/server/companies.ts` — guards de Softland, modo demo, ámbito
+- `app-web/src/server/portal-repository.ts` — acceso a BD portal
+- `app-web/src/components/NuevaSolicitud.tsx` — 4 procesos, simulación, validaciones
+- `app-web/src/components/BandejaAprobacion.tsx` — bandeja del aprobador
+- `app-web/src/components/RevisionModal.tsx` — modal de decisión maker-checker
+- `app-web/src/components/PortalApp.tsx` — routing por rol, polling
+- `app-web/src/components/LoginScreen.tsx` — autenticación actual
+- `app-web/src/components/Auditoria.tsx` — tabla de eventos
+- `app-web/src/components/MisSolicitudes.tsx` — solicitudes propias
+- `app-web/src/lib/domain-types.ts` — tipos de dominio, estados, eventos
+- `app-web/src/lib/engine.ts` — validaciones de factor y cálculo de precios
+
+**Hallazgos principales:**
+- RF-21 a RF-23, RF-29 a RF-31: ejecución real de SPs bloqueada intencionalmente — `esEjecucionSoftlandBloqueada() = true` hardcoded. Pendiente PASO 4.
+- RNF-01, RNF-03: Sin SSO ni token firmado. Login por email plain text en tabla USUARIO.
+- RF-17: Estado BORRADOR no implementado.
+- RF-32: Evento de cancelación ausente en EventoTipo.
+- RF-33: Rol Auditor/Admin no existe en el código.
+- RNF-07, RNF-11: Sin línea base de seguridad HTTP ni suite de pruebas automatizadas.
+
+---
+
+---
+
+## Decisión sobre Deuda Técnica — Diferida
+**Timestamp**: 2026-09-18T00:00:00Z
+**User Input**: "no tomaré la decisión de la deuda técnica en este momento, dejalo correctamente especificado y la próxima vez que se inicie el proyecto comenta la deuda pendiente"
+**AI Response**: "Se documentaron 6 ítems de deuda técnica en `aidlc-docs/deuda-tecnica.md` con situación actual, decisiones pendientes e impacto en código para cada uno. Se creó el steering file `.kiro/steering/00-deuda-tecnica-mv26020.md` con inclusion: always para que Kiro presente el resumen de deuda al inicio de cada sesión y consulte al usuario si desea atenderla antes de continuar con el trabajo planificado."
+**Context**: Gestión de deuda técnica — decisión diferida por el equipo
+
+**Ítems registrados:**
+- DT-01: Sin SSO / token firmado (RNF-01, RNF-03) — Alta
+- DT-02: Estado BORRADOR no implementado (RF-17) — Media
+- DT-03: Flujo de cancelación no implementado (RF-18, RF-32) — Media
+- DT-04: Rol Auditor/Admin no implementado (RF-33) — Media
+- DT-05: Sin línea base de seguridad HTTP (RNF-07) — Alta
+- DT-06: Sin suite de pruebas automatizadas (RNF-11, RNF-12) — Media
+
+**Archivos creados:**
+- `aidlc-docs/deuda-tecnica.md` — especificación detallada de cada ítem
+- `.kiro/steering/00-deuda-tecnica-mv26020.md` — presentación automática al inicio de sesión
+
+---
