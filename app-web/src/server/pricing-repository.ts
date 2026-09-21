@@ -24,6 +24,118 @@ export interface ResultadoSpMargen {
   origenFactor: "EXCEPCION_UDF" | "DEFAULT_10PCT";
 }
 
+export interface ResultadoGestionGlobal {
+  lista: string;
+  version: string;
+  factor: number;
+}
+
+/**
+ * Actualiza el factor global de una lista. El procesamiento posterior de los
+ * precios por artículo pertenece al SP externo que consume esta tabla.
+ */
+export async function actualizarGestionGlobal(
+  compania: string,
+  lista: string,
+  factor: number,
+  variacionPorcentaje: number,
+  usuario: string,
+): Promise<ResultadoGestionGlobal> {
+  const variacion = Number(variacionPorcentaje.toFixed(8));
+  console.info("[GESTION_GLOBAL] Valores recibidos por pricing-repository", {
+    compania,
+    lista,
+    factor,
+    variacionPorcentaje: variacion,
+  });
+  assertEscrituraSoftlandHabilitada();
+  if (esModoDemo()) throw new Error("GESTION_GLOBAL_NO_DISPONIBLE_EN_DEMO");
+
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const listaNormalizada = lista.trim();
+  if (!companiaNormalizada || !listaNormalizada) {
+    throw new Error("La compañía y la lista son obligatorias para Gestión Global.");
+  }
+  if (!Number.isFinite(factor) || factor <= 0 || factor > 2) {
+    throw new Error("El factor de Gestión Global debe ser mayor que 0 y menor o igual a 2.");
+  }
+  if (!Number.isFinite(variacionPorcentaje)) {
+    throw new Error("La variación porcentual de Gestión Global no es válida.");
+  }
+
+  const pool = await getPool(companiaNormalizada);
+  const versiones = objetoCalificado(companiaNormalizada, "tablaVersionNivel");
+  const mssql = await import("mssql");
+  const transaction = new mssql.Transaction(pool);
+  let committed = false;
+
+  await transaction.begin();
+  try {
+    const versionResult = await new mssql.Request(transaction)
+      .input("compania", mssql.VarChar(20), companiaNormalizada)
+      .input("lista", mssql.VarChar(50), listaNormalizada)
+      .query(
+        `SELECT TOP (1) A.VERSION AS version
+           FROM [dbo].[GESTION_LISTAS_PRECIOS] A
+           INNER JOIN ${versiones} B
+                   ON A.NIVEL_PRECIO = B.NIVEL_PRECIO
+                  AND A.VERSION = CONVERT(VARCHAR(50), B.VERSION)
+          WHERE A.COMPANIA = @compania
+            AND A.NIVEL_PRECIO = @lista
+          ORDER BY TRY_CONVERT(INT, A.VERSION) DESC, A.VERSION DESC;`,
+      );
+    const version = versionResult.recordset[0]?.version;
+    if (version == null || String(version).trim() === "") {
+      throw new Error(`No se consiguió una versión válida para la lista '${listaNormalizada}'.`);
+    }
+
+    const updateResult = await new mssql.Request(transaction)
+      .input("compania", mssql.VarChar(20), companiaNormalizada)
+      .input("lista", mssql.VarChar(50), listaNormalizada)
+      .input("version", mssql.VarChar(50), String(version))
+      .input("factor", mssql.Decimal(28, 8), factor)
+      .input("variacion", mssql.Decimal(28, 8), variacion)
+      .input("usuario", mssql.VarChar(50), usuario.trim())
+      .query(
+        `UPDATE A
+            SET A.FACTOR_MULTIPLICADOR = @factor,
+                A.VARIACION_PORC = @variacion
+           FROM [dbo].[GESTION_LISTAS_PRECIOS] A
+          WHERE A.COMPANIA = @compania
+            AND A.NIVEL_PRECIO = @lista
+            AND A.VERSION = @version;`,
+      );
+    console.info("[GESTION_GLOBAL] Resultado del UPDATE de GESTION_LISTAS_PRECIOS", {
+      compania: companiaNormalizada,
+      lista: listaNormalizada,
+      version: String(version),
+      factor,
+      variacionPorcentaje: variacion,
+      filasAfectadas: updateResult.rowsAffected[0] ?? 0,
+    });
+    if (updateResult.rowsAffected[0] !== 1) {
+      throw new Error(`No existe la clave de Gestión Global para compañía '${companiaNormalizada}', lista '${listaNormalizada}' y versión '${version}'.`);
+    }
+
+    await transaction.commit();
+    committed = true;
+    return { lista: listaNormalizada, version: String(version), factor };
+  } catch (error) {
+    console.error("[GESTION_GLOBAL] Error ejecutando UPDATE de GESTION_LISTAS_PRECIOS", {
+      compania: companiaNormalizada,
+      lista: listaNormalizada,
+      factor,
+      variacionPorcentaje: variacion,
+      columnaVariacionUsada: "VARIACION_PORC",
+      error: error instanceof Error ? error.message : error,
+    });
+    if (!committed) {
+      await transaction.rollback().catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
 export async function listarNivelesPrecio(compania: string): Promise<NivelPrecio[]> {
   if (esModoDemo()) return nivelesPrecioDemo(compania);
 

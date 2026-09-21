@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
 import TablaResultadoModal from "./newComponents/TablaResultadoModal";
+import TablaImpactoGestionGlobal from "./newComponents/TablaImpactoGestionGlobal";
+import type { TableLoadParams } from "./newComponents/ResponsiveDataTable";
 import { PROCESOS } from "@/lib/catalog";
 import { textoResultadoAuditoria } from "@/lib/events";
-import type { Identidad, Solicitud } from "@/lib/domain-types";
+import type { FilaPrecio, Identidad, Solicitud } from "@/lib/domain-types";
 
 function pasoDeEstado(estado: string): number {
   if (estado === "BORRADOR" || estado === "CANCELACION_SOLICITADA" || estado === "CANCELADO") return 0;
@@ -60,9 +62,53 @@ export default function RevisionModal({
 }) {
   const [motivo, setMotivo] = useState("");
   const [motivoCancelacion, setMotivoCancelacion] = useState("");
+  const [filasDetalle, setFilasDetalle] = useState(solicitud.filas);
+  const [detalleHasMore, setDetalleHasMore] = useState(false);
+  const [detalleNextOffset, setDetalleNextOffset] = useState<number | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
 
-  const filas = solicitud.filas;
-  console.log(filas);
+  const esGestionGlobal = solicitud.proceso === "FACTOR_PRECIO";
+  useEffect(() => {
+    setFilasDetalle(solicitud.filas);
+    // Las solicitudes nuevas de Gestión Global conservan la primera página
+    // (máximo 200 filas); las páginas restantes se consultan bajo demanda.
+    setDetalleHasMore(esGestionGlobal && solicitud.filas.length >= 200);
+    setDetalleNextOffset(esGestionGlobal && solicitud.filas.length >= 200 ? solicitud.filas.length : null);
+  }, [solicitud.id, solicitud.filas, esGestionGlobal]);
+
+  const cargarDetalle = async ({ offset, limit }: TableLoadParams) => {
+    if (!esGestionGlobal || cargandoDetalle || !detalleHasMore) return;
+    const lista = solicitud.lista?.trim() || solicitud.parametros.nivelPrecio?.trim() || solicitud.parametros.listaBase?.trim() || "";
+    if (!lista) return;
+    setCargandoDetalle(true);
+    try {
+      const query = new URLSearchParams({
+        compania: solicitud.compania,
+        nivel: lista,
+        factor: String(solicitud.parametros.factor ?? ""),
+        tipoVariacion: solicitud.parametros.tipoVariacion ?? "AUMENTO",
+        offset: String(offset),
+        maxRecords: String(limit),
+      });
+      const response = await fetch(`/api/simulacion/gestion-global?${query.toString()}`);
+      const pagina = await response.json() as {
+        filas?: Solicitud["filas"];
+        hasMore?: boolean;
+        nextOffset?: number | null;
+      };
+      if (!response.ok || !Array.isArray(pagina.filas)) return;
+      const filasPagina = pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
+      setFilasDetalle((actuales) => [...actuales, ...filasPagina]);
+      setDetalleHasMore(Boolean(pagina.hasMore));
+      setDetalleNextOffset(pagina.nextOffset ?? null);
+    } catch (error) {
+      console.error("No fue posible cargar la página del detalle de Gestión Global.", error);
+    } finally {
+      setCargandoDetalle(false);
+    }
+  };
+
+  const filas = filasDetalle;
   const puedeDecidir =
     !readOnly && currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
   const puedeAprobar = puedeDecidir && filas.length > 0;
@@ -148,7 +194,17 @@ export default function RevisionModal({
 
         {/* Diff / tabla */}
         {filas.length > 0 ? (
-          <TablaResultadoModal filas={filas} />
+          esGestionGlobal ? (
+            <TablaImpactoGestionGlobal
+              filas={filas as FilaPrecio[]}
+              hasMore={detalleHasMore}
+              nextOffset={detalleNextOffset}
+              loadingMore={cargandoDetalle}
+              onLoadMore={cargarDetalle}
+            />
+          ) : (
+            <TablaResultadoModal filas={filas} />
+          )
         ) : (
           <p className="text-sm text-zinc-500">Esta solicitud no conserva el detalle de las filas.</p>
         )}

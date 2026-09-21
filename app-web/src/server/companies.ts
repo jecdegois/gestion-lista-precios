@@ -163,7 +163,8 @@ export function esModoSoloLectura(): boolean {
  * `SELECT` de catálogos permanecen habilitadas.
  */
 export function esEjecucionSoftlandBloqueada(): boolean {
-  return true;
+  const valor = (process.env.SOFTLAND_EXECUTION_BLOCKED ?? "true").trim().replace(/;$/, "").toLowerCase();
+  return valor !== "false";
 }
 
 export function esModoSoloPortal(): boolean {
