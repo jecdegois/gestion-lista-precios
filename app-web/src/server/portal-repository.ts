@@ -150,6 +150,50 @@ export async function actualizarSolicitud(codigo: string, patch: Partial<Solicit
   await req.query(`UPDATE ${sp} SET ${sets.join(", ")} WHERE CODIGO_SOLICITUD = @cod;`);
 }
 
+/** Guarda el error del procesamiento en las líneas de la solicitud. */
+export async function actualizarMensajeErrorDetalles(codigo: string, mensaje: string): Promise<void> {
+  assertEscrituraPortalHabilitada();
+  if (esModoDemo()) return;
+  const pool = await getPortalPool();
+  const sp = objetoPortal("SOLICITUD");
+  const spd = objetoPortal("SOLICITUD_DETALLE");
+  const mssql = await import("mssql");
+  const solicitud = await pool.request()
+    .input("cod", mssql.VarChar(20), codigo)
+    .query(`SELECT ID_SOLICITUD FROM ${sp} WHERE CODIGO_SOLICITUD = @cod`);
+  const idSolicitud = solicitud.recordset[0]?.ID_SOLICITUD;
+  if (idSolicitud == null) return;
+  await pool.request()
+    .input("idSolicitud", mssql.Int, idSolicitud)
+    .input("mensaje", mssql.VarChar(400), mensaje.slice(0, 400))
+    .query(`UPDATE ${spd} SET MENSAJE_ERROR = @mensaje WHERE ID_SOLICITUD = @idSolicitud`);
+}
+
+/** Marca como aplicado el factor solicitado únicamente en filas exitosas. */
+export async function actualizarFactorAplicadoDetalles(codigo: string): Promise<void> {
+  assertEscrituraPortalHabilitada();
+  if (esModoDemo()) return;
+  const pool = await getPortalPool();
+  const sp = objetoPortal("SOLICITUD");
+  const spd = objetoPortal("SOLICITUD_DETALLE");
+  const mssql = await import("mssql");
+  const solicitud = await pool.request()
+    .input("cod", mssql.VarChar(20), codigo)
+    .query(`SELECT ID_SOLICITUD FROM ${sp} WHERE CODIGO_SOLICITUD = @cod`);
+  const idSolicitud = solicitud.recordset[0]?.ID_SOLICITUD;
+  if (idSolicitud == null) return;
+  await pool.request()
+    .input("idSolicitud", mssql.Int, idSolicitud)
+    .query(`
+      UPDATE D
+         SET D.FACTOR_APLICADO = D.FACTOR_SOLICITADO
+        FROM ${spd} D
+       WHERE D.ID_SOLICITUD = @idSolicitud
+         AND UPPER(LTRIM(RTRIM(COALESCE(D.ESTADO_FILA, '')))) IN ('VALIDO','OK','S','SI','1')
+         AND NULLIF(LTRIM(RTRIM(COALESCE(D.MENSAJE_ERROR, ''))), '') IS NULL;
+    `);
+}
+
 export async function registrarEvento(
   evento: EventoTipo,
   usuario: string,
@@ -248,13 +292,15 @@ async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, 
     .input("descripcion", mssql.VarChar(200), f.descripcion || "")
     .input("precioActual", mssql.Decimal(28, 8), numero(v.precioActual) ?? 0)
     .input("costo", mssql.Decimal(28, 8), numero(v.costo) ?? 0)
-    .input("factorAplicado", mssql.Decimal(9, 6), 0)
+    // El procesador externo todavía no aplica el precio por fila en este
+    // flujo; por eso el valor inicial y el valor visible al cerrar queda en 0.
+    .input("factorAplicado", mssql.Decimal(9, 6), numero((f as FilaPrecio | FilaMargen).factorAplicado) ?? 0)
     .input("precioSimulado", mssql.Decimal(28, 8), numero(v.precioRedondeado ?? v.precioPropuesto) ?? 0)
     .input("porcentajeMargen", mssql.Decimal(9, 6), vMargen?.margenPromedio ?? v.margenMinimo ?? 0)
     .input("estadoFila", mssql.VarChar(20), v.valido ? "VALIDO" : "INVALIDO")
-    .input("mensajeError", mssql.VarChar(400), !v.valido ? v.causa ?? "Error no identificado" : v.estadoRedondeo ?? "")
+    .input("mensajeError", mssql.VarChar(400), (f as FilaPrecio | FilaMargen).mensajeError ?? (!v.valido ? v.causa ?? "Error no identificado" : null))
     .input("idSolicitud", mssql.Int, idSolicitud)
-    .input("factorSolicitado", mssql.Decimal(9, 6), "variacionPorcentaje" in f ? Number(f.variacionPorcentaje ?? 1) : 1)
+    .input("factorSolicitado", mssql.Decimal(9, 6), numero(v.factorPropuesto) ?? 1)
     .input("listaPrecio", mssql.VarChar(400), f.lista ?? "")
     .input("causa", mssql.VarChar(400), v.causa ?? "")
     .query(
@@ -366,6 +412,8 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
   const precioRedondeado = numero(d.PRECIO_SIMULADO);
   const esMargen = proceso === "MARGEN_UTILIDAD_MASIVO";
   const causa = textoNoVacio(d.CAUSA) ?? textoNoVacio(d.MENSAJE_ERROR) ?? null;
+  const factorAplicado = numero(d.FACTOR_APLICADO);
+  const mensajeError = textoNoVacio(d.MENSAJE_ERROR);
   const validacionBase: ValidacionPrecio = {
     valido,
     precioActual,
@@ -391,6 +439,8 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
       porcentajeReduccion: null,
       factorReduccion: null,
       multiplicadorMargen: null,
+      factorAplicado,
+      mensajeError,
       validacion: {
         ...validacionBase,
         costoMinimoBase: null,
@@ -414,12 +464,14 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
     listaCodigo: textoPrimero(d.LISTA_PRECIO, d.LISTA_CODIGO, d.LISTA, listaSolicitud) ?? undefined,
     grupoArticulo: undefined,
     tipoVariacion: undefined,
-    variacionPorcentaje: numero(d.FACTOR_APLICADO) ?? undefined,
-    valorPropuestoRaw: texto(d.FACTOR_APLICADO),
+    variacionPorcentaje: numero(d.FACTOR_SOLICITADO) ?? undefined,
+    valorPropuestoRaw: texto(d.FACTOR_SOLICITADO),
     lista: textoPrimero(d.LISTA_PRECIO, d.LISTA_CODIGO, d.LISTA, listaSolicitud),
     precioCalculado: numero(d.PRECIO_SIMULADO) ?? 0,
     validacion: validacionBase,
     precioMin : numero(d.COSTO) ?? 0,
-    factorPropuesto: numero(d.FACTOR_SOLICITADO) ?? 0
+    factorPropuesto: numero(d.FACTOR_SOLICITADO) ?? 0,
+    factorAplicado,
+    mensajeError,
   };
 }

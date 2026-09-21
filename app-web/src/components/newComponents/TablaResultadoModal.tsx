@@ -35,6 +35,19 @@ const columns: readonly TableColumn<FilaResultado>[] = [
     value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.factorPropuesto) : fila.valorPropuestoRaw ?? "—"}</span>,
   },
   {
+    key: "factorAplicado",
+    header: "Factor Aplicado",
+    align: "right",
+    value: (fila) => <span className="mono">{fila.factorAplicado != null ? fmtFactor(fila.factorAplicado) : "—"}</span>,
+  },
+  {
+    key: "mensajeError",
+    header: "Mensaje de error",
+    value: (fila) => fila.mensajeError
+      ? <span className="block max-w-[280px] truncate text-red-700" title={fila.mensajeError}>{fila.mensajeError}</span>
+      : <span className="text-zinc-400">—</span>,
+  },
+  {
     key: "multiplicador",
     header: "Multiplicador",
     align: "right",

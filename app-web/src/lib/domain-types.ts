@@ -116,6 +116,10 @@ export interface FilaPrecio {
   validacion: ValidacionPrecio;
   precioMin: number;
   factorPropuesto: number;
+  /** Valor persistido por el procesador en SOLICITUD_DETALLE. */
+  factorAplicado?: number | null;
+  /** Mensaje persistido para la fila cuando el procesamiento termina con error. */
+  mensajeError?: string | null;
 }
 
 export interface FilaMargen {
@@ -127,6 +131,8 @@ export interface FilaMargen {
   multiplicadorMargen: number | null;
   validacion: ValidacionMargen;
   lista?: string;
+  factorAplicado?: number | null;
+  mensajeError?: string | null;
 }
 
 export type FilaResultado = FilaPrecio | FilaMargen;
