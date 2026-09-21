@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import LoginScreen from "./LoginScreen";
 import Header, { Vista403, type NavKey } from "./Header";
 import NuevaSolicitud from "./NuevaSolicitud";
@@ -33,6 +33,7 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
   const [eventos, setEventos] = useState<EventoAuditoria[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [modalId, setModalId] = useState<string | null>(null);
+  const pollingEnCurso = useRef(false);
 
   const esAprobador = user?.rol === "APROBADOR";
   const esAuditor = user?.rol === "AUDITOR";
@@ -64,17 +65,29 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
 
   useEffect(() => {
     if (!user) return;
+    const navEsperada = user.rol === "APROBADOR" ? "bandeja" : user.rol === "AUDITOR" ? "auditoria" : "nueva";
+    if (nav !== navEsperada) return;
     if (nav === "auditoria") void refrescarAuditoria();
     else void refrescarSolicitudes();
   }, [user, nav, refrescarAuditoria, refrescarSolicitudes]);
 
   // La actualización periódica solo aplica a las pestañas que consultan solicitudes.
+  const haySolicitudEnProceso = solicitudes.some((s) => s.estado === "EN_PROCESO");
+
   useEffect(() => {
-    if (!user || nav === "auditoria") return;
-    const hayEnProceso = solicitudes.some((s) => s.estado === "EN_PROCESO");
-    const interval = setInterval(() => void refrescarSolicitudes(), hayEnProceso ? 2500 : 8000);
+    if (!user || nav !== "bandeja" || !haySolicitudEnProceso) return;
+    const consultarEstado = async () => {
+      if (pollingEnCurso.current) return;
+      pollingEnCurso.current = true;
+      try {
+        await refrescarSolicitudes();
+      } finally {
+        pollingEnCurso.current = false;
+      }
+    };
+    const interval = setInterval(() => void consultarEstado(), 2500);
     return () => clearInterval(interval);
-  }, [user, nav, solicitudes, refrescarSolicitudes]);
+  }, [user, nav, haySolicitudEnProceso, refrescarSolicitudes]);
 
   function pushToast(message: string, variant?: "success" | "error") {
     const id = Date.now() + Math.random();

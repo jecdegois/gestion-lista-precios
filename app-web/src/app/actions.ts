@@ -28,6 +28,8 @@ import { esEjecucionSoftlandBloqueada, esModoDemo, esModoSoloLectura, esModoSolo
 import { actualizarGestionGlobal, listarCatalogo, listarCatalogoPaginado, listarNivelesPrecio } from "@/server/pricing-repository";
 import {
   actualizarSolicitud,
+  actualizarMensajeErrorDetalles,
+  actualizarFactorAplicadoDetalles,
   agregarSolicitud,
   listarEventos,
   listarSolicitudes,
@@ -742,11 +744,15 @@ export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boole
         variacionPorcentaje: porcentaje,
       });
       await actualizarGestionGlobal(s.compania, lista, factor, porcentaje, input.aprobadorNombre);
+      await actualizarFactorAplicadoDetalles(s.id);
       await finalizarProcesamiento(s.id, [...s.filas], fallidosPrevios, input.aprobadorNombre);
       return { ok: true, idProcesoSP };
     } catch (error) {
       const detalle = error instanceof Error ? error.message : "No fue posible actualizar Gestión Global.";
       await actualizarSolicitud(s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
+      await actualizarMensajeErrorDetalles(s.id, detalle).catch((detalleError) => {
+        console.error("[GESTION_GLOBAL] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
+      });
       return { ok: false, error: detalle, idProcesoSP };
     }
   }

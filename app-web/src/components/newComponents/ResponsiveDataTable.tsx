@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 export interface PageMeta {
@@ -92,6 +92,7 @@ export default function ResponsiveDataTable<Row>({
   onRowActivate,
   rowClassName,
 }: ResponsiveDataTableProps<Row>) {
+  const cargaEnVuelo = useRef(false);
   const totalPages = meta?.totalPages ?? 1;
   const safePage = Math.min(Math.max(page, 1), Math.max(totalPages, 1));
   const hasPagination = Boolean(meta && meta.total > 0 && totalPages > 1);
@@ -115,11 +116,15 @@ export default function ResponsiveDataTable<Row>({
   }
 
   function handleListScroll(event: React.UIEvent<HTMLDivElement>) {
-    if (!onLoadMore || !hasMore || loadingMore || loading) return;
+    if (!onLoadMore || !hasMore || loadingMore || loading || cargaEnVuelo.current) return;
     const element = event.currentTarget;
     const nearEnd = element.scrollHeight - element.scrollTop - element.clientHeight <= 80;
     if (!nearEnd) return;
-    void onLoadMore({ offset: nextOffset ?? rows.length, limit });
+    cargaEnVuelo.current = true;
+    void Promise.resolve(onLoadMore({ offset: nextOffset ?? rows.length, limit }))
+      .finally(() => {
+        cargaEnVuelo.current = false;
+      });
   }
 
   if (loading) {

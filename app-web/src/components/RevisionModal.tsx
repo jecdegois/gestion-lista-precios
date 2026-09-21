@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
 import TablaResultadoModal from "./newComponents/TablaResultadoModal";
@@ -66,10 +66,12 @@ export default function RevisionModal({
   const [detalleHasMore, setDetalleHasMore] = useState(false);
   const [detalleNextOffset, setDetalleNextOffset] = useState<number | null>(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const offsetsDetalleEnCarga = useRef(new Set<number>());
 
   const esGestionGlobal = solicitud.proceso === "FACTOR_PRECIO";
   useEffect(() => {
     setFilasDetalle(solicitud.filas);
+    offsetsDetalleEnCarga.current.clear();
     // Las solicitudes nuevas de Gestión Global conservan la primera página
     // (máximo 200 filas); las páginas restantes se consultan bajo demanda.
     setDetalleHasMore(esGestionGlobal && solicitud.filas.length >= 200);
@@ -77,9 +79,10 @@ export default function RevisionModal({
   }, [solicitud.id, solicitud.filas, esGestionGlobal]);
 
   const cargarDetalle = async ({ offset, limit }: TableLoadParams) => {
-    if (!esGestionGlobal || cargandoDetalle || !detalleHasMore) return;
+    if (!esGestionGlobal || cargandoDetalle || !detalleHasMore || offsetsDetalleEnCarga.current.has(offset)) return;
     const lista = solicitud.lista?.trim() || solicitud.parametros.nivelPrecio?.trim() || solicitud.parametros.listaBase?.trim() || "";
     if (!lista) return;
+    offsetsDetalleEnCarga.current.add(offset);
     setCargandoDetalle(true);
     try {
       const query = new URLSearchParams({
@@ -99,11 +102,17 @@ export default function RevisionModal({
       if (!response.ok || !Array.isArray(pagina.filas)) return;
       const filasPagina = pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
       setFilasDetalle((actuales) => [...actuales, ...filasPagina]);
-      setDetalleHasMore(Boolean(pagina.hasMore));
-      setDetalleNextOffset(pagina.nextOffset ?? null);
+      const siguienteOffset = pagina.nextOffset ?? null;
+      const haySiguientePagina = Boolean(pagina.hasMore)
+        && filasPagina.length > 0
+        && siguienteOffset != null
+        && siguienteOffset > offset;
+      setDetalleHasMore(haySiguientePagina);
+      setDetalleNextOffset(haySiguientePagina ? siguienteOffset : null);
     } catch (error) {
       console.error("No fue posible cargar la página del detalle de Gestión Global.", error);
     } finally {
+      offsetsDetalleEnCarga.current.delete(offset);
       setCargandoDetalle(false);
     }
   };

@@ -20,6 +20,14 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
     },
   },*/
   { key: "factor", header: "Factor", align: "right", value: (fila) => <span className="mono">{fila.valorPropuestoRaw ?? "—"}</span> },
+  { key: "factorAplicado", header: "Factor Aplicado", align: "right", value: (fila) => <span className="mono">{fila.factorAplicado != null ? fila.factorAplicado.toFixed(2) : "—"}</span> },
+  {
+    key: "mensajeError",
+    header: "Mensaje de error",
+    value: (fila) => fila.mensajeError
+      ? <span className="block max-w-[280px] truncate text-red-700" title={fila.mensajeError}>{fila.mensajeError}</span>
+      : <span className="text-zinc-400">—</span>,
+  },
   { key: "precioPropuesto", header: "Precio Calc.", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioPropuesto)}</span> },
   {
     key: "precioRedondeado",
