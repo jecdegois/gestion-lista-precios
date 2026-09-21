@@ -69,13 +69,13 @@ export async function resolverIdentidad(email: string, compania?: string): Promi
         WHERE LOWER(U.EMAIL) = @email
           AND U.ACTIVO = 'S'
           AND UA.COMPANIA = @compania
-          AND U.ROL_GLOBAL IN ('OPERADOR', 'APROBADOR')
+          AND U.ROL_GLOBAL IN ('OPERADOR', 'APROBADOR', 'AUDITOR')
         ORDER BY U.ROL_GLOBAL`,
     );
   const r = q.recordset[0] as Record<string, unknown> | undefined;
   if (!r) return undefined;
   const rol = String(r.ROL_GLOBAL ?? "");
-  if (rol !== "OPERADOR" && rol !== "APROBADOR") return undefined;
+  if (rol !== "OPERADOR" && rol !== "APROBADOR" && rol !== "AUDITOR") return undefined;
   return {
     email: String(r.EMAIL),
     nombre: String(r.NOMBRE),
@@ -564,6 +564,7 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
     archivoNombre: input.archivoNombre ?? null,
     archivoS3Key: input.archivoS3Key ?? null,
     fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
+    fechaCreacion: new Date().toISOString(),
     estado: "PENDIENTE",
     motivoRechazo: null,
     idProcesoSP: null,
@@ -711,4 +712,132 @@ async function finalizarProcesamiento(solicitudId: string, filas: FilaResultado[
     ultimaActualizacion: new Date().toLocaleString("es-CR", { hour12: false }),
   });
   await registrarEvento("EJECUCION_FINALIZADA", aprobador, "APROBADOR", s.compania, solicitudId, s.idProcesoSP);
+}
+
+// ---------------------------------------------------------------------------
+// BORRADOR — guardar solicitud sin enviar a aprobación (DT-02)
+// ---------------------------------------------------------------------------
+export async function guardarBorrador(input: EnviarSolicitudInput): Promise<{ ok: boolean; error?: string; solicitud?: Solicitud }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
+  const identidadPortal = await resolverIdentidad(input.usuarioEmail, input.compania);
+  const idpOperador = identidadPortal?.idpSubject?.trim() || identidadPortal?.email.trim().toLowerCase();
+  if (!identidadPortal || !idpOperador) {
+    return { ok: false, error: "No se encontró una identidad activa para guardar el borrador." };
+  }
+  if (!estaEnAmbito(identidadPortal.compania, input.compania)) {
+    return { ok: false, error: "Esta solicitud está fuera de su ámbito autorizado por compañía." };
+  }
+  const codigo = await siguienteCodigoSolicitud();
+  const solicitud: Solicitud = {
+    id: codigo,
+    proceso: input.proceso,
+    modalidad: input.modalidad,
+    compania: input.compania,
+    solicitanteNombre: identidadPortal.nombre,
+    solicitanteEmail: identidadPortal.email,
+    idpOperador,
+    parametros: input.parametros,
+    filas: input.filas ?? [],
+    archivoNombre: input.archivoNombre ?? null,
+    archivoS3Key: input.archivoS3Key ?? null,
+    fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
+    fechaCreacion: new Date().toISOString(),
+    estado: "BORRADOR",
+    motivoRechazo: null,
+    idProcesoSP: null,
+    lista: input.parametros.nivelPrecio ?? input.parametros.listaBase ?? input.parametros.nivel ?? "",
+  };
+  try {
+    await agregarSolicitud(solicitud);
+  } catch (error) {
+    const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de base de datos.";
+    return { ok: false, error: `No fue posible guardar el borrador: ${detalle}` };
+  }
+  try {
+    await registrarEvento(
+      "SOLICITUD_GUARDADA_BORRADOR",
+      identidadPortal.nombre,
+      identidadPortal.rol,
+      input.compania,
+      solicitud.id,
+      null,
+      identidadPortal.email,
+    );
+  } catch (error) {
+    const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de auditoría.";
+    return { ok: false, error: `Borrador guardado pero no se pudo registrar el evento: ${detalle}` };
+  }
+  return { ok: true, solicitud };
+}
+
+// ---------------------------------------------------------------------------
+// ENVIAR BORRADOR — transicionar un borrador existente a PENDIENTE (DT-02)
+// ---------------------------------------------------------------------------
+export async function enviarBorrador(
+  solicitudId: string,
+  usuarioEmail: string,
+  usuarioNombre: string,
+  usuarioRol: Rol,
+): Promise<{ ok: boolean; error?: string }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
+  const s = await obtenerSolicitud(solicitudId);
+  if (!s) return { ok: false, error: "Solicitud no encontrada." };
+  if (s.estado !== "BORRADOR") return { ok: false, error: "Solo se puede enviar una solicitud en estado BORRADOR." };
+  if (s.solicitanteEmail !== usuarioEmail) return { ok: false, error: "Solo el solicitante original puede enviar este borrador." };
+  await actualizarSolicitud(solicitudId, { estado: "PENDIENTE" });
+  await registrarEvento("BORRADOR_ENVIADO", usuarioNombre, usuarioRol, s.compania, solicitudId, null, usuarioEmail);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// CANCELACIÓN — solicitar y decidir sobre cancelación de solicitud (DT-03)
+// ---------------------------------------------------------------------------
+export async function solicitarCancelacion(
+  solicitudId: string,
+  motivo: string,
+  usuarioEmail: string,
+  usuarioNombre: string,
+  usuarioRol: Rol,
+): Promise<{ ok: boolean; error?: string }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
+  const s = await obtenerSolicitud(solicitudId);
+  if (!s) return { ok: false, error: "Solicitud no encontrada." };
+  if (s.estado !== "PENDIENTE") {
+    return { ok: false, error: "Solo se puede solicitar la cancelación de una solicitud PENDIENTE." };
+  }
+  if (s.solicitanteEmail !== usuarioEmail) {
+    return { ok: false, error: "Solo el solicitante original puede pedir la cancelación." };
+  }
+  if (!motivo || motivo.trim().length === 0) {
+    return { ok: false, error: "El motivo de cancelación es obligatorio." };
+  }
+  await actualizarSolicitud(solicitudId, {
+    estado: "CANCELACION_SOLICITADA",
+    motivoRechazo: motivo.trim(),
+  });
+  await registrarEvento("CANCELACION_SOLICITADA", usuarioNombre, usuarioRol, s.compania, solicitudId, null, usuarioEmail);
+  return { ok: true };
+}
+
+export async function decidirCancelacion(
+  solicitudId: string,
+  aprobada: boolean,
+  aprobadorEmail: string,
+  aprobadorNombre: string,
+  aprobadorRol: Rol,
+): Promise<{ ok: boolean; error?: string }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
+  const s = await obtenerSolicitud(solicitudId);
+  if (!s) return { ok: false, error: "Solicitud no encontrada." };
+  if (s.estado !== "CANCELACION_SOLICITADA") {
+    return { ok: false, error: "La solicitud no tiene una cancelación pendiente de decisión." };
+  }
+  if (aprobadorRol !== "APROBADOR") {
+    return { ok: false, error: "Solo un Aprobador puede decidir sobre una cancelación." };
+  }
+  const nuevoEstado = aprobada ? "CANCELADO" : "PENDIENTE";
+  const evento = aprobada ? "CANCELACION_CONFIRMADA" : "CANCELACION_DENEGADA";
+  await actualizarSolicitud(solicitudId, { estado: nuevoEstado });
+  await registrarEvento(evento, aprobadorNombre, aprobadorRol, s.compania, solicitudId, null, aprobadorEmail);
+  return { ok: true };
 }

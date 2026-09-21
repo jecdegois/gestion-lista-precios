@@ -19,8 +19,9 @@ import {
   calcularCostoMinimoArticulo,
 } from "@/lib/catalog";
 import { calcularVariacion, redondeoPreview } from "@/lib/preview";
-import { simularManual, simularGestionGlobalPaginado, enviarSolicitud, obtenerCatalogoSolicitud } from "@/app/actions";
-import type { ArticuloCatalogo, CriteriosArticulo, FilaPrecio, FilaResultado, Identidad, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
+import { simularManual, simularGestionGlobalPaginado, enviarSolicitud, guardarBorrador, enviarBorrador, obtenerCatalogoSolicitud } from "@/app/actions";
+import type { ArticuloCatalogo, CriteriosArticulo, FilaPrecio, FilaResultado, Identidad, ProcesoKey, Solicitud, TipoVariacion } from "@/lib/domain-types";
+import { esFilaMargen } from "@/lib/domain-types";
 import type { NivelPrecio } from "@/lib/types";
 
 interface ItemManual {
@@ -85,32 +86,54 @@ export default function NuevaSolicitud({
   readOnly,
   consultaOnly = false,
   currentUser,
+  borrador,
   onEnviado,
   onToast,
 }: {
   readOnly: boolean;
   consultaOnly?: boolean;
   currentUser: Identidad;
+  borrador?: Solicitud;
   onEnviado: () => void;
   onToast: (msg: string, variant?: "success" | "error") => void;
 }) {
   const compania = currentUser.compania as string;
   const bloquearCaptura = readOnly && !consultaOnly;
-  const [tab, setTab] = useState<ProcesoKey>("FACTOR_PRECIO");
-  const [modalidad, setModalidad] = useState<"manual" | "excel">("manual");
-  const [nivel, setNivel] = useState("");
+
+  // Función auxiliar para construir itemsManual desde las filas del borrador
+  function itemsDesdeFilasBorrador(filas: FilaResultado[]): ItemManual[] {
+    return filas
+      .filter((f): f is FilaPrecio => !esFilaMargen(f))
+      .map((f, i) => ({
+        fila: i + 1,
+        codigo: f.codigo,
+        listaCodigo: f.listaCodigo ?? "",
+        lista: f.lista ?? "",
+        tipoVariacion: f.tipoVariacion ?? "AUMENTO",
+        variacionPorcentaje: String(f.variacionPorcentaje ?? ""),
+      }));
+  }
+
+  const esBorradorDescuentoManual = borrador?.proceso === "DESCUENTO_LISTA_PRECIO" && borrador?.modalidad === "manual";
+
+  const [tab, setTab] = useState<ProcesoKey>(borrador?.proceso ?? "FACTOR_PRECIO");
+  const [modalidad, setModalidad] = useState<"manual" | "excel">(borrador?.modalidad ?? "manual");
+  const [nivel, setNivel] = useState(borrador?.parametros?.nivelPrecio ?? borrador?.parametros?.listaBase ?? borrador?.parametros?.nivel ?? "");
   const [codigoArticulo, setCodigoArticulo] = useState("");
-  const [criteriosArticulo, setCriteriosArticulo] = useState<CriteriosArticulo>({});
-  const [factor, setFactor] = useState("");
-  const [itemsManual, setItemsManual] = useState<ItemManual[]>([]);
+  const [criteriosArticulo, setCriteriosArticulo] = useState<CriteriosArticulo>(borrador?.parametros?.criteriosArticulo ?? {});
+  const [factor, setFactor] = useState(String(borrador?.parametros?.factor ?? ""));
+  const [itemsManual, setItemsManual] = useState<ItemManual[]>(
+    esBorradorDescuentoManual && borrador?.filas?.length ? itemsDesdeFilasBorrador(borrador.filas) : []
+  );
   const [errorItem, setErrorItem] = useState<string | null>(null);
   const [ack, setAck] = useState(false);
-  const [simulado, setSimulado] = useState(false);
-  const [filas, setFilas] = useState<FilaResultado[] | null>(null);
+  const [simulado, setSimulado] = useState(!!(borrador?.filas?.length));
+  const [filas, setFilas] = useState<FilaResultado[] | null>(borrador?.filas?.length ? borrador.filas : null);
   const [sending, setSending] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [sent, setSent] = useState(false);
-  const [archivoNombre, setArchivoNombre] = useState<string | null>(null);
-  const [archivoS3Key, setArchivoS3Key] = useState<string | null>(null);
+  const [archivoNombre, setArchivoNombre] = useState<string | null>(borrador?.archivoNombre ?? null);
+  const [archivoS3Key, setArchivoS3Key] = useState<string | null>(borrador?.archivoS3Key ?? null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [nivelesPrecio, setNivelesPrecio] = useState<NivelPrecio[]>([]);
   const [articulosMaestros, setArticulosMaestros] = useState<ArticuloCatalogo[]>([]);
@@ -129,6 +152,11 @@ export default function NuevaSolicitud({
   const articulosAbortRef = useRef<AbortController | null>(null);
   const simulacionGlobalRequestRef = useRef(0);
   const simulacionGlobalAbortRef = useRef<AbortController | null>(null);
+
+  // ID del borrador que se está retomando (null = solicitud nueva)
+  const [borradorId, setBorradorId] = useState<string | null>(borrador?.id ?? null);
+  // Evita que useEffect([tab]) limpie el estado en el montaje inicial
+  const montajeInicialRef = useRef(true);
 
   const proceso = PROCESOS[tab];
   const esDescuento = tab === "DESCUENTO_LISTA_PRECIO";
@@ -202,8 +230,12 @@ export default function NuevaSolicitud({
     ? redondeoPreview(articuloSel.precioActual * conversion.factor)
     : null;
 
-  // Reset al cambiar de pestaña.
+  // Reset al cambiar de pestaña. No corre en el montaje inicial (preserva estado del borrador).
   useEffect(() => {
+    if (montajeInicialRef.current) {
+      montajeInicialRef.current = false;
+      return;
+    }
     setModalidad("manual");
     setNivel("");
     setCodigoArticulo("");
@@ -368,6 +400,7 @@ export default function NuevaSolicitud({
   }, [cargarArticulosPaginados, esDescuento, modalidad, nivel]);
 
   useEffect(() => {
+    if (montajeInicialRef.current) return; // preserva criterios del borrador en montaje
     setCriteriosArticulo({});
   }, [nivel]);
 
@@ -380,6 +413,7 @@ export default function NuevaSolicitud({
 
   // Cualquier cambio de parámetros invalida la simulación previa (manual).
   useEffect(() => {
+    if (montajeInicialRef.current) return; // preserva simulación del borrador en montaje
     setSimulado(false);
     setSent(false);
     if (esGestionGlobal) {
@@ -507,6 +541,42 @@ export default function NuevaSolicitud({
 
   const conteoErrores = filas ? filas.filter((f) => !f.validacion.valido).length : 0;
 
+  async function handleGuardarBorrador() {
+    if (!camposCompletos()) return;
+    setSavingDraft(true);
+    const parametros = {
+      nivel,
+      factor,
+      tipoVariacion: "AUMENTO" as TipoVariacion,
+      variacionPorcentaje: factor,
+      listaBase: esListaBase ? nivel : undefined,
+      nivelPrecio: nivel || undefined,
+      grupoArticulos: esListaBase ? "Criterios seleccionados" : undefined,
+      criteriosArticulo: esListaBase ? criteriosArticulo : undefined,
+      codigosArticulos: esListaBase ? codigosArticulosCriterio : undefined,
+      articulos: esDescuento ? filas ?? [] : undefined,
+    };
+    const res = await guardarBorrador({
+      proceso: tab,
+      modalidad: esMargen ? "excel" : modalidad,
+      usuarioEmail: currentUser.email,
+      usuarioNombre: currentUser.nombre,
+      usuarioRol: currentUser.rol,
+      compania,
+      parametros,
+      filas: filas ?? [],
+      archivoNombre,
+      archivoS3Key,
+    });
+    setSavingDraft(false);
+    if (!res.ok) {
+      onToast(res.error ?? "No fue posible guardar el borrador.", "error");
+      return;
+    }
+    onToast(`Borrador ${res.solicitud?.id} guardado. Puedes retomarlo desde "Mis solicitudes".`, "success");
+    onEnviado();
+  }
+
   async function handleEnviar() {
     if (!puedeEnviar()) return;
     if (esDescuento && modalidad === "manual" && nivel && !nivelesPrecio.some((item) => item.codigo === nivel)) {
@@ -514,6 +584,35 @@ export default function NuevaSolicitud({
       return;
     }
     setSending(true);
+
+    // Si es un borrador que se está retomando, solo cambiar su estado a PENDIENTE
+    if (borradorId) {
+      const res = await enviarBorrador(borradorId, currentUser.email, currentUser.nombre, currentUser.rol);
+      setSending(false);
+      if (!res.ok) {
+        onToast(res.error ?? "No fue posible enviar el borrador.", "error");
+        return;
+      }
+      setSent(true);
+      onToast(`Solicitud ${borradorId} enviada a aprobación · Estado: Pendiente de aprobación`, "success");
+      setBorradorId(null);
+      onEnviado();
+      setTimeout(() => {
+        setSimulado(false);
+        setFilas(null);
+        setItemsManual([]);
+        setFactor("");
+        setNivel("");
+        setCriteriosArticulo({});
+        setAck(false);
+        setSent(false);
+        setArchivoNombre(null);
+        setArchivoS3Key(null);
+      }, 1300);
+      return;
+    }
+
+    // Solicitud nueva (flujo original)
     const parametros = {
       nivel,
       factor,
@@ -562,6 +661,24 @@ export default function NuevaSolicitud({
 
   return (
     <div className="card p-5">
+      {/* Banner de borrador activo */}
+      {borradorId && (
+        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 flex items-center gap-3">
+          <Icon name="fileEdit" className="w-4 h-4 text-amber-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-900">Retomando borrador <span className="mono">{borradorId}</span></p>
+            <p className="text-xs text-amber-700">Modifica los datos, vuelve a simular si es necesario y usa "Enviar a aprobación" cuando estés listo.</p>
+          </div>
+          <button
+            className="btn btn-ghost btn-sm text-amber-700"
+            onClick={() => { setBorradorId(null); setFilas(null); setSimulado(false); setFactor(""); setNivel(""); }}
+            title="Descartar y crear solicitud nueva"
+          >
+            <Icon name="x" className="w-3.5 h-3.5" /> Descartar
+          </button>
+        </div>
+      )}
+
       {/* Tabs de proceso */}
       <div className="tabs-list mb-4">
         {ORDEN_PROCESOS.map((key) => (
@@ -789,6 +906,9 @@ export default function NuevaSolicitud({
       <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
         <button className="btn btn-outline" disabled={bloquearCaptura || !camposCompletos() || cargandoSimulacionGlobal || cargandoMasSimulacionGlobal} onClick={handleSimular}>
           <Icon name="search" className="w-3.5 h-3.5" /> {(modalidad === "excel" && permiteExcel) || esMargen ? "Precalcular impacto" : "Simular impacto"}
+        </button>
+        <button className="btn btn-outline" disabled={!camposCompletos() || !simulado || !filas || filas.length === 0 || savingDraft || sending} onClick={handleGuardarBorrador} title="Simula el impacto primero para poder guardar el borrador">
+          {savingDraft ? (<><Icon name="loader" className="w-3.5 h-3.5" spin /> Guardando…</>) : <><Icon name="save" className="w-3.5 h-3.5" /> Guardar borrador</>}
         </button>
         <button className={"btn " + (esListaBase ? "btn-destructive" : "btn-default")} disabled={!puedeEnviar() || sending} onClick={handleEnviar}>
           {sending ? (<><Icon name="loader" className="w-3.5 h-3.5" spin /> Enviando…</>) : sent ? (<><Icon name="check" className="w-3.5 h-3.5" /> Enviado</>) : esMargen ? "Enviar recálculo a Aprobación" : "Enviar a Aprobación"}

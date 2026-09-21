@@ -2,7 +2,7 @@
 
 import type { EstadoRedondeo } from "./rounding";
 
-export type Rol = "OPERADOR" | "APROBADOR" | "SIN_PERMISO";
+export type Rol = "OPERADOR" | "APROBADOR" | "AUDITOR" | "SIN_PERMISO";
 
 export interface Identidad {
   email: string;
@@ -132,7 +132,10 @@ export interface FilaMargen {
 export type FilaResultado = FilaPrecio | FilaMargen;
 
 export type EstadoSolicitud =
+  | "BORRADOR"
   | "PENDIENTE"
+  | "CANCELACION_SOLICITADA"
+  | "CANCELADO"
   | "EN_PROCESO"
   | "PROCESADO"
   | "PROCESADO_CON_ERRORES"
@@ -186,6 +189,8 @@ export interface Solicitud {
   archivoNombre: string | null;
   archivoS3Key: string | null;
   fechaEnvio: string;
+  /** Timestamp ISO para ordenación. Siempre presente cuando viene de BD. */
+  fechaCreacion?: string;
   estado: EstadoSolicitud;
   motivoRechazo: string | null;
   idProcesoSP: string | null;
@@ -196,8 +201,13 @@ export interface Solicitud {
 }
 
 export type EventoTipo =
+  | "SOLICITUD_GUARDADA_BORRADOR"
+  | "BORRADOR_ENVIADO"
   | "SOLICITUD_ENVIADA"
   | "SOLICITUD_RECHAZADA"
+  | "CANCELACION_SOLICITADA"
+  | "CANCELACION_CONFIRMADA"
+  | "CANCELACION_DENEGADA"
   | "SIMULACION_REVISADA"
   | "SIMULACION_EJECUTADA_COMO_SOLICITANTE"
   | "EJECUCION_ENCOLADA"

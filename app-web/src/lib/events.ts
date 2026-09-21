@@ -1,8 +1,13 @@
 import type { EstadoSolicitud, EventoTipo } from "./domain-types";
 
 export const EVENTOS_AUDITORIA: Record<EventoTipo, string> = {
+  SOLICITUD_GUARDADA_BORRADOR: "Solicitud guardada como borrador",
+  BORRADOR_ENVIADO: "Borrador enviado a aprobación",
   SOLICITUD_ENVIADA: "Solicitud enviada a aprobación",
   SOLICITUD_RECHAZADA: "Solicitud rechazada",
+  CANCELACION_SOLICITADA: "Cancelación solicitada por el operador",
+  CANCELACION_CONFIRMADA: "Cancelación confirmada por el aprobador",
+  CANCELACION_DENEGADA: "Cancelación denegada — solicitud vuelve a PENDIENTE",
   SIMULACION_REVISADA: "Simulación revisada por el aprobador",
   SIMULACION_EJECUTADA_COMO_SOLICITANTE: "Simulación verificada con los parámetros del solicitante",
   EJECUCION_ENCOLADA: "Ejecución autorizada y encolada",

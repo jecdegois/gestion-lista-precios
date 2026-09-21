@@ -332,7 +332,39 @@ Los SPs `SP_APROBADOR_APRUEBA_RECHAZA`, `SP_EJECUTAR_SOLICITUD_APROBADA` y `FN_O
 
 ---
 
-## PASO 4: Integración Real con Softland (⏳ PENDIENTE — PRÓXIMA SESIÓN)
+## PASO 4: Integración Real con Softland (⏳ PENDIENTE)
+
+**Status:** Plan aprobado — listo para iniciar  
+**Última Actualización:** 2026-09-21  
+**Documento del Plan:** `aidlc-docs/construction/planes/paso4-plan-trabajo.md`
+
+### Sesión 2026-09-21 — Deuda Técnica Resuelta
+
+Antes de continuar con PASO 4, se resolvieron tres ítems de deuda técnica:
+
+| ID | Descripción | Estado |
+|----|-------------|--------|
+| DT-02 | Estado BORRADOR | ✅ Resuelto |
+| DT-03 | Flujo de cancelación (maker-checker) | ✅ Resuelto |
+| DT-04 | Rol Auditor | ✅ Resuelto |
+
+**Archivos modificados:**
+- `app-web/src/lib/domain-types.ts` — Rol += AUDITOR; EstadoSolicitud += BORRADOR, CANCELACION_SOLICITADA, CANCELADO; EventoTipo += 5 nuevos eventos
+- `app-web/src/lib/events.ts` — etiquetas para nuevos EventoTipos
+- `app-web/src/server/portal-repository.ts` — INSERT de SOLICITUD parametriza @estado (ya no hardcodea 'PENDIENTE')
+- `app-web/src/server/requests-store.ts` — seeds demo actualizados con campo `lista`
+- `app-web/src/app/actions.ts` — nuevas funciones: `guardarBorrador`, `enviarBorrador`, `solicitarCancelacion`, `decidirCancelacion`; `resolverIdentidad` amplía SQL a AUDITOR
+- `app-web/src/components/PortalApp.tsx` — nav AUDITOR → auditoria; handlers cancelación
+- `app-web/src/components/Header.tsx` — oculta "Nueva Solicitud" para AUDITOR
+- `app-web/src/components/RevisionModal.tsx` — props + UI para cancelación (pedir / decidir)
+- `app-web/src/components/MisSolicitudes.tsx` — botón Cancelar para solicitudes PENDIENTE propias
+- `app-web/src/components/NuevaSolicitud.tsx` — botón "Guardar borrador"
+- `app-web/src/components/Badges.tsx` — badges para BORRADOR, CANCELACION_SOLICITADA, CANCELADO
+
+**Pendiente en BD (scripts no ejecutados aún):**
+- `CK_PP_SOL_ESTADO` — agregar valores `'BORRADOR'` y `'CANCELACION_SOLICITADA'` y `'CANCELADO'`
+- `CK_PP_USR_ROL` — agregar valor `'AUDITOR'`
+- INSERT de usuario de prueba con `ROL_GLOBAL = 'AUDITOR'` en SOFTLANDQA
 
 **Status:** Plan aprobado — listo para iniciar  
 **Última Actualización:** 2026-09-18  

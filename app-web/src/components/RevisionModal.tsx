@@ -9,6 +9,7 @@ import { textoResultadoAuditoria } from "@/lib/events";
 import type { Identidad, Solicitud } from "@/lib/domain-types";
 
 function pasoDeEstado(estado: string): number {
+  if (estado === "BORRADOR" || estado === "CANCELACION_SOLICITADA" || estado === "CANCELADO") return 0;
   if (estado === "PENDIENTE") return 0;
   if (estado === "EN_PROCESO") return 1;
   return 2;
@@ -45,6 +46,8 @@ export default function RevisionModal({
   onClose,
   onRechazar,
   onAprobar,
+  onCancelar,
+  onDecidirCancelacion,
 }: {
   solicitud: Solicitud;
   currentUser: Identidad;
@@ -52,8 +55,11 @@ export default function RevisionModal({
   onClose: () => void;
   onRechazar: (id: string, motivo: string) => void;
   onAprobar: (id: string) => void;
+  onCancelar?: (id: string, motivo: string) => void;
+  onDecidirCancelacion?: (id: string, aprobada: boolean) => void;
 }) {
   const [motivo, setMotivo] = useState("");
+  const [motivoCancelacion, setMotivoCancelacion] = useState("");
 
   const filas = solicitud.filas;
   console.log(filas);
@@ -62,11 +68,26 @@ export default function RevisionModal({
   const puedeAprobar = puedeDecidir && filas.length > 0;
   const enProceso = solicitud.estado === "EN_PROCESO";
   const resultado = solicitud.resultado;
+
+  // Cancelación: solicitante puede pedir cancelación de su propia solicitud PENDIENTE
+  const puedeSolicitarCancelacion =
+    !readOnly &&
+    onCancelar != null &&
+    currentUser.email === solicitud.solicitanteEmail &&
+    solicitud.estado === "PENDIENTE";
+
+  // Aprobador puede decidir si la cancelación fue solicitada
+  const puedeDecidirCancelacion =
+    !readOnly &&
+    onDecidirCancelacion != null &&
+    currentUser.rol === "APROBADOR" &&
+    solicitud.estado === "CANCELACION_SOLICITADA";
   const esActualizacionListaBase = solicitud.proceso === "MAYOREOD_MASIVO";
   const nivelListaBase = solicitud.parametros.nivelPrecio
     ?? solicitud.parametros.listaBase
     ?? solicitud.parametros.nivel
     ?? "—";
+  const listaPrecio = solicitud.lista?.trim() || nivelListaBase;
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -79,7 +100,7 @@ export default function RevisionModal({
               <EstadoBadge estado={solicitud.estado} />
             </div>
             <p className="text-xs text-zinc-500 mt-1">
-              Solicitante: {solicitud.solicitanteNombre} · Compañía: {solicitud.compania} · {solicitud.fechaEnvio}
+              Solicitante: {solicitud.solicitanteNombre} · Compañía: {solicitud.compania} · Lista: {listaPrecio} · {solicitud.fechaEnvio}
             </p>
           </div>
           <button className="btn btn-ghost" onClick={onClose}><Icon name="x" className="w-4 h-4" /></button>
@@ -91,6 +112,7 @@ export default function RevisionModal({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <Card label="Filas evaluadas" value={String(filas.length)} />
           <Card label="Con hallazgo" value={String(filas.filter((f) => !f.validacion.valido).length)} />
+          <Card label="Lista de precios" value={listaPrecio} />
           <Card label="Modalidad" value={solicitud.modalidad} />
           <Card label="Ejecución" value={PROCESOS[solicitud.proceso].ejecucion} />
         </div>
@@ -131,7 +153,54 @@ export default function RevisionModal({
           <p className="text-sm text-zinc-500">Esta solicitud no conserva el detalle de las filas.</p>
         )}
 
-        {/* Acciones */}
+        {/* Acciones de cancelación — solicitante pide cancelar su propia solicitud PENDIENTE */}
+        {puedeSolicitarCancelacion && (
+          <div className="mt-4 space-y-2 border-t border-zinc-100 pt-4">
+            <p className="text-xs font-medium text-zinc-500">Solicitar cancelación</p>
+            <textarea
+              className="input"
+              rows={2}
+              value={motivoCancelacion}
+              onChange={(e) => setMotivoCancelacion(e.target.value)}
+              placeholder="Motivo de cancelación (obligatorio)"
+            />
+            <div className="flex justify-end">
+              <button
+                className="btn btn-outline"
+                disabled={motivoCancelacion.trim().length === 0}
+                onClick={() => { onCancelar!(solicitud.id, motivoCancelacion.trim()); onClose(); }}
+              >
+                <Icon name="xCircle" className="w-3.5 h-3.5" /> Solicitar cancelación
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Acciones para aprobador cuando hay cancelación pendiente */}
+        {puedeDecidirCancelacion && (
+          <div className="mt-4 space-y-2 border-t border-amber-100 pt-4 rounded-lg bg-amber-50 px-4 py-3">
+            <p className="text-sm font-semibold text-amber-900">Cancelación solicitada por el operador</p>
+            {solicitud.motivoRechazo && (
+              <p className="text-xs text-amber-800">Motivo: {solicitud.motivoRechazo}</p>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <button
+                className="btn btn-outline"
+                onClick={() => { onDecidirCancelacion!(solicitud.id, false); onClose(); }}
+              >
+                Denegar cancelación
+              </button>
+              <button
+                className="btn btn-destructive"
+                onClick={() => { onDecidirCancelacion!(solicitud.id, true); onClose(); }}
+              >
+                <Icon name="check" className="w-3.5 h-3.5" /> Confirmar cancelación
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Acciones del aprobador: aprobar o rechazar */}
         {puedeDecidir ? (
           <div className="mt-5 space-y-3 border-t border-zinc-100 pt-4">
             <div>
