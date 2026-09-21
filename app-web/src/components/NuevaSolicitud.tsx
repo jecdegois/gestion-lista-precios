@@ -483,7 +483,7 @@ export default function NuevaSolicitud({
   }
 
   function puedeEnviar(): boolean {
-    return simulado && camposCompletos() && !readOnly && (!esGestionGlobal || (!simulacionGlobalHasMore && !cargandoSimulacionGlobal && !cargandoMasSimulacionGlobal));
+    return simulado && camposCompletos() && !readOnly && (!esGestionGlobal || (!cargandoSimulacionGlobal && !cargandoMasSimulacionGlobal));
   }
 
   async function handleSimular() {
@@ -926,13 +926,20 @@ export default function NuevaSolicitud({
             <Icon name="check" className="w-3.5 h-3.5" /> Simulación completada. Revise los valores resultantes antes de continuar.
           </div>
           {esGestionGlobal ? (
-            <TablaImpactoGestionGlobal
-              filas={filas as FilaPrecio[]}
-              hasMore={simulacionGlobalHasMore}
-              nextOffset={simulacionGlobalNextOffset}
-              loadingMore={cargandoMasSimulacionGlobal}
-              onLoadMore={cargarPaginaGestionGlobal}
-            />
+            <>
+              {simulacionGlobalHasMore && (
+                <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-2.5 text-xs text-blue-800 mb-3">
+                  Se muestra una página del impacto. El resto de los artículos se consulta bajo demanda; no es necesario cargar toda la lista para enviar la solicitud.
+                </div>
+              )}
+              <TablaImpactoGestionGlobal
+                filas={filas as FilaPrecio[]}
+                hasMore={simulacionGlobalHasMore}
+                nextOffset={simulacionGlobalNextOffset}
+                loadingMore={cargandoMasSimulacionGlobal}
+                onLoadMore={cargarPaginaGestionGlobal}
+              />
+            </>
           ) : esListaBase ? (
             <TablaImpactoActualizacionMasiva filas={filas as FilaPrecio[]} />
           ) : esDescuento ? (

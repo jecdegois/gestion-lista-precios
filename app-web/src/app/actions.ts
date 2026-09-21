@@ -25,7 +25,7 @@ import type {
 import type { NivelPrecio } from "@/lib/types";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
 import { esEjecucionSoftlandBloqueada, esModoDemo, esModoSoloLectura, esModoSoloPortal, objetoPortal } from "@/server/companies";
-import { listarCatalogo, listarCatalogoPaginado, listarNivelesPrecio } from "@/server/pricing-repository";
+import { actualizarGestionGlobal, listarCatalogo, listarCatalogoPaginado, listarNivelesPrecio } from "@/server/pricing-repository";
 import {
   actualizarSolicitud,
   agregarSolicitud,
@@ -516,11 +516,49 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
     return { ok: false, error: "La solicitud contiene una lista que no existe en los maestros de Softland." };
   }
 
-  const contextosPorLista = await cargarContextosPorLista(input.compania, niveles, nivelesCanonicos);
   const listaPredeterminada = resolverNivelPrecio(
     niveles,
     input.parametros.nivelPrecio ?? input.parametros.listaBase ?? input.parametros.nivel,
   );
+  if (!listaPredeterminada) {
+    return { ok: false, error: "La solicitud no contiene una lista de precio válida." };
+  }
+  if (input.proceso === "FACTOR_PRECIO") {
+    if (input.filas.length === 0) {
+      return { ok: false, error: "La simulación de Gestión Global no contiene filas de impacto." };
+    }
+    const filasConLista = input.filas.map((fila) => ({ ...fila, lista: listaPredeterminada }));
+    const codigo = await siguienteCodigoSolicitud();
+    const solicitud: Solicitud = {
+      id: codigo,
+      proceso: input.proceso,
+      modalidad: input.modalidad,
+      compania: input.compania,
+      solicitanteNombre: identidadPortal.nombre,
+      solicitanteEmail: identidadPortal.email,
+      idpOperador,
+      parametros: input.parametros,
+      filas: filasConLista,
+      archivoNombre: input.archivoNombre ?? null,
+      archivoS3Key: input.archivoS3Key ?? null,
+      fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
+      fechaCreacion: new Date().toISOString(),
+      estado: "PENDIENTE",
+      motivoRechazo: null,
+      idProcesoSP: null,
+      lista: listaPredeterminada,
+    };
+    try {
+      await agregarSolicitud(solicitud);
+      await registrarEvento("SOLICITUD_ENVIADA", identidadPortal.nombre, identidadPortal.rol, input.compania, solicitud.id, null, identidadPortal.email);
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de base de datos no identificado.";
+      return { ok: false, error: `No fue posible registrar la solicitud en el Portal: ${detalle}` };
+    }
+    return { ok: true, solicitud };
+  }
+
+  const contextosPorLista = await cargarContextosPorLista(input.compania, niveles, nivelesCanonicos);
   const contieneArticulo = (listaCodigo: string, codigoArticulo: string): boolean => {
     const contexto = contextosPorLista.get(listaCodigo);
     const codigoNormalizado = codigoArticulo.trim().toUpperCase();
@@ -661,6 +699,20 @@ export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boole
     return { ok: false, error: "La solicitud está fuera de su ámbito autorizado." };
   }
 
+  if (s.filas.length === 0) {
+    return { ok: false, error: "La solicitud no tiene filas para procesar." };
+  }
+  const fallidosPrevios = s.filas.filter((fila) => !fila.validacion.valido).length;
+  // Gestión Global conserva una página del impacto y completa el detalle bajo
+  // demanda; no se puede concluir que todas las filas sean inválidas usando
+  // únicamente esa página parcial.
+  if (fallidosPrevios === s.filas.length && s.proceso !== "FACTOR_PRECIO") {
+    return { ok: false, error: "La solicitud no se puede procesar porque todas sus filas son inválidas." };
+  }
+  if (s.proceso === "FACTOR_PRECIO" && !esModoDemo() && esModoSoloPortal()) {
+    return errorSoloPortal();
+  }
+
   const idProcesoSP = nuevoIdProcesoSP();
   await actualizarSolicitud(input.solicitudId, {
     estado: "EN_PROCESO",
@@ -674,6 +726,31 @@ export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boole
   // Este flujo no ejecuta SP/UDF ni instrucciones de modificación en Softland.
   // Solo utiliza datos que ya fueron consultados mediante SELECT para generar
   // un resultado simulado, visible y trazable en la aplicación.
+  if (s.proceso === "FACTOR_PRECIO" && !esModoDemo()) {
+    try {
+      const lista = s.lista.trim() || String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
+      const factorPorcentajeOriginal = s.parametros.factor ?? "";
+      const porcentaje = Number(factorPorcentajeOriginal);
+      const factor = 1 + porcentaje / 100;
+      console.info("[GESTION_GLOBAL] Parámetros recibidos para actualización", {
+        solicitudId: s.id,
+        compania: s.compania,
+        lista,
+        factorPorcentajeOriginal,
+        porcentajeConvertido: porcentaje,
+        factorMultiplicador: factor,
+        variacionPorcentaje: porcentaje,
+      });
+      await actualizarGestionGlobal(s.compania, lista, factor, porcentaje, input.aprobadorNombre);
+      await finalizarProcesamiento(s.id, [...s.filas], fallidosPrevios, input.aprobadorNombre);
+      return { ok: true, idProcesoSP };
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "No fue posible actualizar Gestión Global.";
+      await actualizarSolicitud(s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
+      return { ok: false, error: detalle, idProcesoSP };
+    }
+  }
+
   void simularProcesamientoDemo(s.id);
 
   return { ok: true, idProcesoSP };
