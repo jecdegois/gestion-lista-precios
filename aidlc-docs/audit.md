@@ -2047,3 +2047,38 @@ MENSAJE_ERROR
 - `.kiro/steering/00-deuda-tecnica-mv26020.md` — presentación automática al inicio de sesión
 
 ---
+
+## Sesión de Deuda Técnica — DT-02, DT-03, DT-04
+**Timestamp**: 2026-09-21T00:00:00Z
+**User Input**: "vamos con dt-02, dt-03 y dt-04"
+**AI Response**: Implementación completa de los tres ítems de deuda técnica en una sola sesión.
+**Context**: Deuda técnica resuelta antes de continuar con PASO 4 (Integración Real con Softland)
+
+### DT-02 — Estado BORRADOR
+- `domain-types.ts`: EstadoSolicitud += BORRADOR; EventoTipo += SOLICITUD_GUARDADA_BORRADOR, BORRADOR_ENVIADO
+- `portal-repository.ts`: INSERT usa @estado parametrizado (no hardcodeado)
+- `actions.ts`: nuevas funciones guardarBorrador() y enviarBorrador()
+- `NuevaSolicitud.tsx`: botón "Guardar borrador"
+- `Badges.tsx`: badge gris para BORRADOR
+
+### DT-03 — Flujo de cancelación
+- `domain-types.ts`: EstadoSolicitud += CANCELACION_SOLICITADA, CANCELADO; EventoTipo += CANCELACION_SOLICITADA, CANCELACION_CONFIRMADA, CANCELACION_DENEGADA
+- `events.ts`: etiquetas en español para nuevos eventos
+- `actions.ts`: nuevas funciones solicitarCancelacion() y decidirCancelacion()
+- `PortalApp.tsx`: handleCancelar() y handleDecidirCancelacion()
+- `MisSolicitudes.tsx`: botón Cancelar para solicitudes PENDIENTE propias
+- `RevisionModal.tsx`: bloques UI para pedir y decidir cancelación
+- `Badges.tsx`: badges para CANCELACION_SOLICITADA (naranja) y CANCELADO (rojo)
+
+### DT-04 — Rol Auditor
+- `domain-types.ts`: Rol += AUDITOR
+- `actions.ts → resolverIdentidad()`: SQL IN ('OPERADOR', 'APROBADOR', 'AUDITOR')
+- `PortalApp.tsx`: nav AUDITOR → auditoria; esAuditor flag
+- `Header.tsx`: pestaña "Nueva Solicitud" oculta para AUDITOR
+
+### Pendiente en BD (no ejecutado)
+- ALTER CK_PP_SOL_ESTADO para permitir BORRADOR, CANCELACION_SOLICITADA, CANCELADO
+- ALTER CK_PP_USR_ROL para permitir AUDITOR
+- INSERT usuario de prueba con ROL_GLOBAL = 'AUDITOR'
+
+---

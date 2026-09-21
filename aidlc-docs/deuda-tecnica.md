@@ -37,87 +37,67 @@ El campo `idpSubject` existe en el modelo de datos (`domain-types.ts → Identid
 
 ---
 
-## DT-02 — Estado BORRADOR no implementado
+## DT-02 — Estado BORRADOR ✅ RESUELTO
 
 **Requisitos afectados:** RF-17  
-**Severidad:** Media — funcionalidad faltante pero no crítica para el flujo principal  
-**Prioridad sugerida:** Post-MVP v1.1
+**Severidad:** Media  
+**Resuelto:** 2026-09-21 — Sesión de deuda técnica
 
-### Situación actual
-`domain-types.ts → EstadoSolicitud` define: `PENDIENTE | EN_PROCESO | PROCESADO | PROCESADO_CON_ERRORES | RECHAZADO | ERROR_EJECUCION`.
+### Decisión tomada
+Se implementó el estado BORRADOR en BD y en la aplicación. El borrador se guarda en `PORTAL_PRECIOS.SOLICITUD` con `ESTADO = 'BORRADOR'` y puede ser enviado a aprobación desde la vista "Mis solicitudes".
 
-El estado `BORRADOR` mencionado en RF-17 no existe. La app va directamente de formulario a `PENDIENTE` al hacer clic en "Enviar a Aprobación". No hay opción de guardar un borrador para retomar después.
+### Cambios implementados
+- `domain-types.ts` — `EstadoSolicitud` ahora incluye `"BORRADOR"`; `EventoTipo` incluye `"SOLICITUD_GUARDADA_BORRADOR"` y `"BORRADOR_ENVIADO"`
+- `portal-repository.ts` — `agregarSolicitud()` usa `@estado` parametrizado en el INSERT (ya no hardcodea `'PENDIENTE'`)
+- `actions.ts` — nuevas funciones `guardarBorrador()` y `enviarBorrador()`
+- `NuevaSolicitud.tsx` — botón "Guardar borrador" junto al botón "Enviar a Aprobación"
+- `Badges.tsx` — `EstadoBadge` renderiza el estado `BORRADOR` con badge gris
 
-### Lo que dice el requisito
-- **RF-17:** cada solicitud debe manejar los estados Borrador, Pendiente de aprobación, Aprobada, Ejecutando, Ejecutada, Rechazada y Error de ejecución.
-
-### Decisiones pendientes
-1. ¿Se implementa BORRADOR? ¿El solicitante necesita guardar y retomar?
-2. ¿Un borrador expira? ¿Cuánto tiempo?
-3. ¿El borrador se guarda en BD o solo en localStorage del navegador?
-
-### Impacto en código cuando se implemente
-- `domain-types.ts` — agregar `"BORRADOR"` a `EstadoSolicitud`
-- `portal-repository.ts` — `agregarSolicitud()` con estado inicial BORRADOR
-- `actions.ts` — nueva función `guardarBorrador()` separada de `enviarSolicitud()`
-- `NuevaSolicitud.tsx` — botón "Guardar borrador" + recuperación de borrador existente
-- BD: `CK_PP_SOL_ESTADO` debe permitir el valor 'BORRADOR'
+### Nota BD
+La constraint `CK_PP_SOL_ESTADO` de SOFTLANDQA debe actualizarse para permitir el valor `'BORRADOR'`. Pendiente ejecutar script de ALTER en BD.
 
 ---
 
-## DT-03 — Flujo de cancelación no implementado
+## DT-03 — Flujo de cancelación ✅ RESUELTO
 
-**Requisitos afectados:** RF-18, RF-32 (evento SOLICITUD_CANCELADA)  
-**Severidad:** Media — el RF-18 menciona que el solicitante puede cancelar  
-**Prioridad sugerida:** Post-MVP v1.1
+**Requisitos afectados:** RF-18, RF-32  
+**Severidad:** Media  
+**Resuelto:** 2026-09-21 — Sesión de deuda técnica
 
-### Situación actual
-`EventoTipo` en `domain-types.ts` no incluye `SOLICITUD_CANCELADA`. No existe ninguna función de cancelación en `actions.ts`. El solicitante no tiene forma de retirar una solicitud que ya envió a aprobación.
+### Decisión tomada
+Se implementó el flujo maker-checker de cancelación: el solicitante pide la cancelación (estado `CANCELACION_SOLICITADA`) y el aprobador confirma o deniega. Los SPs de BD ya existían (PASO 2); se conectaron desde TypeScript.
 
-Los SPs de BD (`sp_solicitar_cancelacion`, `sp_decidir_cancelacion`) ya están validados en SOFTLANDQA (PASO 2, Tareas 3 y 4), con campos `CANCELACION_SOLICITADA` y `CANCELACION_CONFIRMADA` en la tabla `SOLICITUD`.
-
-### Lo que dice el requisito
-- **RF-18:** el Solicitante debe cancelarla o crear una nueva solicitud.
-- **RF-32:** la bitácora debe registrar cancelación.
-
-### Decisiones pendientes
-1. ¿El cancelado va directo (solicitante cancela unilateralmente) o requiere confirmación del aprobador?
-2. ¿Una solicitud cancelada puede reabrirse?
-3. ¿Entra en el alcance del PASO 4 o es un PASO 5 separado?
-
-### Impacto en código cuando se implemente
-- `domain-types.ts` — agregar `"CANCELADO"` a `EstadoSolicitud` y `"SOLICITUD_CANCELADA"` a `EventoTipo`
+### Cambios implementados
+- `domain-types.ts` — `EstadoSolicitud` += `"CANCELACION_SOLICITADA"` y `"CANCELADO"`; `EventoTipo` += `"CANCELACION_SOLICITADA"`, `"CANCELACION_CONFIRMADA"`, `"CANCELACION_DENEGADA"`
+- `events.ts` — etiquetas en español para los nuevos EventoTipos
 - `actions.ts` — nuevas funciones `solicitarCancelacion()` y `decidirCancelacion()`
-- `MisSolicitudes.tsx` — botón "Cancelar" para solicitudes en estado PENDIENTE
-- `BandejaAprobacion.tsx` — indicador visual de cancelación solicitada para el aprobador
-- BD: los SPs ya existen — solo conectar desde TypeScript
+- `PortalApp.tsx` — nuevos handlers `handleCancelar()` y `handleDecidirCancelacion()`
+- `MisSolicitudes.tsx` — botón "Cancelar" visible para solicitudes PENDIENTE propias (con prompt de motivo)
+- `RevisionModal.tsx` — bloque de UI para que el solicitante pida cancelación; bloque separado para que el aprobador confirme/deniegue cuando estado = `CANCELACION_SOLICITADA`
+- `Badges.tsx` — badges para `CANCELACION_SOLICITADA` (naranja) y `CANCELADO` (rojo)
+
+### Nota BD
+Los SPs `SP_SOLICITAR_CANCELACION` y `SP_DECIDIR_CANCELACION` ya existían en SOFTLANDQA (PASO 2, Tareas 3 y 4). Las nuevas actions de TypeScript llaman directamente a `actualizarSolicitud()` en el portal; si se desea también ejecutar los SPs de Softland al cancelar, se debe conectar de manera similar al PASO 4.
 
 ---
 
-## DT-04 — Rol Auditor/Admin no implementado
+## DT-04 — Rol Auditor/Admin ✅ RESUELTO
 
-**Requisitos afectados:** RF-33 (acceso de solo lectura al historial completo)  
-**Severidad:** Baja para operación diaria; Media para cumplimiento/auditoría  
-**Prioridad sugerida:** Post-MVP v1.1
+**Requisitos afectados:** RF-33  
+**Severidad:** Media  
+**Resuelto:** 2026-09-21 — Sesión de deuda técnica
 
-### Situación actual
-`domain-types.ts → Rol` solo define `"OPERADOR" | "APROBADOR" | "SIN_PERMISO"`. La tabla `USUARIO.ROL_GLOBAL` en BD tampoco tiene registros con rol Auditor.
+### Decisión tomada
+Se implementó el rol `AUDITOR` con acceso de solo lectura al historial completo. El auditor aterriza directamente en la vista de Auditoría al iniciar sesión y no puede crear ni aprobar solicitudes.
 
-La vista de Auditoría (`Auditoria.tsx`) es accesible para cualquier usuario autenticado sin restricción de rol. Esto significa que un OPERADOR puede ver los eventos de auditoría de solicitudes que no son suyas.
+### Cambios implementados
+- `domain-types.ts` — `Rol` += `"AUDITOR"`
+- `actions.ts → resolverIdentidad()` — SQL ampliado a `IN ('OPERADOR', 'APROBADOR', 'AUDITOR')`; validación TypeScript actualizada
+- `PortalApp.tsx` — navegación post-login: AUDITOR redirige a `"auditoria"` (antes solo bifurcaba APROBADOR/resto); nuevo flag `esAuditor`; `onCancelar` no se pasa a `MisSolicitudes` para rol AUDITOR
+- `Header.tsx` — pestaña "Nueva Solicitud" oculta para rol AUDITOR
 
-### Lo que dice el requisito
-- **RF-33:** los Auditores/Administradores consultan el historial completo en solo lectura, dentro de su autorización.
-
-### Decisiones pendientes
-1. ¿Se necesita el rol Auditor antes de QA?
-2. ¿El Auditor tiene su propia vista o comparte la bandeja del Aprobador?
-3. ¿Qué ámbito tiene el Auditor — toda la organización o por compañía?
-
-### Impacto en código cuando se implemente
-- `domain-types.ts` — agregar `"AUDITOR"` a `Rol`
-- BD: `CK_PP_USR_ROL` debe permitir 'AUDITOR'; insertar usuarios con ese rol
-- `PortalApp.tsx` — nueva vista para Auditor (solo lectura, historial completo)
-- `actions.ts → resolverIdentidad()` — incluir ROL_GLOBAL = 'AUDITOR' en la query
+### Nota BD
+Para que un usuario pueda autenticarse como AUDITOR, debe existir un registro en `PORTAL_PRECIOS.USUARIO` con `ROL_GLOBAL = 'AUDITOR'` y la constraint `CK_PP_USR_ROL` debe permitir ese valor. Pendiente ejecutar script de ALTER + INSERT en SOFTLANDQA.
 
 ---
 
@@ -170,15 +150,53 @@ No existe ningún archivo `*.test.ts`, `*.spec.ts` ni configuración de framewor
 
 ## Tabla resumen
 
-| ID | Descripción | Severidad | RF/RNF | Cuando decidir |
-|----|-------------|-----------|--------|---------------|
-| DT-01 | Sin SSO / token firmado | 🔴 Alta | RNF-01, RNF-03 | Pre-producción |
-| DT-02 | Estado BORRADOR no implementado | 🟡 Media | RF-17 | Post-MVP v1.1 |
-| DT-03 | Flujo de cancelación no implementado | 🟡 Media | RF-18, RF-32 | Post-MVP v1.1 |
-| DT-04 | Rol Auditor/Admin no implementado | 🟡 Media | RF-33 | Post-MVP v1.1 |
-| DT-05 | Sin línea base de seguridad HTTP | 🔴 Alta | RNF-07 | Pre-producción |
-| DT-06 | Sin suite de pruebas automatizadas | 🟡 Media | RNF-11, RNF-12 | PASO 4 o PASO 5 |
+| ID | Descripción | Severidad | RF/RNF | Estado |
+|----|-------------|-----------|--------|--------|
+| DT-01 | Sin SSO / token firmado | 🔴 Alta | RNF-01, RNF-03 | ⏳ Diferida |
+| DT-02 | Estado BORRADOR | 🟡 Media | RF-17 | ✅ Resuelta (2026-09-21) |
+| DT-03 | Flujo de cancelación | 🟡 Media | RF-18, RF-32 | ✅ Resuelta (2026-09-21) |
+| DT-04 | Rol Auditor/Admin | 🟡 Media | RF-33 | ✅ Resuelta (2026-09-21) |
+| DT-05 | Sin línea base de seguridad HTTP | 🔴 Alta | RNF-07 | ⏳ Diferida |
+| DT-06 | Sin suite de pruebas automatizadas | 🟡 Media | RNF-11, RNF-12 | ⏳ Diferida |
 
 ---
+
+| DT-07 | Retomar borrador: precarga incompleta en NuevaSolicitud | 🟡 Media | RF-17 | ⏳ Diferida |
+
+
+---
+
+## DT-07 — Retomar borrador: precarga incompleta en NuevaSolicitud
+
+**Requisitos afectados:** RF-17 (estado BORRADOR)  
+**Severidad:** Media — el borrador se guarda y se lista correctamente, pero al retomarlo no se precargan los datos del formulario  
+**Identificado:** 2026-09-21
+
+### Situación actual
+
+El botón "Retomar" en `MisSolicitudes` existe y navega al formulario. El componente `NuevaSolicitud` recibe el borrador como prop y usa `key={borradorActivo?.id}` para remontarse, con los `useState` inicializados desde el borrador.
+
+El problema es que React ejecuta `useEffect([tab])`, `useEffect([nivel])` y `useEffect([itemsManual, nivel, factor...])` en el primer render, limpiando los valores que se inicializaron en `useState`. Se agregó `montajeInicialRef` para saltear esos efectos en el montaje, pero el flujo completo no está validado.
+
+### Lo que debe funcionar al retomar
+
+| Proceso | Campos a precargar |
+|---|---|
+| FACTOR_PRECIO | nivel, factor, filas, simulado=true |
+| MAYOREOD_MASIVO | nivel, factor, criteriosArticulo, ack=false (intencional), filas, simulado=true |
+| DESCUENTO_LISTA_PRECIO (manual) | nivel, itemsManual (lista de artículos), filas, simulado=true |
+| DESCUENTO_LISTA_PRECIO (excel) | archivoNombre, archivoS3Key, filas, simulado=true |
+| MARGEN_UTILIDAD_MASIVO | filas (del uploader), simulado=true |
+
+### Archivos involucrados
+
+- `app-web/src/components/NuevaSolicitud.tsx` — lógica de precarga vía `useState` inicial + `montajeInicialRef`
+- `app-web/src/components/PortalApp.tsx` — pasa `key={borradorActivo?.id ?? "nueva"}` y `borrador={borradorActivo}`
+
+### Próximos pasos sugeridos
+
+1. Validar en el browser que `montajeInicialRef` efectivamente bloquea los resets en el primer render
+2. Verificar proceso por proceso que los campos se cargan correctamente
+3. Si persiste el problema con `itemsManual`, considerar inicializarlo **fuera** del `useState` usando una función inicializadora: `useState(() => calcularItemsIniciales(borrador))`
 
 _Este documento se actualiza a medida que se toman decisiones. Cada ítem se cierra cuando el equipo define el alcance y el PASO correspondiente lo implementa._
