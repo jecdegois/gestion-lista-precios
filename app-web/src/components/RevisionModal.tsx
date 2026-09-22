@@ -50,6 +50,8 @@ export default function RevisionModal({
   onAprobar,
   onCancelar,
   onDecidirCancelacion,
+  onRetomar,
+  onEnviarBorrador,
 }: {
   solicitud: Solicitud;
   currentUser: Identidad;
@@ -59,6 +61,8 @@ export default function RevisionModal({
   onAprobar: (id: string) => void;
   onCancelar?: (id: string, motivo: string) => void;
   onDecidirCancelacion?: (id: string, aprobada: boolean) => void;
+  onRetomar?: (id: string) => void;
+  onEnviarBorrador?: (id: string) => void;
 }) {
   const [motivo, setMotivo] = useState("");
   const [motivoCancelacion, setMotivoCancelacion] = useState("");
@@ -138,6 +142,7 @@ export default function RevisionModal({
     currentUser.rol === "APROBADOR" &&
     solicitud.estado === "CANCELACION_SOLICITADA";
   const esActualizacionListaBase = solicitud.proceso === "MAYOREOD_MASIVO";
+  const esBorrador = solicitud.estado === "BORRADOR";
   const nivelListaBase = solicitud.parametros.nivelPrecio
     ?? solicitud.parametros.listaBase
     ?? solicitud.parametros.nivel
@@ -265,8 +270,23 @@ export default function RevisionModal({
           </div>
         )}
 
-        {/* Acciones del aprobador: aprobar o rechazar */}
-        {puedeDecidir ? (
+        {/* Acciones del borrador */}
+        {esBorrador ? (
+          <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-zinc-100 pt-4">
+            {onRetomar && (
+              <button className="btn btn-default" onClick={() => { onClose(); onRetomar(solicitud.id); }}>
+                <Icon name="fileEdit" className="w-3.5 h-3.5" /> Retomar borrador
+              </button>
+            )}
+            {onEnviarBorrador && (
+              <button className="btn btn-default" onClick={() => { onClose(); onEnviarBorrador(solicitud.id); }}>
+                Enviar a aprobación
+              </button>
+            )}
+            <button className="btn btn-outline" onClick={onClose}>Cerrar</button>
+          </div>
+        ) : /* Acciones del aprobador: aprobar o rechazar */
+        puedeDecidir ? (
           <div className="mt-5 space-y-3 border-t border-zinc-100 pt-4">
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Motivo de rechazo *</label>

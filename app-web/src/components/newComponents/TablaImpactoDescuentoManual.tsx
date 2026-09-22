@@ -43,6 +43,11 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
 
 interface TablaImpactoDescuentoManualProps {
   filas: FilaPrecio[];
+  hallazgos?: FilaPrecio[];
+  hallazgosHasMore?: boolean;
+  hallazgosNextOffset?: number | null;
+  hallazgosLoadingMore?: boolean;
+  onLoadMoreHallazgos?: (params: TableLoadParams) => void | Promise<void>;
   hasMore?: boolean;
   nextOffset?: number | null;
   loadingMore?: boolean;
@@ -51,19 +56,24 @@ interface TablaImpactoDescuentoManualProps {
 
 export default function TablaImpactoDescuentoManual({
   filas,
+  hallazgos,
+  hallazgosHasMore = false,
+  hallazgosNextOffset = null,
+  hallazgosLoadingMore = false,
+  onLoadMoreHallazgos,
   hasMore = false,
   nextOffset = null,
   loadingMore = false,
   onLoadMore,
 }: TablaImpactoDescuentoManualProps) {
-  const hallazgos = filas.filter(esHallazgoDeNegocio).length;
+  const totalHallazgosVisibles = filas.filter(esHallazgoDeNegocio).length;
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila)).length;
 
   return (
     <div>
       <p className="mb-2 text-xs text-zinc-500">
         {filas.length} fila(s) evaluada(s)
-        {hallazgos > 0 ? ` · ${hallazgos} con hallazgo` : ""}
+        {totalHallazgosVisibles > 0 ? ` · ${totalHallazgosVisibles} con hallazgo` : ""}
         {datosPorCorregir > 0 ? ` · ${datosPorCorregir} dato(s) por corregir` : ""}
       </p>
       <ResponsiveDataTable
@@ -80,7 +90,14 @@ export default function TablaImpactoDescuentoManual({
         onLoadMore={onLoadMore}
         rowClassName={(fila) => fila.validacion.valido ? "bg-green-50" : "bg-red-50"}
       />
-      <ResumenValidaciones filas={filas} />
+      <ResumenValidaciones
+        filas={filas}
+        hallazgosExternos={hallazgos}
+        hallazgosHasMore={hallazgosHasMore}
+        hallazgosNextOffset={hallazgosNextOffset}
+        hallazgosLoadingMore={hallazgosLoadingMore}
+        onLoadMoreHallazgos={onLoadMoreHallazgos}
+      />
     </div>
   );
 }

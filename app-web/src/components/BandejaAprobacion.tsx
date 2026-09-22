@@ -145,7 +145,6 @@ export default function BandejaAprobacion({
 
   const hasMore = displayedRows.length < filtradas.length;
   const nextOffset = displayedRows.length;
-
   const columns: readonly TableColumn<Solicitud>[] = [
     {
       key: "id",
@@ -221,6 +220,8 @@ export default function BandejaAprobacion({
     },
   ];
 
+  const columnasSinAcciones = columns.filter((column) => column.key !== "accion");
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-3 text-sm text-indigo-900">
@@ -286,13 +287,14 @@ export default function BandejaAprobacion({
 
       <ResponsiveDataTable<Solicitud>
         rows={displayedRows}
-        columns={columns}
+        columns={columnasSinAcciones}
         rowKey={(s) => s.id}
         loading={false}
         loadingMore={isLoadingMore}
         hasMore={hasMore}
         nextOffset={nextOffset}
         onLoadMore={handleLoadMore}
+        onRowActivate={(s) => onAbrir(s.id)}
         emptyTitle="No hay solicitudes"
         emptyDescription="No hay solicitudes que coincidan con los filtros seleccionados."
       />

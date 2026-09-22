@@ -102,11 +102,11 @@ export default function ResponsiveDataTable<Row>({
   );
 
   function activateRow(row: Row, event?: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) {
-    if (!redirectOnRowClick || !getRowDestination || (event && isInteractiveTarget(event.target))) return;
-    const destination = getRowDestination(row);
-    if (!destination) return;
+    if (event && isInteractiveTarget(event.target) && !onRowActivate) return;
+    const destination = getRowDestination?.(row);
+    if (!redirectOnRowClick && !onRowActivate) return;
     onRowActivate?.(row);
-    window.location.assign(destination);
+    if (redirectOnRowClick && destination) window.location.assign(destination);
   }
 
   function handleRowKeyDown(row: Row, event: KeyboardEvent<HTMLTableRowElement>) {
@@ -115,16 +115,21 @@ export default function ResponsiveDataTable<Row>({
     activateRow(row, event);
   }
 
-  function handleListScroll(event: React.UIEvent<HTMLDivElement>) {
+  async function handleListScroll(event: React.UIEvent<HTMLDivElement>) {
     if (!onLoadMore || !hasMore || loadingMore || loading || cargaEnVuelo.current) return;
     const element = event.currentTarget;
     const nearEnd = element.scrollHeight - element.scrollTop - element.clientHeight <= 80;
     if (!nearEnd) return;
+    const distanciaAlFinal = element.scrollHeight - element.scrollTop - element.clientHeight;
     cargaEnVuelo.current = true;
-    void Promise.resolve(onLoadMore({ offset: nextOffset ?? rows.length, limit }))
-      .finally(() => {
-        cargaEnVuelo.current = false;
+    try {
+      await Promise.resolve(onLoadMore({ offset: nextOffset ?? rows.length, limit }));
+      requestAnimationFrame(() => {
+        element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight - distanciaAlFinal);
       });
+    } finally {
+      cargaEnVuelo.current = false;
+    }
   }
 
   if (loading) {
@@ -147,12 +152,12 @@ export default function ResponsiveDataTable<Row>({
   return (
     <div>
       <div className={`card hidden overflow-hidden md:block ${tableHeightClass}`}>
-        <div className="overflow-auto" style={{ maxHeight: "inherit" }} onScroll={handleListScroll}>
-          <table className="w-full text-sm">
+        <div className="overflow-auto" style={{ maxHeight: "inherit", overflowAnchor: "none" }} onScroll={(event) => { void handleListScroll(event); }}>
+          <table className="w-full table-fixed text-xs">
             <thead className="sticky top-0 z-10 bg-zinc-50 text-xs text-zinc-500">
               <tr>
                 {columns.map((column, index) => (
-                  <th key={column.key} scope="col" className={`whitespace-nowrap px-3 py-2 font-medium ${columnAlignment[index]} ${column.headerClass ?? ""}`}>
+                  <th key={column.key} scope="col" className={`whitespace-nowrap px-2 py-2 font-medium ${columnAlignment[index]} ${column.headerClass ?? ""}`}>
                     {column.header}
                   </th>
                 ))}
@@ -160,19 +165,19 @@ export default function ResponsiveDataTable<Row>({
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {rows.map((row) => {
-                const interactive = Boolean(redirectOnRowClick && getRowDestination?.(row));
+                const interactive = Boolean(onRowActivate || (redirectOnRowClick && getRowDestination?.(row)));
                 return (
                   <tr
                     key={rowKey(row)}
                     className={`transition-colors ${rowClassName?.(row) ?? ""} ${interactive ? "cursor-pointer hover:bg-zinc-50 focus:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-400" : ""}`}
                     tabIndex={interactive ? 0 : undefined}
-                    role={interactive ? "link" : undefined}
+                    role={interactive ? "button" : undefined}
                     aria-label={interactive ? `Abrir detalle de ${rowKey(row)}` : undefined}
                     onClick={(event) => activateRow(row, event)}
                     onKeyDown={(event) => handleRowKeyDown(row, event)}
                   >
                     {columns.map((column, index) => (
-                      <td key={column.key} className={`px-3 py-2 ${columnAlignment[index]} ${column.cellClass ?? ""}`}>
+                      <td key={column.key} className={`px-2 py-2 align-top ${columnAlignment[index]} ${column.cellClass ?? ""}`}>
                         {contentFor(row, column)}
                       </td>
                     ))}
@@ -187,13 +192,13 @@ export default function ResponsiveDataTable<Row>({
 
       <div className="space-y-2 md:hidden">
         {rows.map((row) => {
-          const interactive = Boolean(redirectOnRowClick && getRowDestination?.(row));
+          const interactive = Boolean(onRowActivate || (redirectOnRowClick && getRowDestination?.(row)));
           return (
             <div
               key={rowKey(row)}
               className={`card p-3 ${rowClassName?.(row) ?? ""} ${interactive ? "cursor-pointer hover:bg-zinc-50 focus:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-400" : ""}`}
               tabIndex={interactive ? 0 : undefined}
-              role={interactive ? "link" : undefined}
+              role={interactive ? "button" : undefined}
               aria-label={interactive ? `Abrir detalle de ${rowKey(row)}` : undefined}
               onClick={(event) => activateRow(row, event)}
               onKeyDown={(event) => {

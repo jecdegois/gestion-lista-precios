@@ -23,6 +23,7 @@ import { simularManual, simularGestionGlobalPaginado, enviarSolicitud, guardarBo
 import type { ArticuloCatalogo, CriteriosArticulo, FilaPrecio, FilaResultado, Identidad, ProcesoKey, Solicitud, TipoVariacion } from "@/lib/domain-types";
 import { esFilaMargen } from "@/lib/domain-types";
 import type { NivelPrecio } from "@/lib/types";
+import { descargarSimulacionExcel } from "@/lib/export-simulation";
 
 interface ItemManual {
   fila: number;
@@ -130,6 +131,7 @@ export default function NuevaSolicitud({
   const [simulado, setSimulado] = useState(!!(borrador?.filas?.length));
   const [filas, setFilas] = useState<FilaResultado[] | null>(borrador?.filas?.length ? borrador.filas : null);
   const [sending, setSending] = useState(false);
+  const [exportandoSimulacion, setExportandoSimulacion] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [sent, setSent] = useState(false);
   const [archivoNombre, setArchivoNombre] = useState<string | null>(borrador?.archivoNombre ?? null);
@@ -146,6 +148,10 @@ export default function NuevaSolicitud({
   const [articuloSeleccionado, setArticuloSeleccionado] = useState<ArticuloCatalogo | null>(null);
   const [simulacionGlobalHasMore, setSimulacionGlobalHasMore] = useState(false);
   const [simulacionGlobalNextOffset, setSimulacionGlobalNextOffset] = useState<number | null>(null);
+  const [hallazgosGlobal, setHallazgosGlobal] = useState<FilaPrecio[]>([]);
+  const [hallazgosGlobalHasMore, setHallazgosGlobalHasMore] = useState(false);
+  const [hallazgosGlobalNextOffset, setHallazgosGlobalNextOffset] = useState<number | null>(null);
+  const [cargandoHallazgosGlobal, setCargandoHallazgosGlobal] = useState(false);
   const [cargandoSimulacionGlobal, setCargandoSimulacionGlobal] = useState(false);
   const [cargandoMasSimulacionGlobal, setCargandoMasSimulacionGlobal] = useState(false);
   const articulosRequestRef = useRef(0);
@@ -352,6 +358,34 @@ export default function NuevaSolicitud({
     }
   }, [compania, esGestionGlobal, factor, nivel]);
 
+  const cargarHallazgosGlobal = useCallback(async ({ offset, limit }: TableLoadParams) => {
+    if (!esGestionGlobal || !nivel || cargandoHallazgosGlobal) return;
+    setCargandoHallazgosGlobal(true);
+    try {
+      const params = new URLSearchParams({
+        compania,
+        nivel,
+        factor,
+        tipoVariacion: "AUMENTO",
+        soloHallazgos: "1",
+        offset: String(offset),
+        maxRecords: String(Math.min(limit, 50)),
+      });
+      const response = await fetch(`/api/simulacion/gestion-global?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("No fue posible consultar los hallazgos completos.");
+      const page = await response.json() as PaginaSimulacionGestionGlobalResponse;
+      if (!page.ok || !Array.isArray(page.filas)) throw new Error(page.error ?? "La respuesta de hallazgos no es válida.");
+      const filasPagina = page.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
+      setHallazgosGlobal((prev) => offset === 0 ? filasPagina : [...prev, ...filasPagina]);
+      setHallazgosGlobalHasMore(Boolean(page.hasMore));
+      setHallazgosGlobalNextOffset(page.nextOffset);
+    } catch (error) {
+      setErrorItem(error instanceof Error ? error.message : "No fue posible consultar los hallazgos completos.");
+    } finally {
+      setCargandoHallazgosGlobal(false);
+    }
+  }, [cargandoHallazgosGlobal, compania, esGestionGlobal, factor, nivel]);
+
   useEffect(() => {
     let vigente = true;
     const cargarArticulosCompletos = !(esDescuento && modalidad === "manual");
@@ -422,6 +456,9 @@ export default function NuevaSolicitud({
       setFilas(null);
       setSimulacionGlobalHasMore(false);
       setSimulacionGlobalNextOffset(null);
+      setHallazgosGlobal([]);
+      setHallazgosGlobalHasMore(false);
+      setHallazgosGlobalNextOffset(null);
       setCargandoSimulacionGlobal(false);
       setCargandoMasSimulacionGlobal(false);
     }
@@ -489,6 +526,7 @@ export default function NuevaSolicitud({
   async function handleSimular() {
     if (esGestionGlobal) {
       await cargarPaginaGestionGlobal({ offset: 0, limit: 200 });
+      await cargarHallazgosGlobal({ offset: 0, limit: 50 });
       return;
     }
     if (esMargen || (modalidad === "excel" && permiteExcel)) {
@@ -537,6 +575,35 @@ export default function NuevaSolicitud({
     setArchivoS3Key(s3Key);
     setSimulado(false);
     setSent(false);
+  }
+
+  async function handleExportarSimulacion() {
+    if (!filas || filas.length === 0 || exportandoSimulacion) return;
+    setExportandoSimulacion(true);
+    try {
+      let filasCompletas = filas;
+      if (esGestionGlobal && nivel) {
+        const todas: FilaPrecio[] = [];
+        let offset = 0;
+        let hayMas = true;
+        while (hayMas) {
+          const params = new URLSearchParams({ compania, nivel, factor, tipoVariacion: "AUMENTO", offset: String(offset), maxRecords: "200" });
+          const response = await fetch(`/api/simulacion/gestion-global?${params.toString()}`, { cache: "no-store" });
+          if (!response.ok) throw new Error("No fue posible consultar todos los registros de la simulación.");
+          const pagina = await response.json() as PaginaSimulacionGestionGlobalResponse;
+          if (!pagina.ok || !Array.isArray(pagina.filas)) throw new Error(pagina.error ?? "La respuesta de simulación no es válida.");
+          todas.push(...pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 })));
+          hayMas = Boolean(pagina.hasMore) && pagina.filas.length > 0;
+          offset = pagina.nextOffset ?? offset + pagina.filas.length;
+        }
+        filasCompletas = todas;
+      }
+      descargarSimulacionExcel(filasCompletas, `simulacion-${tab.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "No fue posible exportar la simulación.", "error");
+    } finally {
+      setExportandoSimulacion(false);
+    }
   }
 
   const conteoErrores = filas ? filas.filter((f) => !f.validacion.valido).length : 0;
@@ -922,7 +989,10 @@ export default function NuevaSolicitud({
         <div className="mt-6 pt-5 border-t border-zinc-100">
           <div className="flex items-center gap-2 mb-2">
             <Icon name="search" className="w-4 h-4 text-zinc-500" />
-            <h3 className="text-sm font-semibold">Resultado de la simulación</h3>
+            <h3 className="text-sm font-semibold mr-auto">Resultado de la simulación</h3>
+            <button className="btn btn-outline btn-sm" disabled={exportandoSimulacion || cargandoSimulacionGlobal || cargandoMasSimulacionGlobal} onClick={() => void handleExportarSimulacion()}>
+              <Icon name="download" className="w-3.5 h-3.5" /> {exportandoSimulacion ? "Exportando…" : "Exportar Excel"}
+            </button>
           </div>
           <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-xs text-green-800 mb-3 flex items-center gap-2">
             <Icon name="check" className="w-3.5 h-3.5" /> Simulación completada. Revise los valores resultantes antes de continuar.
@@ -936,6 +1006,11 @@ export default function NuevaSolicitud({
               )}
               <TablaImpactoGestionGlobal
                 filas={filas as FilaPrecio[]}
+                hallazgos={hallazgosGlobal}
+                hallazgosHasMore={hallazgosGlobalHasMore}
+                hallazgosNextOffset={hallazgosGlobalNextOffset}
+                hallazgosLoadingMore={cargandoHallazgosGlobal}
+                onLoadMoreHallazgos={cargarHallazgosGlobal}
                 hasMore={simulacionGlobalHasMore}
                 nextOffset={simulacionGlobalNextOffset}
                 loadingMore={cargandoMasSimulacionGlobal}
