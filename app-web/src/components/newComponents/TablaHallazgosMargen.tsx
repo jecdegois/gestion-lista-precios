@@ -31,7 +31,7 @@ export default function TablaHallazgosMargen({
         { key: "precioActual", header: "Precio Actual", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioActual)}</span> },
         { key: "precioMinimo", header: "Precio Mínimo", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.costoMinimo)}</span> },
       ]}
-      rowKey={(fila) => `${fila.fila}-${fila.codigo}`}
+      rowKey={(fila) => `${fila.fila}-${fila.codigo}-${"listaCodigo" in fila ? fila.listaCodigo ?? fila.lista ?? "" : ""}`}
       limit={50}
       hasMore={hasMore}
       nextOffset={nextOffset}

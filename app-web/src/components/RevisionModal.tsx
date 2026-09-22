@@ -5,6 +5,7 @@ import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
 import TablaResultadoModal from "./newComponents/TablaResultadoModal";
 import TablaImpactoGestionGlobal from "./newComponents/TablaImpactoGestionGlobal";
+import { esHallazgoDeNegocio } from "./Tablas";
 import type { TableLoadParams } from "./newComponents/ResponsiveDataTable";
 import { PROCESOS } from "@/lib/catalog";
 import { textoResultadoAuditoria } from "@/lib/events";
@@ -70,12 +71,26 @@ export default function RevisionModal({
   const [detalleHasMore, setDetalleHasMore] = useState(false);
   const [detalleNextOffset, setDetalleNextOffset] = useState<number | null>(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [hallazgosDetalle, setHallazgosDetalle] = useState<FilaPrecio[]>([]);
+  const [hallazgosDetalleCargados, setHallazgosDetalleCargados] = useState(false);
+  const [hallazgosHasMore, setHallazgosHasMore] = useState(false);
+  const [hallazgosNextOffset, setHallazgosNextOffset] = useState<number | null>(null);
+  const [cargandoHallazgos, setCargandoHallazgos] = useState(false);
   const offsetsDetalleEnCarga = useRef(new Set<number>());
+  const offsetsHallazgosEnCarga = useRef(new Set<number>());
 
   const esGestionGlobal = solicitud.proceso === "FACTOR_PRECIO";
+  const nivelConsulta = solicitud.lista?.trim() || solicitud.parametros.nivelPrecio?.trim() || solicitud.parametros.listaBase?.trim() || "";
+  const factorConsulta = String(solicitud.parametros.factor ?? "");
+  const tipoVariacionConsulta = solicitud.parametros.tipoVariacion === "DISMINUCION" ? "DISMINUCION" : "AUMENTO";
   useEffect(() => {
     setFilasDetalle(solicitud.filas);
     offsetsDetalleEnCarga.current.clear();
+    setHallazgosDetalle([]);
+    setHallazgosDetalleCargados(false);
+    setHallazgosHasMore(false);
+    setHallazgosNextOffset(null);
+    offsetsHallazgosEnCarga.current.clear();
     // Las solicitudes nuevas de Gestión Global conservan la primera página
     // (máximo 200 filas); las páginas restantes se consultan bajo demanda.
     setDetalleHasMore(esGestionGlobal && solicitud.filas.length >= 200);
@@ -84,16 +99,15 @@ export default function RevisionModal({
 
   const cargarDetalle = async ({ offset, limit }: TableLoadParams) => {
     if (!esGestionGlobal || cargandoDetalle || !detalleHasMore || offsetsDetalleEnCarga.current.has(offset)) return;
-    const lista = solicitud.lista?.trim() || solicitud.parametros.nivelPrecio?.trim() || solicitud.parametros.listaBase?.trim() || "";
-    if (!lista) return;
+    if (!nivelConsulta) return;
     offsetsDetalleEnCarga.current.add(offset);
     setCargandoDetalle(true);
     try {
       const query = new URLSearchParams({
         compania: solicitud.compania,
-        nivel: lista,
-        factor: String(solicitud.parametros.factor ?? ""),
-        tipoVariacion: solicitud.parametros.tipoVariacion ?? "AUMENTO",
+        nivel: nivelConsulta,
+        factor: factorConsulta,
+        tipoVariacion: tipoVariacionConsulta,
         offset: String(offset),
         maxRecords: String(limit),
       });
@@ -120,6 +134,53 @@ export default function RevisionModal({
       setCargandoDetalle(false);
     }
   };
+
+  const cargarHallazgosDetalle = async ({ offset, limit }: TableLoadParams) => {
+    if (!esGestionGlobal || cargandoHallazgos || offsetsHallazgosEnCarga.current.has(offset)) return;
+    if (!nivelConsulta) return;
+    offsetsHallazgosEnCarga.current.add(offset);
+    setCargandoHallazgos(true);
+    try {
+      const query = new URLSearchParams({
+        compania: solicitud.compania,
+        nivel: nivelConsulta,
+        factor: factorConsulta,
+        tipoVariacion: tipoVariacionConsulta,
+        soloHallazgos: "1",
+        offset: String(offset),
+        maxRecords: String(limit),
+      });
+      const response = await fetch(`/api/simulacion/gestion-global?${query.toString()}`, { cache: "no-store" });
+      const pagina = await response.json() as {
+        filas?: FilaPrecio[];
+        hasMore?: boolean;
+        nextOffset?: number | null;
+      };
+      if (!response.ok || !Array.isArray(pagina.filas)) return;
+      const filasPagina = pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
+      setHallazgosDetalle((actuales) => offset === 0 ? filasPagina : [...actuales, ...filasPagina]);
+      setHallazgosDetalleCargados(true);
+      const siguienteOffset = pagina.nextOffset ?? null;
+      const haySiguientePagina = Boolean(pagina.hasMore)
+        && filasPagina.length > 0
+        && siguienteOffset != null
+        && siguienteOffset > offset;
+      setHallazgosHasMore(haySiguientePagina);
+      setHallazgosNextOffset(haySiguientePagina ? siguienteOffset : null);
+    } catch (error) {
+      console.error("No fue posible cargar los hallazgos de Gestión Global.", error);
+    } finally {
+      offsetsHallazgosEnCarga.current.delete(offset);
+      setCargandoHallazgos(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!esGestionGlobal || !nivelConsulta) return;
+    void cargarHallazgosDetalle({ offset: 0, limit: 50 });
+  // La consulta se reinicia únicamente al cambiar la solicitud o sus parámetros.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solicitud.id, solicitud.compania, esGestionGlobal, nivelConsulta, factorConsulta, tipoVariacionConsulta]);
 
   const filas = filasDetalle;
   const puedeDecidir =
@@ -171,7 +232,7 @@ export default function RevisionModal({
         {/* Cards resumen */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <Card label="Filas evaluadas" value={String(filas.length)} />
-          <Card label="Con hallazgo" value={String(filas.filter((f) => !f.validacion.valido).length)} />
+          <Card label="Con hallazgo" value={String(filas.filter(esHallazgoDeNegocio).length)} />
           <Card label="Lista de precios" value={listaPrecio} />
           <Card label="Modalidad" value={solicitud.modalidad} />
           <Card label="Ejecución" value={PROCESOS[solicitud.proceso].ejecucion} />
@@ -211,6 +272,11 @@ export default function RevisionModal({
           esGestionGlobal ? (
             <TablaImpactoGestionGlobal
               filas={filas as FilaPrecio[]}
+              hallazgos={hallazgosDetalleCargados ? hallazgosDetalle : undefined}
+              hallazgosHasMore={hallazgosHasMore}
+              hallazgosNextOffset={hallazgosNextOffset}
+              hallazgosLoadingMore={cargandoHallazgos}
+              onLoadMoreHallazgos={cargarHallazgosDetalle}
               hasMore={detalleHasMore}
               nextOffset={detalleNextOffset}
               loadingMore={cargandoDetalle}

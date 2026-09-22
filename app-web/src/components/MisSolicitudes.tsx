@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
 import { PROCESOS } from "@/lib/catalog";
-import type { Identidad, Solicitud } from "@/lib/domain-types";
+import type { Identidad, ProcesoKey, Solicitud } from "@/lib/domain-types";
 import ResponsiveDataTable, { type TableColumn, type TableLoadParams } from "./newComponents/ResponsiveDataTable";
 
 const PAGE_SIZE = 10;
@@ -12,25 +12,27 @@ const PAGE_SIZE = 10;
 interface MisSolicitudesProps {
   solicitudes: Solicitud[];
   currentUser: Identidad;
+  procesoFiltro: ProcesoKey;
   onVerDetalle: (id: string) => void;
   onCancelar?: (id: string, motivo: string) => void;
   onEnviarBorrador?: (id: string) => void;
   onRetomar?: (id: string) => void;
 }
 
-export default function MisSolicitudes({ solicitudes, currentUser, onVerDetalle, onCancelar, onEnviarBorrador, onRetomar }: MisSolicitudesProps) {
+export default function MisSolicitudes({ solicitudes, currentUser, procesoFiltro, onVerDetalle, onCancelar, onEnviarBorrador, onRetomar }: MisSolicitudesProps) {
   const solicitudesSeguras = useMemo(
     () => (Array.isArray(solicitudes) ? solicitudes : []),
     [solicitudes],
   );
   const propias = useMemo(
-    () => solicitudesSeguras.filter((s) => s.solicitanteEmail === currentUser.email),
-    [solicitudesSeguras, currentUser.email],
+    () => solicitudesSeguras.filter((s) => s.solicitanteEmail === currentUser.email && s.proceso === procesoFiltro),
+    [solicitudesSeguras, currentUser.email, procesoFiltro],
   );
   
   const [displayedRows, setDisplayedRows] = useState<Solicitud[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const previousCountRef = useRef(0);
+  const previousProcesoRef = useRef(procesoFiltro);
 
   useEffect(() => {
     const totalSolicitudes = propias.length;
@@ -43,6 +45,13 @@ export default function MisSolicitudes({ solicitudes, currentUser, onVerDetalle,
       };
       return ts(b) - ts(a);
     };
+
+    if (previousProcesoRef.current !== procesoFiltro) {
+      previousProcesoRef.current = procesoFiltro;
+      previousCountRef.current = totalSolicitudes;
+      setDisplayedRows(propias.slice(0, PAGE_SIZE).sort(porFechaDesc));
+      return;
+    }
 
     setDisplayedRows((prev) => {
       // Primera carga real
@@ -167,7 +176,8 @@ export default function MisSolicitudes({ solicitudes, currentUser, onVerDetalle,
 
   return (
     <div className="mt-8">
-      <h2 className="text-base font-semibold mb-3">Mis solicitudes enviadas</h2>
+      <h2 className="text-base font-semibold mb-1">Mis solicitudes enviadas</h2>
+      <p className="text-xs text-zinc-500 mb-3">Tipo: {PROCESOS[procesoFiltro]?.label ?? procesoFiltro}</p>
       <ResponsiveDataTable<Solicitud>
         rows={displayedRows}
         columns={columnasSinAcciones}
