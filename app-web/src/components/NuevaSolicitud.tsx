@@ -13,12 +13,12 @@ import TablaImpactoGestionGlobal from "./newComponents/TablaImpactoGestionGlobal
 import TablaImpactoMargen from "./newComponents/TablaImpactoMargen";
 import TablaArticulosCapturaManual from "./newComponents/TablaArticulosCapturaManual";
 import { type TableLoadParams } from "./newComponents/ResponsiveDataTable";
-import { fmtMonto } from "@/lib/format";
+import { fmtFactor, fmtMonto } from "@/lib/format";
 import {
   PROCESOS,
   calcularCostoMinimoArticulo,
 } from "@/lib/catalog";
-import { calcularVariacion, redondeoPreview } from "@/lib/preview";
+import { calcularVariacion, convertirPorcentajeAFactor, redondeoPreview } from "@/lib/preview";
 import { simularManual, simularGestionGlobalPaginado, enviarSolicitud, guardarBorrador, enviarBorrador, obtenerCatalogoSolicitud } from "@/app/actions";
 import type { ArticuloCatalogo, CriteriosArticulo, FilaPrecio, FilaResultado, Identidad, ProcesoKey, Solicitud, TipoVariacion } from "@/lib/domain-types";
 import { esFilaMargen } from "@/lib/domain-types";
@@ -547,6 +547,7 @@ export default function NuevaSolicitud({
     const parametros = {
       nivel,
       factor,
+      multiplicador: convertirPorcentajeAFactor(factor).factor,
       tipoVariacion: "AUMENTO" as TipoVariacion,
       variacionPorcentaje: factor,
       listaBase: esListaBase ? nivel : undefined,
@@ -616,6 +617,7 @@ export default function NuevaSolicitud({
     const parametros = {
       nivel,
       factor,
+      multiplicador: convertirPorcentajeAFactor(factor).factor,
       tipoVariacion: "AUMENTO" as TipoVariacion,
       variacionPorcentaje: factor,
       listaBase: esListaBase ? nivel : undefined,
@@ -740,7 +742,7 @@ export default function NuevaSolicitud({
             <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
             <input type="number" step="0.01" min="0" value={factor} disabled={bloquearCaptura} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
             {!factorInvalido && factor !== "" && conversion.factor != null && (
-              <p className="text-[11px] text-zinc-500 mt-1">Factor aplicado: <b className="mono">{conversion.factor.toFixed(2)}</b></p>
+              <p className="text-[11px] text-zinc-500 mt-1">Multiplicador: <b className="mono">{fmtFactor(conversion.factor)}</b></p>
             )}
             {factorInvalido && <p className="text-[11px] text-red-600 mt-1">{conversion.causa}</p>}
           </div>

@@ -2,7 +2,7 @@
 
 import { esHallazgoDeNegocio, ResumenValidaciones } from "../Tablas";
 import { TIPOS_VARIACION } from "@/lib/catalog";
-import { fmtMonto } from "@/lib/format";
+import { fmtFactor, fmtMonto, fmtPorcentajeCapturado, fmtPorcentajeMultiplicador } from "@/lib/format";
 import type { FilaPrecio } from "@/lib/domain-types";
 import ResponsiveDataTable, { type TableColumn, type TableLoadParams } from "./ResponsiveDataTable";
 
@@ -19,8 +19,9 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
       return <span className={`badge ${fila.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok"}`}>{tipo}</span>;
     },
   },*/
-  { key: "factor", header: "Factor", align: "right", value: (fila) => <span className="mono">{fila.valorPropuestoRaw ?? "—"}</span> },
-  { key: "factorAplicado", header: "Factor Aplicado", align: "right", value: (fila) => <span className="mono">{fila.factorAplicado != null ? fila.factorAplicado.toFixed(2) : "—"}</span> },
+  { key: "factor", header: "Factor %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeCapturado(fila.variacionPorcentaje)}</span> },
+  { key: "multiplicador", header: "Multiplicador", align: "right", value: (fila) => <span className="mono">{fmtFactor(fila.multiplicador ?? fila.factorPropuesto)}</span> },
+  { key: "factorAplicado", header: "Factor Aplicado %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeMultiplicador(fila.factorAplicado)}</span> },
   {
     key: "mensajeError",
     header: "Mensaje de error",

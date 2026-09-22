@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { esHallazgoDeNegocio, ResumenValidaciones } from "../Tablas";
 import { TIPOS_VARIACION } from "@/lib/catalog";
 import { esFilaMargen, type FilaResultado } from "@/lib/domain-types";
-import { fmtFactor, fmtMonto, fmtPct } from "@/lib/format";
+import { fmtFactor, fmtMonto, fmtPct, fmtPorcentajeCapturado, fmtPorcentajeMultiplicador } from "@/lib/format";
 import ResponsiveDataTable, { type TableColumn } from "./ResponsiveDataTable";
 
 const PAGE_SIZE = 200;
@@ -30,15 +30,15 @@ const columns: readonly TableColumn<FilaResultado>[] = [
   },
   {
     key: "factor",
-    header: "Factor",
+    header: "Factor %",
     align: "right",
-    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.factorPropuesto) : fila.valorPropuestoRaw ?? "—"}</span>,
+    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.factorPropuesto) : fmtPorcentajeCapturado(fila.variacionPorcentaje)}</span>,
   },
   {
     key: "factorAplicado",
-    header: "Factor Aplicado",
+    header: "Factor Aplicado %",
     align: "right",
-    value: (fila) => <span className="mono">{fila.factorAplicado != null ? fmtFactor(fila.factorAplicado) : "—"}</span>,
+    value: (fila) => <span className="mono">{fmtPorcentajeMultiplicador(fila.factorAplicado)}</span>,
   },
   {
     key: "mensajeError",
@@ -51,7 +51,7 @@ const columns: readonly TableColumn<FilaResultado>[] = [
     key: "multiplicador",
     header: "Multiplicador",
     align: "right",
-    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.multiplicador) : "—"}</span>,
+    value: (fila) => <span className="mono">{fmtFactor(esFilaMargen(fila) ? fila.validacion.multiplicador : fila.multiplicador ?? fila.factorPropuesto)}</span>,
   },
   {
     key: "precioActual",

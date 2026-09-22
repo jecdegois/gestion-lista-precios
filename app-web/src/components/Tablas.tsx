@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Icon from "./Icon";
 import { EstadoRedondeoBadge } from "./Badges";
-import { fmtMonto, fmtPct, fmtFactor } from "@/lib/format";
+import { fmtMonto, fmtPct, fmtFactor, fmtPorcentajeCapturado } from "@/lib/format";
 import { TIPOS_VARIACION } from "@/lib/catalog";
 import { esFilaMargen } from "@/lib/domain-types";
 import TablaHallazgosMargen from "./newComponents/TablaHallazgosMargen";
@@ -143,7 +143,8 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
               <th className="text-left font-medium px-3 py-2">Descripción</th>
               <th className="text-right font-medium px-3 py-2">Precio Actual</th>
               <th className="text-left font-medium px-3 py-2">Tipo Var.</th>
-              <th className="text-right font-medium px-3 py-2">Factor</th>
+              <th className="text-right font-medium px-3 py-2">Factor %</th>
+              <th className="text-right font-medium px-3 py-2">Multiplicador</th>
               <th className="text-right font-medium px-3 py-2">Precio Calc.</th>
               <th className="text-right font-medium px-3 py-2">Precio Redondeado</th>
               <th className="text-right font-medium px-3 py-2">Precio Mínimo Equiv.</th>
@@ -162,7 +163,8 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
                   <td className="px-3 py-2">{fila.descripcion}</td>
                   <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioActual)}</td>
                   <td className="px-3 py-2"><span className={`badge ${fila.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok"}`}>{tipoVariacion}</span></td>
-                  <td className="px-3 py-2 text-right mono">{fila.valorPropuestoRaw ?? "—"}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtPorcentajeCapturado(fila.variacionPorcentaje)}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtFactor(fila.multiplicador ?? fila.factorPropuesto)}</td>
                   <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioPropuesto)}</td>
                   <td className="px-3 py-2 text-right mono">{validacion.precioRedondeado != null ? <b>{fmtMonto(validacion.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
                   <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.costoMinimo)}</td>

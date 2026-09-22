@@ -8,6 +8,7 @@ import {
   construirFilasGestionGlobal,
   construirFilasMayoreodMasivo,
   construirFilaDesdeVariacion,
+  textoFactorCalculado,
   type CatalogoContext,
 } from "@/lib/engine";
 import { estaEnAmbito } from "@/lib/catalog";
@@ -313,7 +314,7 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
       const porcentaje = Number.parseFloat(porcentajeRaw.replace(",", "."));
       const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(\.\d+)?$/.test(porcentajeRaw);
       const factorConvertido = formatoValido ? 1 + (porcentaje / 100) : null;
-      const factorTexto = factorConvertido !== null ? String(factorConvertido) : porcentajeRaw;
+      const factorTexto = factorConvertido !== null ? textoFactorCalculado(factorConvertido) : porcentajeRaw;
       
       return construirFilaDescuentoMasivo(
         {
@@ -745,7 +746,10 @@ export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boole
       });
       await actualizarGestionGlobal(s.compania, lista, factor, porcentaje, input.aprobadorNombre);
       await actualizarFactorAplicadoDetalles(s.id);
-      await finalizarProcesamiento(s.id, [...s.filas], fallidosPrevios, input.aprobadorNombre);
+      // En Gestión Global la operación real es un único UPDATE de la cabecera
+      // de la lista. Las filas del detalle son referenciales y no determinan
+      // el estado final del procesamiento.
+      await finalizarProcesamiento(s.id, [...s.filas], 0, input.aprobadorNombre);
       return { ok: true, idProcesoSP };
     } catch (error) {
       const detalle = error instanceof Error ? error.message : "No fue posible actualizar Gestión Global.";
