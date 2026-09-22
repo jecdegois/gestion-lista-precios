@@ -18,7 +18,7 @@ import {
   PROCESOS,
   calcularCostoMinimoArticulo,
 } from "@/lib/catalog";
-import { calcularVariacion, convertirPorcentajeAFactor, redondeoPreview } from "@/lib/preview";
+import { calcularVariacion, redondeoPreview } from "@/lib/preview";
 import { simularManual, simularGestionGlobalPaginado, enviarSolicitud, guardarBorrador, enviarBorrador, obtenerCatalogoSolicitud, obtenerListasGestionGlobal } from "@/app/actions";
 import type { ArticuloCatalogo, CriteriosArticulo, FilaPrecio, FilaResultado, Identidad, ProcesoKey, Solicitud, TipoVariacion } from "@/lib/domain-types";
 import { esFilaMargen } from "@/lib/domain-types";
@@ -110,7 +110,7 @@ export default function NuevaSolicitud({
         codigo: f.codigo,
         listaCodigo: f.listaCodigo ?? "",
         lista: f.lista ?? "",
-        tipoVariacion: f.tipoVariacion ?? "AUMENTO",
+        tipoVariacion: "DISMINUCION",
         variacionPorcentaje: String(f.variacionPorcentaje ?? ""),
       }));
   }
@@ -119,6 +119,9 @@ export default function NuevaSolicitud({
 
   const [tab, setTab] = useState<ProcesoKey>(borrador?.proceso ?? "FACTOR_PRECIO");
   const [modalidad, setModalidad] = useState<"manual" | "excel">(borrador?.modalidad ?? "manual");
+  const [tipoVariacion, setTipoVariacion] = useState<TipoVariacion>(
+    borrador?.proceso === "FACTOR_PRECIO" ? (borrador.parametros.tipoVariacion ?? "AUMENTO") : "DISMINUCION",
+  );
   const [nivel, setNivel] = useState(borrador?.parametros?.nivelPrecio ?? borrador?.parametros?.listaBase ?? borrador?.parametros?.nivel ?? "");
   const [codigoArticulo, setCodigoArticulo] = useState("");
   const [criteriosArticulo, setCriteriosArticulo] = useState<CriteriosArticulo>(borrador?.parametros?.criteriosArticulo ?? {});
@@ -167,13 +170,17 @@ export default function NuevaSolicitud({
 
   const proceso = PROCESOS[tab];
   const esDescuento = tab === "DESCUENTO_LISTA_PRECIO";
-  const esListaBase = tab === "MAYOREOD_MASIVO";
+  const esActualizacionMasiva = tab === "MAYOREOD_MASIVO";
+  const esListaBase = esActualizacionMasiva;
   const esGestionGlobal = tab === "FACTOR_PRECIO";
   const esMargen = tab === "MARGEN_UTILIDAD_MASIVO";
-  const permiteExcel = esDescuento;
+  const permiteExcel = esDescuento || esListaBase;
+  const procesoSolicitud: ProcesoKey = esActualizacionMasiva ? "MAYOREOD_MASIVO" : tab;
+  const modalidadSolicitud: "manual" | "excel" = esMargen || esActualizacionMasiva ? "manual" : modalidad;
+  const tipoVariacionAplicada: TipoVariacion = esGestionGlobal ? tipoVariacion : "DISMINUCION";
 
   const nivelOpts: SelectOption[] = (esGestionGlobal ? listasGestionGlobal : nivelesPrecio)
-    .filter((nivel) => esListaBase || nivel.codigo.toUpperCase() !== "MAYOREOD")
+    .filter((nivel) => esListaBase ? nivel.codigo.toUpperCase() === "MAYOREOD" : nivel.codigo.toUpperCase() !== "MAYOREOD")
     .map((nivel) => ({ value: nivel.codigo, label: nivel.nombre || nivel.codigo }));
   const gestionGlobalSeleccionada = listasGestionGlobal.find((lista) => lista.codigo === nivel);
   const articuloOpciones = articuloSeleccionado && !articulosMaestros.some((articulo) => articulo.codigo === articuloSeleccionado.codigo)
@@ -229,7 +236,7 @@ export default function NuevaSolicitud({
   const codigosArticulosCriterio = articulosCriterio.map((articulo) => articulo.codigo);
 
   const nombreNivel = (codigo: string) => nivelesPrecio.find((nivel) => nivel.codigo === codigo)?.nombre || codigo;
-  const conversion = useMemo(() => calcularVariacion("AUMENTO", factor), [factor]);
+  const conversion = useMemo(() => calcularVariacion(tipoVariacionAplicada, factor), [factor, tipoVariacionAplicada]);
   const factorInvalido = factor !== "" && !conversion.valido;
   const listaNoExisteEnMaestros = !!nivel && !nivelesPrecio.some((item) => item.codigo === nivel);
 
@@ -324,7 +331,7 @@ export default function NuevaSolicitud({
         compania,
         nivel,
         factor,
-        tipoVariacion: "AUMENTO",
+        tipoVariacion: tipoVariacionAplicada,
         offset: String(offset),
         maxRecords: String(limit),
       });
@@ -358,7 +365,7 @@ export default function NuevaSolicitud({
         else setCargandoSimulacionGlobal(false);
       }
     }
-  }, [compania, esGestionGlobal, factor, nivel]);
+  }, [compania, esGestionGlobal, factor, nivel, tipoVariacionAplicada]);
 
   const cargarHallazgosGlobal = useCallback(async ({ offset, limit }: TableLoadParams) => {
     if (!esGestionGlobal || !nivel || cargandoHallazgosGlobal) return;
@@ -368,7 +375,7 @@ export default function NuevaSolicitud({
         compania,
         nivel,
         factor,
-        tipoVariacion: "AUMENTO",
+        tipoVariacion: tipoVariacionAplicada,
         soloHallazgos: "1",
         offset: String(offset),
         maxRecords: String(Math.min(limit, 50)),
@@ -386,7 +393,7 @@ export default function NuevaSolicitud({
     } finally {
       setCargandoHallazgosGlobal(false);
     }
-  }, [cargandoHallazgosGlobal, compania, esGestionGlobal, factor, nivel]);
+  }, [cargandoHallazgosGlobal, compania, esGestionGlobal, factor, nivel, tipoVariacionAplicada]);
 
   useEffect(() => {
     let vigente = true;
@@ -468,7 +475,7 @@ export default function NuevaSolicitud({
       setCargandoSimulacionGlobal(false);
       setCargandoMasSimulacionGlobal(false);
     }
-  }, [criteriosArticulo, esGestionGlobal, factor, itemsManual, nivel]);
+  }, [criteriosArticulo, esGestionGlobal, factor, itemsManual, nivel, tipoVariacion]);
 
   function agregarItem() {
     if (bloquearCaptura) return;
@@ -486,7 +493,7 @@ export default function NuevaSolicitud({
           codigo: codigoArticulo,
           listaCodigo: nivel,
           lista: nombreNivel(nivel),
-          tipoVariacion: "AUMENTO",
+          tipoVariacion: "DISMINUCION",
           variacionPorcentaje: factor,
         },
       ]),
@@ -525,6 +532,24 @@ export default function NuevaSolicitud({
     return camposManualCompletos();
   }
 
+  function seleccionarModalidad(siguiente: "manual" | "excel") {
+    setModalidad(siguiente);
+    setNivel("");
+    setCodigoArticulo("");
+    setArticuloSeleccionado(null);
+    setCriteriosArticulo({});
+    setFactor("");
+    setItemsManual([]);
+    setErrorItem(null);
+    setAck(false);
+    setSimulado(false);
+    setFilas(null);
+    setSent(false);
+    setArchivoNombre(null);
+    setArchivoS3Key(null);
+    setErrorCarga(null);
+  }
+
   function puedeEnviar(): boolean {
     return simulado && camposCompletos() && !readOnly && (!esGestionGlobal || (!cargandoSimulacionGlobal && !cargandoMasSimulacionGlobal));
   }
@@ -541,16 +566,16 @@ export default function NuevaSolicitud({
       return;
     }
     const input = {
-      proceso: tab,
+      proceso: procesoSolicitud,
       compania,
       nivel,
       nivelBase: esListaBase ? nivel : undefined,
       factor,
-      tipoVariacion: "AUMENTO" as TipoVariacion,
+      tipoVariacion: tipoVariacionAplicada,
       grupoArticulos: esListaBase ? "Criterios seleccionados" : undefined,
       criteriosArticulo: esListaBase ? criteriosArticulo : undefined,
       codigosArticulos: esListaBase ? codigosArticulosCriterio : undefined,
-      items: esDescuento ? itemsManual.map((it) => ({ codigo: it.codigo, listaCodigo: it.listaCodigo, tipoVariacion: it.tipoVariacion, variacionPorcentaje: it.variacionPorcentaje })) : undefined,
+      items: esDescuento && !esActualizacionMasiva ? itemsManual.map((it) => ({ codigo: it.codigo, listaCodigo: it.listaCodigo, tipoVariacion: it.tipoVariacion, variacionPorcentaje: it.variacionPorcentaje })) : undefined,
     };
     const res = await simularManual(input);
     if (!res.ok) {
@@ -593,7 +618,7 @@ export default function NuevaSolicitud({
         let offset = 0;
         let hayMas = true;
         while (hayMas) {
-          const params = new URLSearchParams({ compania, nivel, factor, tipoVariacion: "AUMENTO", offset: String(offset), maxRecords: "200" });
+          const params = new URLSearchParams({ compania, nivel, factor, tipoVariacion: tipoVariacionAplicada, offset: String(offset), maxRecords: "200" });
           const response = await fetch(`/api/simulacion/gestion-global?${params.toString()}`, { cache: "no-store" });
           if (!response.ok) throw new Error("No fue posible consultar todos los registros de la simulación.");
           const pagina = await response.json() as PaginaSimulacionGestionGlobalResponse;
@@ -604,7 +629,11 @@ export default function NuevaSolicitud({
         }
         filasCompletas = todas;
       }
-      descargarSimulacionExcel(filasCompletas, `simulacion-${tab.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      descargarSimulacionExcel(
+        filasCompletas,
+        `simulacion-${tab.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        esGestionGlobal ? "Variación %" : "Descuento %",
+      );
     } catch (error) {
       onToast(error instanceof Error ? error.message : "No fue posible exportar la simulación.", "error");
     } finally {
@@ -620,19 +649,19 @@ export default function NuevaSolicitud({
     const parametros = {
       nivel,
       factor,
-      multiplicador: convertirPorcentajeAFactor(factor).factor,
-      tipoVariacion: "AUMENTO" as TipoVariacion,
+      multiplicador: conversion.factor,
+      tipoVariacion: tipoVariacionAplicada,
       variacionPorcentaje: factor,
       listaBase: esListaBase ? nivel : undefined,
       nivelPrecio: nivel || undefined,
       grupoArticulos: esListaBase ? "Criterios seleccionados" : undefined,
       criteriosArticulo: esListaBase ? criteriosArticulo : undefined,
       codigosArticulos: esListaBase ? codigosArticulosCriterio : undefined,
-      articulos: esDescuento ? filas ?? [] : undefined,
+      articulos: esDescuento && !esActualizacionMasiva ? filas ?? [] : undefined,
     };
     const res = await guardarBorrador({
-      proceso: tab,
-      modalidad: esMargen ? "excel" : modalidad,
+      proceso: procesoSolicitud,
+      modalidad: modalidadSolicitud,
       usuarioEmail: currentUser.email,
       usuarioNombre: currentUser.nombre,
       usuarioRol: currentUser.rol,
@@ -690,19 +719,19 @@ export default function NuevaSolicitud({
     const parametros = {
       nivel,
       factor,
-      multiplicador: convertirPorcentajeAFactor(factor).factor,
-      tipoVariacion: "AUMENTO" as TipoVariacion,
+      multiplicador: conversion.factor,
+      tipoVariacion: tipoVariacionAplicada,
       variacionPorcentaje: factor,
       listaBase: esListaBase ? nivel : undefined,
       nivelPrecio: nivel || undefined,
       grupoArticulos: esListaBase ? "Criterios seleccionados" : undefined,
       criteriosArticulo: esListaBase ? criteriosArticulo : undefined,
       codigosArticulos: esListaBase ? codigosArticulosCriterio : undefined,
-      articulos: esDescuento ? filas ?? [] : undefined,
+      articulos: esDescuento && !esActualizacionMasiva ? filas ?? [] : undefined,
     };
     const res = await enviarSolicitud({
-      proceso: tab,
-      modalidad: esMargen ? "excel" : modalidad,
+      proceso: procesoSolicitud,
+      modalidad: modalidadSolicitud,
       usuarioEmail: currentUser.email,
       usuarioNombre: currentUser.nombre,
       usuarioRol: currentUser.rol,
@@ -742,7 +771,7 @@ export default function NuevaSolicitud({
           <Icon name="fileEdit" className="w-4 h-4 text-amber-600 shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-amber-900">Retomando borrador <span className="mono">{borradorId}</span></p>
-            <p className="text-xs text-amber-700">Modifica los datos, vuelve a simular si es necesario y usa "Enviar a aprobación" cuando estés listo.</p>
+            <p className="text-xs text-amber-700">Modifica los datos, vuelve a simular si es necesario y usa "Enviar Solicitud" cuando estés listo.</p>
           </div>
           <button
             className="btn btn-ghost btn-sm text-amber-700"
@@ -762,7 +791,7 @@ export default function NuevaSolicitud({
           </span>
         ))}
       </div>
-      <h3 className="text-sm font-semibold mb-1">{proceso.desc}</h3>
+      <h3 className="text-sm font-semibold mb-1">{esActualizacionMasiva ? PROCESOS.MAYOREOD_MASIVO.desc : proceso.desc}</h3>
 
       {/* Compañía (contexto fijo) */}
       <div className="max-w-xs mb-4">
@@ -787,17 +816,17 @@ export default function NuevaSolicitud({
         )}
       </div>
 
-      {/* Sub-tabs manual/excel solo en Descuento */}
+      {/* Sub-tabs manual/excel para Descuento y Precio Base */}
       {permiteExcel && (
         <div className="flex gap-2 mb-4">
-          <span className={"subtab" + (modalidad === "manual" ? " active" : "")} onClick={() => setModalidad("manual")}>Captura Manual</span>
-          <span className={"subtab" + (modalidad === "excel" ? " active" : "")} onClick={() => setModalidad("excel")}>Carga por Plantilla Excel</span>
+          <span className={"subtab" + (modalidad === "manual" ? " active" : "")} onClick={() => seleccionarModalidad("manual")}>Captura Manual</span>
+          <span className={"subtab" + (modalidad === "excel" ? " active" : "")} onClick={() => seleccionarModalidad("excel")}>Carga por Plantilla Excel</span>
         </div>
       )}
 
       {/* FACTOR_PRECIO manual */}
       {esGestionGlobal && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-w-5xl mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 max-w-6xl mb-4">
           <div>
             <Dropdown
               id="nivel-gg"
@@ -816,11 +845,20 @@ export default function NuevaSolicitud({
             <input className="input bg-zinc-50" value={gestionGlobalSeleccionada?.version ?? "—"} readOnly aria-readonly="true" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor actual (%)</label>
+            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Variación actual (%)</label>
             <input className="input bg-zinc-50" value={gestionGlobalSeleccionada?.variacionPorc != null ? `${gestionGlobalSeleccionada.variacionPorc}%` : "—"} readOnly aria-readonly="true" />
           </div>
+          <Dropdown
+            id="tipo-variacion-gg"
+            modelValue={tipoVariacion}
+            onChange={(value) => setTipoVariacion(value as TipoVariacion)}
+            options={[{ value: "AUMENTO", label: "Aumento" }, { value: "DISMINUCION", label: "Descuento" }]}
+            label="Tipo de variación"
+            searchable={false}
+            disabled={bloquearCaptura}
+          />
           <div>
-            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
+            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Variación %</label>
             <input type="number" step="0.01" min="0" value={factor} disabled={bloquearCaptura} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
             {!factorInvalido && factor !== "" && conversion.factor != null && (
               <p className="text-[11px] text-zinc-500 mt-1">Multiplicador: <b className="mono">{fmtFactor(conversion.factor)}</b></p>
@@ -869,7 +907,7 @@ export default function NuevaSolicitud({
               disabled={bloquearCaptura}
             />
             <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
+              <label className="block text-xs font-medium text-zinc-500 mb-1.5">Descuento %</label>
               <input type="number" step="0.01" min="0" value={factor} disabled={bloquearCaptura} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
             </div>
           </div>
@@ -904,7 +942,7 @@ export default function NuevaSolicitud({
       )}
 
       {/* MAYOREOD_MASIVO manual */}
-      {esListaBase && (
+      {esListaBase && modalidad === "manual" && (
         <div className="space-y-4 mb-4">
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
             <p className="font-semibold">⚠️ Atención: esta actualización aplicará cambios sobre la lista {nombreNivel(nivel)} cuando sea autorizada.</p>
@@ -936,7 +974,7 @@ export default function NuevaSolicitud({
               />
             ))}
             <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>
+              <label className="block text-xs font-medium text-zinc-500 mb-1.5">Descuento %</label>
               <input type="number" step="0.01" min="0" value={factor} disabled={bloquearCaptura} onChange={(e) => setFactor(e.target.value)} placeholder="Ej. 10" className="input" />
               {factorInvalido && <p className="text-[11px] text-red-600 mt-1">{conversion.causa}</p>}
             </div>
@@ -953,11 +991,11 @@ export default function NuevaSolicitud({
       )}
 
       {/* DESCUENTO excel */}
-      {esDescuento && modalidad === "excel" && (
+      {(esDescuento || esListaBase) && modalidad === "excel" && (
         <div className="space-y-4 mb-4">
           <div className="rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
-            <p className="text-xs text-zinc-600">Use las columnas Lista de Precio, Código Artículo y Factor Multiplicador.</p>
-            <a href="/api/plantilla?proceso=DESCUENTO_LISTA_PRECIO" className="btn btn-outline"><Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla</a>
+            <p className="text-xs text-zinc-600">{esListaBase ? "Use las columnas Código Artículo y Descuento %." : "Use las columnas Lista de Precio, Código Artículo y Descuento %."}</p>
+            <a href={`/api/plantilla?proceso=${tab}`} className="btn btn-outline"><Icon name="download" className="w-3.5 h-3.5" /> Descargar plantilla</a>
           </div>
           <ExcelUploader disabled={bloquearCaptura} procesoKey={tab} compania={compania} nivelPrecio={nivel} onParsed={handleArchivoParsed} onError={setErrorCarga} />
           {errorCarga && <p className="text-[11px] text-red-600">{errorCarga}</p>}
@@ -994,7 +1032,7 @@ export default function NuevaSolicitud({
           {savingDraft ? (<><Icon name="loader" className="w-3.5 h-3.5" spin /> Guardando…</>) : <><Icon name="save" className="w-3.5 h-3.5" /> Guardar borrador</>}
         </button>
         <button className={"btn " + (esListaBase ? "btn-destructive" : "btn-default")} disabled={!puedeEnviar() || sending} onClick={handleEnviar}>
-          {sending ? (<><Icon name="loader" className="w-3.5 h-3.5" spin /> Enviando…</>) : sent ? (<><Icon name="check" className="w-3.5 h-3.5" /> Enviado</>) : esMargen ? "Enviar recálculo a Aprobación" : "Enviar a Aprobación"}
+          {sending ? (<><Icon name="loader" className="w-3.5 h-3.5" spin /> Enviando…</>) : sent ? (<><Icon name="check" className="w-3.5 h-3.5" /> Enviado</>) : "Enviar Solicitud"}
         </button>
       </div>
 

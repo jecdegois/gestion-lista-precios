@@ -65,7 +65,7 @@ export function convertirPorcentajeAFactor(valor: unknown): ConversionFactor {
     factor,
     causa: valido
       ? null
-      : "El Factor % debe generar un multiplicador mayor que 0 y menor o igual a 2 (variación entre -100% y 100%).",
+      : "El Descuento % debe generar un multiplicador mayor que 0 y menor o igual a 2 (variación entre -100% y 100%).",
   };
 }
 
@@ -95,7 +95,7 @@ export function calcularVariacion(tipoVariacion: TipoVariacion | undefined, magn
       magnitud: null,
       porcentaje: null,
       factor: null,
-      causa: "El Factor % debe ser un valor numérico igual o mayor a cero. El signo se define únicamente con Tipo de Variación.",
+      causa: "El Descuento % debe ser un valor numérico igual o mayor a cero. El signo se define únicamente con Tipo de Variación.",
     };
   }
   const porcentajeConSigno = signoDeTipoVariacion(tipoVariacion) * magnitud;

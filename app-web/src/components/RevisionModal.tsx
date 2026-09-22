@@ -280,7 +280,7 @@ export default function RevisionModal({
             )}
             {onEnviarBorrador && (
               <button className="btn btn-default" onClick={() => { onClose(); onEnviarBorrador(solicitud.id); }}>
-                Enviar a aprobación
+                Enviar Solicitud
               </button>
             )}
             <button className="btn btn-outline" onClick={onClose}>Cerrar</button>

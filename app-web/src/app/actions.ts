@@ -303,10 +303,13 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
   }
 
   const esDescuento = procesoKey === "DESCUENTO_LISTA_PRECIO";
+  const esPrecioBase = procesoKey === "MAYOREOD_MASIVO";
   const dataRows = rows.slice(1).filter((r) => Array.isArray(r) && r.length > 0);
   const niveles = await listarNivelesPrecio(compania);
   const nivelesConsultaRaw = esDescuento
     ? dataRows.map((r) => String(r[0] ?? "").trim())
+    : esPrecioBase
+      ? [nivelPrecio || "MAYOREOD"]
     : [nivelPrecio || niveles[0]?.codigo];
   const nivelesConsulta = nivelesSolicitadosCanonicos(niveles, nivelesConsultaRaw);
   const contextosPorLista = await cargarContextosPorLista(compania, niveles, nivelesConsulta);
@@ -314,11 +317,11 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
   const filas = dataRows.map((r, idx) => {
     if (esDescuento) {
       const listaCodigo = resolverNivelPrecio(niveles, String(r[0] ?? "").trim());
-      // Convertir porcentaje a factor (10 -> 0.1 para factor de 1.1)
+      // Convertir descuento porcentual a multiplicador (10 -> 0.9000).
       const porcentajeRaw = r[2] !== undefined ? String(r[2]).trim() : "";
       const porcentaje = Number.parseFloat(porcentajeRaw.replace(",", "."));
-      const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(\.\d+)?$/.test(porcentajeRaw);
-      const factorConvertido = formatoValido ? 1 + (porcentaje / 100) : null;
+      const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(?:[.,]\d+)?$/.test(porcentajeRaw);
+      const factorConvertido = formatoValido ? 1 - (porcentaje / 100) : null;
       const factorTexto = factorConvertido !== null ? textoFactorCalculado(factorConvertido) : porcentajeRaw;
       
       return construirFilaDescuentoMasivo(
@@ -326,10 +329,31 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
           fila: idx + 1,
           listaCodigo: r[0] !== undefined ? String(r[0]).trim() : null,
           codigo: r[1] !== undefined ? String(r[1]).trim() : "",
-          tipoVariacion: "AUMENTO",
+          tipoVariacion: "DISMINUCION",
+          variacionPorcentaje: porcentajeRaw,
           valorPropuestoRaw: factorTexto,
         },
         true, // factorDirecto = true, ahora valorPropuestoRaw contiene el factor convertido
+        listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
+      );
+    }
+    if (esPrecioBase) {
+      const porcentajeRaw = r[1] !== undefined ? String(r[1]).trim() : "";
+      const porcentaje = Number.parseFloat(porcentajeRaw.replace(",", "."));
+      const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(?:[.,]\d+)?$/.test(porcentajeRaw);
+      const factorConvertido = formatoValido ? 1 - (porcentaje / 100) : null;
+      const factorTexto = factorConvertido !== null ? textoFactorCalculado(factorConvertido) : porcentajeRaw;
+      const listaCodigo = nivelesConsulta[0];
+      return construirFilaCompleta(
+        {
+          fila: idx + 1,
+          codigo: r[0] !== undefined ? String(r[0]).trim() : "",
+          listaCodigo,
+          tipoVariacion: "DISMINUCION",
+          variacionPorcentaje: porcentajeRaw,
+          valorPropuestoRaw: factorTexto,
+        },
+        "factor",
         listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
       );
     }
@@ -338,7 +362,7 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
       {
         fila: idx + 1,
         codigo: r[0] !== undefined ? String(r[0]).trim() : "",
-        tipoVariacion: "AUMENTO",
+        tipoVariacion: "DISMINUCION",
         valorPropuestoRaw: r[1] !== undefined ? String(r[1]).trim() : "",
       },
       "factor",
@@ -366,7 +390,7 @@ export interface SimularManualInput {
 
 export async function simularManual(input: SimularManualInput): Promise<{ ok: boolean; filas: FilaResultado[] }> {
   const magnitud = input.factor ?? "";
-  const tv = input.tipoVariacion ?? "AUMENTO";
+  const tv = input.tipoVariacion ?? (input.proceso === "FACTOR_PRECIO" ? "AUMENTO" : "DISMINUCION");
   const niveles = await listarNivelesPrecio(input.compania);
   const nivelesSolicitados = input.items
     ? input.items.map((item) => item.listaCodigo)

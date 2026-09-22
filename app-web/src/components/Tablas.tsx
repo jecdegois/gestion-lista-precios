@@ -164,7 +164,7 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
               <th className="text-left font-medium px-3 py-2">Descripción</th>
               <th className="text-right font-medium px-3 py-2">Precio Actual</th>
               <th className="text-left font-medium px-3 py-2">Tipo Var.</th>
-              <th className="text-right font-medium px-3 py-2">Factor %</th>
+              <th className="text-right font-medium px-3 py-2">Descuento %</th>
               <th className="text-right font-medium px-3 py-2">Multiplicador</th>
               <th className="text-right font-medium px-3 py-2">Precio Calc.</th>
               <th className="text-right font-medium px-3 py-2">Precio Redondeado</th>

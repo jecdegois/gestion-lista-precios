@@ -6,7 +6,7 @@ function numero(valor: unknown): number | null {
 }
 
 /** Descarga todas las filas recibidas de una simulación en un libro Excel. */
-export function descargarSimulacionExcel(filas: FilaResultado[], nombre = "simulacion-precios.xlsx"): void {
+export function descargarSimulacionExcel(filas: FilaResultado[], nombre = "simulacion-precios.xlsx", etiquetaVariacion = "Descuento %"): void {
   const rows = filas.map((fila) => {
     const v = fila.validacion;
     const esMargen = "porcentajeReduccion" in fila;
@@ -17,7 +17,7 @@ export function descargarSimulacionExcel(filas: FilaResultado[], nombre = "simul
       Lista: fila.lista ?? "",
       "Código Artículo": fila.codigo,
       Descripción: fila.descripcion,
-      "Factor %": esMargen ? numero(filaMargen.validacion.porcentajeReduccion) : filaPrecio.variacionPorcentaje ?? "",
+      [etiquetaVariacion]: esMargen ? numero(filaMargen.validacion.porcentajeReduccion) : filaPrecio.variacionPorcentaje ?? "",
       Multiplicador: esMargen ? numero(filaMargen.validacion.multiplicadorMargen) : filaPrecio.multiplicador ?? filaPrecio.factorPropuesto ?? "",
       "Factor Aplicado": fila.factorAplicado ?? "",
       "Precio Actual": numero(v.precioActual) ?? "",
