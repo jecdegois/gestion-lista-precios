@@ -1,5 +1,5 @@
 import "server-only";
-import type { Articulo, NivelPrecio } from "@/lib/types";
+import type { Articulo, GestionGlobalLista, NivelPrecio } from "@/lib/types";
 import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "./companies";
 import {
   buscarArticuloDemo,
@@ -158,6 +158,31 @@ export async function listarNivelesPrecio(compania: string): Promise<NivelPrecio
     const codigo = String(r.codigo).trim();
     return { codigo, nombre: codigo };
   });
+}
+
+/** Lista y parámetros vigentes usados exclusivamente por Gestión Global. */
+export async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista[]> {
+  if (esModoDemo()) {
+    return nivelesPrecioDemo(compania).map((nivel) => ({ ...nivel, version: "1", variacionPorc: 0 }));
+  }
+  const pool = await getPool(compania);
+  const mssql = await import("mssql");
+  const q = await pool.request()
+    .input("compania", mssql.VarChar(20), compania.trim().toUpperCase())
+    .query(
+      `SELECT A.NIVEL_PRECIO AS codigo,
+              A.VERSION AS version,
+              A.VARIACION_PORC AS variacionPorc
+         FROM [dbo].[GESTION_LISTAS_PRECIOS] A
+        WHERE A.COMPANIA = @compania
+        ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION), A.VERSION;`,
+    );
+  return q.recordset.map((r: Record<string, unknown>) => ({
+    codigo: String(r.codigo ?? "").trim(),
+    nombre: String(r.codigo ?? "").trim(),
+    version: String(r.version ?? "").trim(),
+    variacionPorc: r.variacionPorc == null ? null : Number(r.variacionPorc),
+  })).filter((nivel) => nivel.codigo && nivel.version);
 }
 
 export async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Articulo[]> {
