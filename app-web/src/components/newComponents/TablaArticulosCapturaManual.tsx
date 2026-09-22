@@ -2,7 +2,7 @@
 
 import Icon from "../Icon";
 import ResponsiveDataTable, { type TableColumn } from "./ResponsiveDataTable";
-import { convertirPorcentajeAFactor } from "@/lib/preview";
+import { calcularVariacion } from "@/lib/preview";
 import { fmtFactor } from "@/lib/format";
 
 export interface ArticuloCapturaManualRow {
@@ -28,8 +28,8 @@ export default function TablaArticulosCapturaManual({
     { key: "fila", header: "#", value: (fila) => fila.fila },
     { key: "codigo", header: "Código", value: (fila) => <span className="mono">{fila.codigo}</span> },
     { key: "lista", header: "Lista", value: (fila) => fila.lista },
-    { key: "factor", header: "Factor %", align: "right", value: (fila) => <span className="mono">{fila.variacionPorcentaje}</span> },
-    { key: "multiplicador", header: "Multiplicador", align: "right", value: (fila) => <span className="mono">{fmtFactor(convertirPorcentajeAFactor(fila.variacionPorcentaje).factor)}</span> },
+    { key: "factor", header: "Descuento %", align: "right", value: (fila) => <span className="mono">{fila.variacionPorcentaje}</span> },
+    { key: "multiplicador", header: "Multiplicador", align: "right", value: (fila) => <span className="mono">{fmtFactor(calcularVariacion("DISMINUCION", fila.variacionPorcentaje).factor)}</span> },
     {
       key: "acciones",
       header: "",

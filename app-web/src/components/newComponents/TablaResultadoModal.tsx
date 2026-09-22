@@ -30,13 +30,13 @@ const columns: readonly TableColumn<FilaResultado>[] = [
   },
   {
     key: "factor",
-    header: "Factor %",
+    header: "Descuento %",
     align: "right",
     value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.factorPropuesto) : fmtPorcentajeCapturado(fila.variacionPorcentaje)}</span>,
   },
   {
     key: "factorAplicado",
-    header: "Factor Aplicado %",
+    header: "Descuento Aplicado %",
     align: "right",
     value: (fila) => <span className="mono">{fmtPorcentajeMultiplicador(fila.factorAplicado)}</span>,
   },

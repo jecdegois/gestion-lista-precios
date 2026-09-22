@@ -19,9 +19,9 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
       return <span className={`badge ${fila.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok"}`}>{tipo}</span>;
     },
   },*/
-  { key: "factor", header: "Factor %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeCapturado(fila.variacionPorcentaje)}</span> },
+  { key: "factor", header: "Descuento %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeCapturado(fila.variacionPorcentaje)}</span> },
   { key: "multiplicador", header: "Multiplicador", align: "right", value: (fila) => <span className="mono">{fmtFactor(fila.multiplicador ?? fila.factorPropuesto)}</span> },
-  { key: "factorAplicado", header: "Factor Aplicado %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeMultiplicador(fila.factorAplicado)}</span> },
+  { key: "factorAplicado", header: "Descuento Aplicado %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeMultiplicador(fila.factorAplicado)}</span> },
   {
     key: "mensajeError",
     header: "Mensaje de error",
@@ -68,6 +68,8 @@ export default function TablaImpactoDescuentoManual({
 }: TablaImpactoDescuentoManualProps) {
   const totalHallazgosVisibles = filas.filter(esHallazgoDeNegocio).length;
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila)).length;
+  const etiquetaVariacion = filas.some((fila) => fila.tipoVariacion === "AUMENTO") ? "Variación %" : "Descuento %";
+  const columnas = columns.map((column) => column.key === "factor" ? { ...column, header: etiquetaVariacion } : column);
 
   return (
     <div>
@@ -78,7 +80,7 @@ export default function TablaImpactoDescuentoManual({
       </p>
       <ResponsiveDataTable
         rows={filas}
-        columns={columns}
+        columns={columnas}
         rowKey={(fila) => `${fila.fila}-${fila.codigo}-${fila.listaCodigo ?? ""}`}
         emptyTitle="No hay filas de simulación"
         emptyDescription="Agregue artículos y ejecute la simulación para ver el impacto."
