@@ -18,7 +18,7 @@ import {
   decidirCancelacion,
   enviarBorrador,
 } from "@/app/actions";
-import type { EventoAuditoria, Identidad, Solicitud } from "@/lib/domain-types";
+import type { EventoAuditoria, Identidad, ProcesoKey, Solicitud } from "@/lib/domain-types";
 
 interface Toast {
   id: number;
@@ -33,6 +33,7 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
   const [eventos, setEventos] = useState<EventoAuditoria[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [modalId, setModalId] = useState<string | null>(null);
+  const [tipoSolicitudSeleccionado, setTipoSolicitudSeleccionado] = useState<ProcesoKey>("FACTOR_PRECIO");
   const pollingEnCurso = useRef(false);
 
   const esAprobador = user?.rol === "APROBADOR";
@@ -185,9 +186,10 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
               currentUser={user}
               borrador={borradorActivo}
               onEnviado={() => { setBorradorActivo(undefined); refrescarSolicitudes(); }}
+              onTipoSolicitudChange={setTipoSolicitudSeleccionado}
               onToast={pushToast}
             />
-            <MisSolicitudes solicitudes={solicitudes} currentUser={user} onVerDetalle={handleAbrir} onCancelar={esAuditor ? undefined : handleCancelar} onEnviarBorrador={esAuditor ? undefined : handleEnviarBorrador} onRetomar={esAuditor ? undefined : handleRetomar} />
+            <MisSolicitudes solicitudes={solicitudes} currentUser={user} procesoFiltro={tipoSolicitudSeleccionado} onVerDetalle={handleAbrir} onCancelar={esAuditor ? undefined : handleCancelar} onEnviarBorrador={esAuditor ? undefined : handleEnviarBorrador} onRetomar={esAuditor ? undefined : handleRetomar} />
           </>
         )}
 

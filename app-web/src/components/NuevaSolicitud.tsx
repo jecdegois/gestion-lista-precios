@@ -83,12 +83,25 @@ const ORDEN_PROCESOS: ProcesoKey[] = [
   "MARGEN_UTILIDAD_MASIVO",
 ];
 
+function porcentajeDesdeMultiplicador(multiplicador: unknown, tipo: TipoVariacion): string {
+  const valor = Number(multiplicador);
+  if (!Number.isFinite(valor)) return "";
+  const porcentaje = (tipo === "DISMINUCION" ? 1 - valor : valor - 1) * 100;
+  return Number.isFinite(porcentaje) ? String(Number(porcentaje.toFixed(4))) : "";
+}
+
+function primerTexto(...valores: unknown[]): string | undefined {
+  const valor = valores.find((item) => item != null && String(item).trim() !== "");
+  return valor == null ? undefined : String(valor);
+}
+
 export default function NuevaSolicitud({
   readOnly,
   consultaOnly = false,
   currentUser,
   borrador,
   onEnviado,
+  onTipoSolicitudChange,
   onToast,
 }: {
   readOnly: boolean;
@@ -96,10 +109,25 @@ export default function NuevaSolicitud({
   currentUser: Identidad;
   borrador?: Solicitud;
   onEnviado: () => void;
+  onTipoSolicitudChange?: (proceso: ProcesoKey) => void;
   onToast: (msg: string, variant?: "success" | "error") => void;
 }) {
   const compania = currentUser.compania as string;
   const bloquearCaptura = readOnly && !consultaOnly;
+
+  const parametrosBorrador = borrador?.parametros;
+  const tipoVariacionInicial: TipoVariacion = borrador?.proceso === "FACTOR_PRECIO"
+    ? parametrosBorrador?.tipoVariacion
+      ?? (Number(parametrosBorrador?.multiplicador) < 1 ? "DISMINUCION" : "AUMENTO")
+    : "DISMINUCION";
+  const nivelInicial = primerTexto(
+    parametrosBorrador?.nivelPrecio,
+    parametrosBorrador?.listaBase,
+    parametrosBorrador?.nivel,
+    borrador?.lista,
+  ) ?? "";
+  const factorInicial = primerTexto(parametrosBorrador?.factor, parametrosBorrador?.variacionPorcentaje)
+    ?? porcentajeDesdeMultiplicador(parametrosBorrador?.multiplicador, tipoVariacionInicial);
 
   // Función auxiliar para construir itemsManual desde las filas del borrador
   function itemsDesdeFilasBorrador(filas: FilaResultado[]): ItemManual[] {
@@ -119,18 +147,18 @@ export default function NuevaSolicitud({
 
   const [tab, setTab] = useState<ProcesoKey>(borrador?.proceso ?? "FACTOR_PRECIO");
   const [modalidad, setModalidad] = useState<"manual" | "excel">(borrador?.modalidad ?? "manual");
-  const [tipoVariacion, setTipoVariacion] = useState<TipoVariacion>(
-    borrador?.proceso === "FACTOR_PRECIO" ? (borrador.parametros.tipoVariacion ?? "AUMENTO") : "DISMINUCION",
-  );
-  const [nivel, setNivel] = useState(borrador?.parametros?.nivelPrecio ?? borrador?.parametros?.listaBase ?? borrador?.parametros?.nivel ?? "");
+  const [tipoVariacion, setTipoVariacion] = useState<TipoVariacion>(tipoVariacionInicial);
+  const [nivel, setNivel] = useState(nivelInicial);
   const [codigoArticulo, setCodigoArticulo] = useState("");
   const [criteriosArticulo, setCriteriosArticulo] = useState<CriteriosArticulo>(borrador?.parametros?.criteriosArticulo ?? {});
-  const [factor, setFactor] = useState(String(borrador?.parametros?.factor ?? ""));
+  const [factor, setFactor] = useState(factorInicial);
   const [itemsManual, setItemsManual] = useState<ItemManual[]>(
     esBorradorDescuentoManual && borrador?.filas?.length ? itemsDesdeFilasBorrador(borrador.filas) : []
   );
   const [errorItem, setErrorItem] = useState<string | null>(null);
-  const [ack, setAck] = useState(false);
+  // Un borrador de Precio Base sólo pudo guardarse después de aceptar el
+  // impacto; al retomarlo debe conservar esa condición para poder enviarlo.
+  const [ack, setAck] = useState(borrador?.proceso === "MAYOREOD_MASIVO");
   const [simulado, setSimulado] = useState(!!(borrador?.filas?.length));
   const [filas, setFilas] = useState<FilaResultado[] | null>(borrador?.filas?.length ? borrador.filas : null);
   const [sending, setSending] = useState(false);
@@ -168,6 +196,29 @@ export default function NuevaSolicitud({
   // Evita que useEffect([tab]) limpie el estado en el montaje inicial
   const montajeInicialRef = useRef(true);
 
+  // Hidrata explícitamente el formulario al retomar un borrador. Esto cubre
+  // tanto el montaje normal como el caso en que el borrador llega después de
+  // que la pantalla ya estaba montada.
+  useEffect(() => {
+    if (!borrador) return;
+    montajeInicialRef.current = true;
+    setTab(borrador.proceso);
+    setModalidad(borrador.modalidad);
+    setTipoVariacion(tipoVariacionInicial);
+    setNivel(nivelInicial);
+    setFactor(factorInicial);
+    setCriteriosArticulo(borrador.parametros?.criteriosArticulo ?? {});
+    setItemsManual(esBorradorDescuentoManual && borrador.filas?.length ? itemsDesdeFilasBorrador(borrador.filas) : []);
+    setAck(borrador.proceso === "MAYOREOD_MASIVO");
+    setSimulado(Boolean(borrador.filas?.length));
+    setFilas(borrador.filas?.length ? borrador.filas : null);
+    setArchivoNombre(borrador.archivoNombre ?? null);
+    setArchivoS3Key(borrador.archivoS3Key ?? null);
+    setBorradorId(borrador.id);
+  // El ID identifica una carga de borrador; sus valores se hidratan juntos.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [borrador?.id]);
+
   const proceso = PROCESOS[tab];
   const esDescuento = tab === "DESCUENTO_LISTA_PRECIO";
   const esActualizacionMasiva = tab === "MAYOREOD_MASIVO";
@@ -178,6 +229,10 @@ export default function NuevaSolicitud({
   const procesoSolicitud: ProcesoKey = esActualizacionMasiva ? "MAYOREOD_MASIVO" : tab;
   const modalidadSolicitud: "manual" | "excel" = esMargen || esActualizacionMasiva ? "manual" : modalidad;
   const tipoVariacionAplicada: TipoVariacion = esGestionGlobal ? tipoVariacion : "DISMINUCION";
+
+  useEffect(() => {
+    onTipoSolicitudChange?.(procesoSolicitud);
+  }, [onTipoSolicitudChange, procesoSolicitud]);
 
   const nivelOpts: SelectOption[] = (esGestionGlobal ? listasGestionGlobal : nivelesPrecio)
     .filter((nivel) => esListaBase ? nivel.codigo.toUpperCase() === "MAYOREOD" : nivel.codigo.toUpperCase() !== "MAYOREOD")
@@ -247,10 +302,7 @@ export default function NuevaSolicitud({
 
   // Reset al cambiar de pestaña. No corre en el montaje inicial (preserva estado del borrador).
   useEffect(() => {
-    if (montajeInicialRef.current) {
-      montajeInicialRef.current = false;
-      return;
-    }
+    if (montajeInicialRef.current) return;
     setModalidad("manual");
     setNivel("");
     setCodigoArticulo("");
@@ -476,6 +528,12 @@ export default function NuevaSolicitud({
       setCargandoMasSimulacionGlobal(false);
     }
   }, [criteriosArticulo, esGestionGlobal, factor, itemsManual, nivel, tipoVariacion]);
+
+  // Se desactiva después de que los efectos iniciales hayan conservado los
+  // valores del borrador. Los cambios posteriores sí invalidan la simulación.
+  useEffect(() => {
+    montajeInicialRef.current = false;
+  }, []);
 
   function agregarItem() {
     if (bloquearCaptura) return;

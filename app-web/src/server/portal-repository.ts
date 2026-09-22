@@ -421,6 +421,11 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
   const precioRedondeado = numero(d.PRECIO_SIMULADO);
   const esMargen = proceso === "MARGEN_UTILIDAD_MASIVO";
   const causa = textoNoVacio(d.CAUSA) ?? textoNoVacio(d.MENSAJE_ERROR) ?? null;
+  const causaNormalizada = causa?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() ?? "";
+  const esHallazgoMargen = !valido && (
+    causaNormalizada.includes("MARGEN")
+    || causaNormalizada.includes("COSTO")
+  );
   const factorAplicado = numero(d.FACTOR_APLICADO);
   const mensajeError = textoNoVacio(d.MENSAJE_ERROR);
   const validacionBase: ValidacionPrecio = {
@@ -429,7 +434,7 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
     precioPropuesto,
     factorPropuesto,
     precioRedondeado,
-    estadoRedondeo: null,
+    estadoRedondeo: esHallazgoMargen ? "ALERTA_MARGEN" : null,
     factorReduccion: null,
     multiplicador: null,
     bandaRedondeo: null,
