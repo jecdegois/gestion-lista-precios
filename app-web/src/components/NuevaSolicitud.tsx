@@ -19,10 +19,10 @@ import {
   calcularCostoMinimoArticulo,
 } from "@/lib/catalog";
 import { calcularVariacion, convertirPorcentajeAFactor, redondeoPreview } from "@/lib/preview";
-import { simularManual, simularGestionGlobalPaginado, enviarSolicitud, guardarBorrador, enviarBorrador, obtenerCatalogoSolicitud } from "@/app/actions";
+import { simularManual, simularGestionGlobalPaginado, enviarSolicitud, guardarBorrador, enviarBorrador, obtenerCatalogoSolicitud, obtenerListasGestionGlobal } from "@/app/actions";
 import type { ArticuloCatalogo, CriteriosArticulo, FilaPrecio, FilaResultado, Identidad, ProcesoKey, Solicitud, TipoVariacion } from "@/lib/domain-types";
 import { esFilaMargen } from "@/lib/domain-types";
-import type { NivelPrecio } from "@/lib/types";
+import type { GestionGlobalLista, NivelPrecio } from "@/lib/types";
 import { descargarSimulacionExcel } from "@/lib/export-simulation";
 
 interface ItemManual {
@@ -138,6 +138,7 @@ export default function NuevaSolicitud({
   const [archivoS3Key, setArchivoS3Key] = useState<string | null>(borrador?.archivoS3Key ?? null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [nivelesPrecio, setNivelesPrecio] = useState<NivelPrecio[]>([]);
+  const [listasGestionGlobal, setListasGestionGlobal] = useState<GestionGlobalLista[]>([]);
   const [articulosMaestros, setArticulosMaestros] = useState<ArticuloCatalogo[]>([]);
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null);
@@ -171,9 +172,10 @@ export default function NuevaSolicitud({
   const esMargen = tab === "MARGEN_UTILIDAD_MASIVO";
   const permiteExcel = esDescuento;
 
-  const nivelOpts: SelectOption[] = nivelesPrecio
+  const nivelOpts: SelectOption[] = (esGestionGlobal ? listasGestionGlobal : nivelesPrecio)
     .filter((nivel) => esListaBase || nivel.codigo.toUpperCase() !== "MAYOREOD")
     .map((nivel) => ({ value: nivel.codigo, label: nivel.nombre || nivel.codigo }));
+  const gestionGlobalSeleccionada = listasGestionGlobal.find((lista) => lista.codigo === nivel);
   const articuloOpciones = articuloSeleccionado && !articulosMaestros.some((articulo) => articulo.codigo === articuloSeleccionado.codigo)
     ? [articuloSeleccionado, ...articulosMaestros]
     : articulosMaestros;
@@ -391,15 +393,19 @@ export default function NuevaSolicitud({
     const cargarArticulosCompletos = !(esDescuento && modalidad === "manual");
     setCargandoCatalogo(true);
     setErrorCatalogo(null);
-    void obtenerCatalogoSolicitud(compania, nivel || undefined, cargarArticulosCompletos)
-      .then((catalogo) => {
+    const catalogoPromise = obtenerCatalogoSolicitud(compania, nivel || undefined, cargarArticulosCompletos);
+    const gestionGlobalPromise = esGestionGlobal ? obtenerListasGestionGlobal(compania) : Promise.resolve<GestionGlobalLista[]>([]);
+    void Promise.all([catalogoPromise, gestionGlobalPromise])
+      .then(([catalogo, listasGlobales]) => {
         if (!vigente) return;
         setNivelesPrecio(catalogo.niveles);
+        setListasGestionGlobal(listasGlobales);
         setArticulosMaestros(cargarArticulosCompletos ? catalogo.articulos : []);
       })
       .catch((error) => {
         if (!vigente) return;
         setNivelesPrecio([]);
+        setListasGestionGlobal([]);
         setArticulosMaestros([]);
         setErrorCatalogo((error as Error).message || "No fue posible consultar los maestros de Softland.");
       })
@@ -791,7 +797,7 @@ export default function NuevaSolicitud({
 
       {/* FACTOR_PRECIO manual */}
       {esGestionGlobal && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-w-5xl mb-4">
           <div>
             <Dropdown
               id="nivel-gg"
@@ -804,6 +810,14 @@ export default function NuevaSolicitud({
               disabled={bloquearCaptura}
               loading={cargandoCatalogo}
             />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Versión</label>
+            <input className="input bg-zinc-50" value={gestionGlobalSeleccionada?.version ?? "—"} readOnly aria-readonly="true" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor actual (%)</label>
+            <input className="input bg-zinc-50" value={gestionGlobalSeleccionada?.variacionPorc != null ? `${gestionGlobalSeleccionada.variacionPorc}%` : "—"} readOnly aria-readonly="true" />
           </div>
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1.5">Factor %</label>

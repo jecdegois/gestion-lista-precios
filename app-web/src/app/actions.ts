@@ -27,7 +27,7 @@ import type {
 import type { NivelPrecio } from "@/lib/types";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
 import { esEjecucionSoftlandBloqueada, esModoDemo, esModoSoloLectura, esModoSoloPortal, objetoPortal } from "@/server/companies";
-import { actualizarGestionGlobal, listarCatalogo, listarCatalogoPaginado, listarNivelesPrecio } from "@/server/pricing-repository";
+import { actualizarGestionGlobal, listarCatalogo, listarCatalogoPaginado, listarGestionGlobal, listarNivelesPrecio } from "@/server/pricing-repository";
 import {
   actualizarSolicitud,
   actualizarMensajeErrorDetalles,
@@ -224,6 +224,10 @@ export async function obtenerCatalogoSolicitud(
     articulos: Object.values(contexto.articulos),
     grupos: Object.entries(contexto.grupos).map(([codigo, grupo]) => ({ codigo, nombre: grupo.label, cantidad: grupo.articulos.length })),
   };
+}
+
+export async function obtenerListasGestionGlobal(compania: string) {
+  return await listarGestionGlobal(compania);
 }
 
 // ---------------------------------------------------------------------------
