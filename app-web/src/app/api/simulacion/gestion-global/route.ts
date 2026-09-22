@@ -14,6 +14,7 @@ export async function GET(request: Request) {
   const tipoVariacion = url.searchParams.get("tipoVariacion") === "DISMINUCION" ? "DISMINUCION" : "AUMENTO";
   const offset = parseNonNegativeInteger(url.searchParams.get("offset"), 0);
   const maxRecords = Math.min(Math.max(parseNonNegativeInteger(url.searchParams.get("maxRecords"), 200) || 200, 1), 200);
+  const soloHallazgos = url.searchParams.get("soloHallazgos") === "1";
 
   if (!compania || !nivel) {
     return NextResponse.json({ error: "compania y nivel son parámetros obligatorios." }, { status: 400 });
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
       tipoVariacion,
       offset,
       maxRecords,
+      soloHallazgos,
     });
     if (!resultado.ok) return NextResponse.json(resultado, { status: 400 });
     return NextResponse.json(resultado);

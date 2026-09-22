@@ -13,6 +13,7 @@ import {
 } from "@/lib/engine";
 import { estaEnAmbito } from "@/lib/catalog";
 import type {
+  FilaPrecio,
   FilaResultado,
   ArticuloCatalogo,
   CriteriosArticulo,
@@ -431,6 +432,7 @@ export interface SimularGestionGlobalPaginadoInput {
   tipoVariacion?: TipoVariacion;
   offset?: number;
   maxRecords?: number;
+  soloHallazgos?: boolean;
 }
 
 export interface PaginaSimulacionGestionGlobal {
@@ -451,6 +453,22 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
   }
   const offset = Number.isInteger(input.offset) && (input.offset ?? 0) >= 0 ? input.offset as number : 0;
   const maxRecords = Number.isInteger(input.maxRecords) ? Math.min(Math.max(input.maxRecords as number, 1), 200) : 200;
+  if (input.soloHallazgos) {
+    const hallazgos: FilaPrecio[] = [];
+    let cursor = 0;
+    let hayMasCatalogo = true;
+    while (hayMasCatalogo && hallazgos.length < offset + maxRecords) {
+      const paginaCatalogo = await listarCatalogoPaginado(input.compania, nivel, "", cursor, 200);
+      const contextoPagina = crearContextoCatalogo(niveles, paginaCatalogo.items, nivel);
+      const filasPagina = construirFilasGestionGlobal(nivel, input.tipoVariacion ?? "AUMENTO", input.factor ?? "", contextoPagina);
+      hallazgos.push(...filasPagina.filter((fila) => !fila.validacion.valido && fila.validacion.estadoRedondeo === "ALERTA_MARGEN" && Boolean(fila.validacion.causa)));
+      hayMasCatalogo = paginaCatalogo.hasMore;
+      cursor = paginaCatalogo.nextOffset ?? cursor + paginaCatalogo.items.length;
+    }
+    const filas = hallazgos.slice(offset, offset + maxRecords).map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
+    const hayMas = hallazgos.length > offset + filas.length || hayMasCatalogo;
+    return { ok: true, filas, offset, maxRecords, hasMore: hayMas, nextOffset: hayMas ? offset + filas.length : null };
+  }
   const pagina = await listarCatalogoPaginado(input.compania, nivel, "", offset, maxRecords);
   const contexto = crearContextoCatalogo(niveles, pagina.items, nivel);
   const filas = construirFilasGestionGlobal(

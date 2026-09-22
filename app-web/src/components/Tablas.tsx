@@ -8,6 +8,7 @@ import { TIPOS_VARIACION } from "@/lib/catalog";
 import { esFilaMargen } from "@/lib/domain-types";
 import TablaHallazgosMargen from "./newComponents/TablaHallazgosMargen";
 import type { FilaMargen, FilaPrecio, FilaResultado } from "@/lib/domain-types";
+import type { TableLoadParams } from "./newComponents/ResponsiveDataTable";
 
 export function esHallazgoDeNegocio(fila: FilaResultado): boolean {
   const validacion = fila.validacion;
@@ -25,16 +26,36 @@ export function EtiquetaValidacion({ fila }: { fila: FilaResultado }) {
   return <span className="badge badge-rechazado" title={validacion.causa ?? ""}><Icon name="alertTriangle" className="w-3 h-3" /> Dato por corregir</span>;
 }
 
-export function ResumenValidaciones({ filas }: { filas: FilaResultado[] }) {
-  const hallazgos = filas.filter(esHallazgoDeNegocio);
+export function ResumenValidaciones({
+  filas,
+  hallazgosExternos,
+  hallazgosHasMore = false,
+  hallazgosNextOffset = null,
+  hallazgosLoadingMore = false,
+  onLoadMoreHallazgos,
+}: {
+  filas: FilaResultado[];
+  hallazgosExternos?: FilaResultado[];
+  hallazgosHasMore?: boolean;
+  hallazgosNextOffset?: number | null;
+  hallazgosLoadingMore?: boolean;
+  onLoadMoreHallazgos?: (params: TableLoadParams) => void | Promise<void>;
+}) {
+  const hallazgos = hallazgosExternos ?? filas.filter(esHallazgoDeNegocio);
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila));
 
   return (
     <>
-      {hallazgos.length > 0 && (
+      {(hallazgos.length > 0 || hallazgosHasMore) && (
         <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
           <p className="text-xs font-semibold text-red-800 mb-1.5">Hallazgos de margen:</p>
-          <TablaHallazgosMargen filas={hallazgos} />
+          <TablaHallazgosMargen
+            filas={hallazgos}
+            hasMore={hallazgosHasMore}
+            nextOffset={hallazgosNextOffset}
+            loadingMore={hallazgosLoadingMore}
+            onLoadMore={onLoadMoreHallazgos}
+          />
         </div>
       )}
       {datosPorCorregir.length > 0 && (

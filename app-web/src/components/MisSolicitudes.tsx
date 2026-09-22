@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
 import { PROCESOS } from "@/lib/catalog";
@@ -19,8 +19,14 @@ interface MisSolicitudesProps {
 }
 
 export default function MisSolicitudes({ solicitudes, currentUser, onVerDetalle, onCancelar, onEnviarBorrador, onRetomar }: MisSolicitudesProps) {
-  const solicitudesSeguras = Array.isArray(solicitudes) ? solicitudes : [];
-  const propias = solicitudesSeguras.filter((s) => s.solicitanteEmail === currentUser.email);
+  const solicitudesSeguras = useMemo(
+    () => (Array.isArray(solicitudes) ? solicitudes : []),
+    [solicitudes],
+  );
+  const propias = useMemo(
+    () => solicitudesSeguras.filter((s) => s.solicitanteEmail === currentUser.email),
+    [solicitudesSeguras, currentUser.email],
+  );
   
   const [displayedRows, setDisplayedRows] = useState<Solicitud[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -157,19 +163,21 @@ export default function MisSolicitudes({ solicitudes, currentUser, onVerDetalle,
 
   const hasMore = displayedRows.length < propias.length;
   const nextOffset = displayedRows.length;
+  const columnasSinAcciones = columns.filter((column) => column.key !== "accion");
 
   return (
     <div className="mt-8">
       <h2 className="text-base font-semibold mb-3">Mis solicitudes enviadas</h2>
       <ResponsiveDataTable<Solicitud>
         rows={displayedRows}
-        columns={columns}
+        columns={columnasSinAcciones}
         rowKey={(s) => s.id}
         loading={false}
         loadingMore={isLoading}
         hasMore={hasMore}
         nextOffset={nextOffset}
         onLoadMore={handleLoadMore}
+        onRowActivate={(s) => onVerDetalle(s.id)}
         emptyTitle="No hay solicitudes"
         emptyDescription="Aún no ha enviado solicitudes en esta sesión."
       />

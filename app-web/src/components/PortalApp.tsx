@@ -218,6 +218,8 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
           onAprobar={handleAprobar}
           onCancelar={handleCancelar}
           onDecidirCancelacion={handleDecidirCancelacion}
+          onRetomar={esAuditor ? undefined : handleRetomar}
+          onEnviarBorrador={esAuditor ? undefined : handleEnviarBorrador}
         />
       )}
 
