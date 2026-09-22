@@ -280,7 +280,6 @@ async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, 
   const esMargen = Object.prototype.hasOwnProperty.call(v, "factorReduccion");
   const validacion = v as FilaMargen["validacion"] | FilaPrecio["validacion"];
   const banda = validacion.bandaRedondeo;
-  const factorPrecio = !esMargen && "valorPropuestoRaw" in f ? Number.parseFloat(String(f.valorPropuestoRaw ?? "")) : null;
   const filaMargen = esMargen ? f as FilaMargen : null;
   const filaPrecio = !esMargen ? f as FilaPrecio : null;
   const vMargen = esMargen ? filaMargen!.validacion : null;
@@ -300,8 +299,12 @@ async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, 
     .input("estadoFila", mssql.VarChar(20), v.valido ? "VALIDO" : "INVALIDO")
     .input("mensajeError", mssql.VarChar(400), (f as FilaPrecio | FilaMargen).mensajeError ?? (!v.valido ? v.causa ?? "Error no identificado" : null))
     .input("idSolicitud", mssql.Int, idSolicitud)
-    .input("factorSolicitado", mssql.Decimal(9, 6), numero(v.factorPropuesto) ?? 1)
-    .input("listaPrecio", mssql.VarChar(400), f.lista ?? "")
+    // FACTOR_SOLICITADO representa el multiplicador persistido, no el
+    // porcentaje capturado. El porcentaje queda en PARAMETROS_JSON.
+    .input("factorSolicitado", mssql.Decimal(9, 6), numero("multiplicador" in f ? f.multiplicador : null) ?? numero(v.factorPropuesto) ?? 1)
+    // LISTA_PRECIO es el origen del valor que se muestra en el detalle. Para
+    // descuento por artículo se guarda el código de lista de la fila.
+    .input("listaPrecio", mssql.VarChar(400), ("listaCodigo" in f ? f.listaCodigo : null) ?? f.lista ?? "")
     .input("causa", mssql.VarChar(400), v.causa ?? "")
     .query(
       `INSERT INTO ${spd} (
@@ -395,6 +398,11 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
     const resultado = texto(valor)?.trim();
     return resultado ? resultado : undefined;
   };
+  const columna = (nombre: string): unknown => {
+    if (d[nombre] !== undefined) return d[nombre];
+    const clave = Object.keys(d).find((key) => key.trim().toUpperCase() === nombre.toUpperCase());
+    return clave ? d[clave] : undefined;
+  };
   // La tabla real usa OK/ERROR/NO_APLICADO; se aceptan también los valores
   // históricos del esquema conceptual y los indicadores S/N de versiones
   // anteriores del portal.
@@ -409,6 +417,7 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
   const precioActual = numero(d.PRECIO_ACTUAL);  
   const precioPropuesto = numero(d.PRECIO_SIMULADO);
   const factorPropuesto = numero(d.FACTOR_SOLICITADO);
+  const porcentajeSolicitado = factorPropuesto != null ? (factorPropuesto - 1) * 100 : null;
   const precioRedondeado = numero(d.PRECIO_SIMULADO);
   const esMargen = proceso === "MARGEN_UTILIDAD_MASIVO";
   const causa = textoNoVacio(d.CAUSA) ?? textoNoVacio(d.MENSAJE_ERROR) ?? null;
@@ -457,20 +466,32 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
     };
   }
 
+  const listaDetalle = proceso === "DESCUENTO_LISTA_PRECIO"
+    ? textoNoVacio(columna("LISTA_PRECIO"))
+    : textoPrimero(columna("LISTA_PRECIO"), columna("LISTA_CODIGO"), columna("LISTA"), listaSolicitud);
+  if (proceso === "DESCUENTO_LISTA_PRECIO" && !listaDetalle) {
+    console.warn("[PORTAL] SOLICITUD_DETALLE sin LISTA_PRECIO", {
+      idDetalle: d.ID_DETALLE,
+      idSolicitud: d.ID_SOLICITUD,
+      columnas: Object.keys(d),
+    });
+  }
+
   return {
     fila: numero(d.FILA) ?? numero(d.ID_DETALLE) ?? 0,
     codigo: String(d.SKU ?? ""),
     descripcion: String(d.DESCRIPCION ?? ""),
-    listaCodigo: textoPrimero(d.LISTA_PRECIO, d.LISTA_CODIGO, d.LISTA, listaSolicitud) ?? undefined,
+    listaCodigo: listaDetalle ?? undefined,
     grupoArticulo: undefined,
     tipoVariacion: undefined,
-    variacionPorcentaje: numero(d.FACTOR_SOLICITADO) ?? undefined,
-    valorPropuestoRaw: texto(d.FACTOR_SOLICITADO),
-    lista: textoPrimero(d.LISTA_PRECIO, d.LISTA_CODIGO, d.LISTA, listaSolicitud),
+    variacionPorcentaje: porcentajeSolicitado ?? undefined,
+    valorPropuestoRaw: factorPropuesto != null ? factorPropuesto.toFixed(4) : undefined,
+    lista: listaDetalle,
     precioCalculado: numero(d.PRECIO_SIMULADO) ?? 0,
     validacion: validacionBase,
     precioMin : numero(d.COSTO) ?? 0,
-    factorPropuesto: numero(d.FACTOR_SOLICITADO) ?? 0,
+    factorPropuesto: factorPropuesto ?? 0,
+    multiplicador: factorPropuesto,
     factorAplicado,
     mensajeError,
   };
