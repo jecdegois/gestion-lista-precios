@@ -3,11 +3,14 @@ import * as XLSX from "xlsx";
 export async function GET(request: Request) {
   const proceso = new URL(request.url).searchParams.get("proceso");
   const esDescuento = proceso === "DESCUENTO_LISTA_PRECIO";
+  const esPrecioBase = proceso === "MAYOREOD_MASIVO";
   const encabezado = esDescuento
-    ? ["Lista de Precio", "Codigo Articulo", "Factor Multiplicador"]
+    ? ["Lista de Precio", "Codigo Articulo", "Descuento %"]
+    : esPrecioBase
+      ? ["Codigo Articulo", "Descuento %"]
     : ["Codigo Articulo", "Porcentaje Reduccion"];
-  const anchos = esDescuento ? [{ wch: 22 }, { wch: 18 }, { wch: 24 }] : [{ wch: 18 }, { wch: 24 }];
-  const nombreArchivo = esDescuento ? "plantilla-descuento-lista-precio.xlsx" : "plantilla-margen-utilidad.xlsx";
+  const anchos = esDescuento ? [{ wch: 22 }, { wch: 18 }, { wch: 24 }] : [{ wch: 18 }, { wch: 18 }];
+  const nombreArchivo = esDescuento ? "plantilla-descuento-lista-precio.xlsx" : esPrecioBase ? "plantilla-precio-base.xlsx" : "plantilla-margen-utilidad.xlsx";
   const sheet = XLSX.utils.aoa_to_sheet([encabezado]);
   sheet["!cols"] = anchos;
   const workbook = XLSX.utils.book_new();

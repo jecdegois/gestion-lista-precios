@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
 import { PROCESOS } from "@/lib/catalog";
-import type { Identidad, Solicitud } from "@/lib/domain-types";
+import type { Identidad, ProcesoKey, Solicitud } from "@/lib/domain-types";
 import ResponsiveDataTable, { type TableColumn, type TableLoadParams } from "./newComponents/ResponsiveDataTable";
 
 const PAGE_SIZE = 10;
@@ -11,35 +12,62 @@ const PAGE_SIZE = 10;
 interface MisSolicitudesProps {
   solicitudes: Solicitud[];
   currentUser: Identidad;
+  procesoFiltro: ProcesoKey;
   onVerDetalle: (id: string) => void;
+  onCancelar?: (id: string, motivo: string) => void;
+  onEnviarBorrador?: (id: string) => void;
+  onRetomar?: (id: string) => void;
 }
 
-export default function MisSolicitudes({ solicitudes, currentUser, onVerDetalle }: MisSolicitudesProps) {
-  const solicitudesSeguras = Array.isArray(solicitudes) ? solicitudes : [];
-  const propias = solicitudesSeguras.filter((s) => s.solicitanteEmail === currentUser.email);
+export default function MisSolicitudes({ solicitudes, currentUser, procesoFiltro, onVerDetalle, onCancelar, onEnviarBorrador, onRetomar }: MisSolicitudesProps) {
+  const solicitudesSeguras = useMemo(
+    () => (Array.isArray(solicitudes) ? solicitudes : []),
+    [solicitudes],
+  );
+  const propias = useMemo(
+    () => solicitudesSeguras.filter((s) => s.solicitanteEmail === currentUser.email && s.proceso === procesoFiltro),
+    [solicitudesSeguras, currentUser.email, procesoFiltro],
+  );
   
   const [displayedRows, setDisplayedRows] = useState<Solicitud[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const previousCountRef = useRef(0);
+  const previousProcesoRef = useRef(procesoFiltro);
 
-  // Solo resetea si hay nuevas solicitudes (nueva solicitud creada)
-  // No resetea si solo cambiaron estados de solicitudes existentes
   useEffect(() => {
     const totalSolicitudes = propias.length;
-    
-    // Primera carga: mostrar primeros PAGE_SIZE
-    if (previousCountRef.current === 0 && totalSolicitudes > 0) {
-      setDisplayedRows(propias.slice(0, PAGE_SIZE));
+
+    // Ordena por fecha descendente (más reciente primero)
+    const porFechaDesc = (a: Solicitud, b: Solicitud) => {
+      const ts = (s: Solicitud) => {
+        if (s.fechaCreacion) return new Date(s.fechaCreacion).getTime();
+        return 0;
+      };
+      return ts(b) - ts(a);
+    };
+
+    if (previousProcesoRef.current !== procesoFiltro) {
+      previousProcesoRef.current = procesoFiltro;
       previousCountRef.current = totalSolicitudes;
+      setDisplayedRows(propias.slice(0, PAGE_SIZE).sort(porFechaDesc));
       return;
     }
 
-    // Si hay nuevas solicitudes: agregar al inicio sin resetear
-    if (totalSolicitudes > previousCountRef.current) {
-      const nuevas = propias.slice(0, totalSolicitudes - previousCountRef.current);
-      setDisplayedRows((prev) => [...nuevas, ...prev].slice(0, prev.length + nuevas.length));
+    setDisplayedRows((prev) => {
+      // Primera carga real
+      if (prev.length === 0 && totalSolicitudes > 0) {
+        previousCountRef.current = totalSolicitudes;
+        return propias.slice(0, PAGE_SIZE).sort(porFechaDesc);
+      }
+      // Refrescar estados de filas ya visibles
+      const actualizadas = prev.map((fila) => propias.find((s) => s.id === fila.id) ?? fila);
+      // Agregar solicitudes nuevas (que no estaban en pantalla) al inicio
+      const idsActuales = new Set(prev.map((s) => s.id));
+      const nuevas = propias.filter((s) => !idsActuales.has(s.id));
       previousCountRef.current = totalSolicitudes;
-    }
+      const combinadas = nuevas.length > 0 ? [...nuevas, ...actualizadas] : actualizadas;
+      return combinadas.sort(porFechaDesc);
+    });
   }, [propias]);
 
   const handleLoadMore = useCallback(async (params: TableLoadParams) => {
@@ -106,28 +134,60 @@ export default function MisSolicitudes({ solicitudes, currentUser, onVerDetalle 
       key: "accion",
       header: "Acción",
       value: (s) => (
-        <button className="btn btn-outline btn-sm" onClick={() => onVerDetalle(s.id)}>
-          {s.estado === "EN_PROCESO" ? "Consultar avance" : "Ver detalle"}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {s.estado === "BORRADOR" && onRetomar ? (
+            <>
+              <button
+                className="btn btn-default btn-sm"
+                onClick={() => onRetomar(s.id)}
+                title="Retomar este borrador para editarlo y enviarlo"
+              >
+                <Icon name="fileEdit" className="w-3.5 h-3.5" /> Retomar
+              </button>
+              <button className="btn btn-outline btn-sm" onClick={() => onVerDetalle(s.id)}>
+                Ver detalle
+              </button>
+            </>
+          ) : (
+            <button className="btn btn-outline btn-sm" onClick={() => onVerDetalle(s.id)}>
+              {s.estado === "EN_PROCESO" ? "Consultar avance" : "Ver detalle"}
+            </button>
+          )}
+          {onCancelar && s.estado === "PENDIENTE" && (
+            <button
+              className="btn btn-ghost btn-sm text-red-600 hover:bg-red-50"
+              onClick={() => {
+                const motivo = window.prompt("Motivo de cancelación (obligatorio):");
+                if (motivo && motivo.trim().length > 0) onCancelar(s.id, motivo.trim());
+              }}
+              title="Solicitar cancelación"
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
       ),
     },
   ];
 
   const hasMore = displayedRows.length < propias.length;
   const nextOffset = displayedRows.length;
+  const columnasSinAcciones = columns.filter((column) => column.key !== "accion");
 
   return (
     <div className="mt-8">
-      <h2 className="text-base font-semibold mb-3">Mis solicitudes enviadas</h2>
+      <h2 className="text-base font-semibold mb-1">Mis solicitudes enviadas</h2>
+      <p className="text-xs text-zinc-500 mb-3">Tipo: {PROCESOS[procesoFiltro]?.label ?? procesoFiltro}</p>
       <ResponsiveDataTable<Solicitud>
         rows={displayedRows}
-        columns={columns}
+        columns={columnasSinAcciones}
         rowKey={(s) => s.id}
         loading={false}
         loadingMore={isLoading}
         hasMore={hasMore}
         nextOffset={nextOffset}
         onLoadMore={handleLoadMore}
+        onRowActivate={(s) => onVerDetalle(s.id)}
         emptyTitle="No hay solicitudes"
         emptyDescription="Aún no ha enviado solicitudes en esta sesión."
       />

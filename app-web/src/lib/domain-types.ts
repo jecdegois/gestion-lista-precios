@@ -2,7 +2,7 @@
 
 import type { EstadoRedondeo } from "./rounding";
 
-export type Rol = "OPERADOR" | "APROBADOR" | "SIN_PERMISO";
+export type Rol = "OPERADOR" | "APROBADOR" | "AUDITOR" | "SIN_PERMISO";
 
 export type RoleCode = "operator" | "approver" | "auditor";
 
@@ -71,9 +71,9 @@ export interface ValidacionPrecio {
   valido: boolean;
   precioActual: number | null;
   precioPropuesto: number | null;
-  factorPropuesto: number | null;
-  multiplicador: number | null;
-  factorReduccion: number | null;
+  factorPropuesto?: number | null;
+  multiplicador?: number | null;
+  factorReduccion?: number | null;
   precioRedondeado: number | null;
   estadoRedondeo: EstadoRedondeo | null;
   bandaRedondeo: { numero: number; intervalo: string } | null;
@@ -83,7 +83,7 @@ export interface ValidacionPrecio {
   /** Costo de reposición usado para validar y persistir el detalle. */
   costo: number | null;
   /** Precio mínimo equivalente: costo / (1 - margen mínimo). */
-  precioMin: number | null;
+  precioMin?: number | null;
   causa: string | null;
 }
 
@@ -91,9 +91,9 @@ export interface ValidacionPrecio {
 export interface ValidacionMargen {
   valido: boolean;
   precioActual: number | null;
-  multiplicador: number | null;
+  multiplicador?: number | null;
   precioPropuesto: number | null;
-  factorPropuesto: number | null;
+  factorPropuesto?: number | null;
   precioRedondeado: number | null;
   estadoRedondeo: EstadoRedondeo | null;
   bandaRedondeo: { numero: number; intervalo: string } | null;
@@ -103,7 +103,7 @@ export interface ValidacionMargen {
   costoMinimoBase: number | null;
   /** Precio mínimo equivalente después de aplicar la reducción simulada. */
   costoMinimo: number | null;
-  precioMin: number | null;
+  precioMin?: number | null;
   margenPromedio: number | null;
   margenSobrePrecioRedondeado: number | null;
   /** Margen base leído de ARTICULO_PRECIO o fallback global si está nulo. */
@@ -125,12 +125,18 @@ export interface FilaPrecio {
   listaCodigo?: string | null;
   tipoVariacion?: TipoVariacion;
   variacionPorcentaje?: number | string;
+  /** Multiplicador derivado del factor porcentual (ej. 7.4 -> 1.0740). */
+  multiplicador?: number | null;
   valorPropuestoRaw?: string;
   precioCalculado?: number;
   grupoArticulo?: string;
   validacion: ValidacionPrecio;
-  precioMin: number;
-  factorPropuesto: number;
+  precioMin?: number;
+  factorPropuesto?: number;
+  /** Valor persistido por el procesador en SOLICITUD_DETALLE. */
+  factorAplicado?: number | null;
+  /** Mensaje persistido para la fila cuando el procesamiento termina con error. */
+  mensajeError?: string | null;
 }
 
 export interface FilaMargen {
@@ -142,12 +148,17 @@ export interface FilaMargen {
   multiplicadorMargen: number | null;
   validacion: ValidacionMargen;
   lista?: string;
+  factorAplicado?: number | null;
+  mensajeError?: string | null;
 }
 
 export type FilaResultado = FilaPrecio | FilaMargen;
 
 export type EstadoSolicitud =
+  | "BORRADOR"
   | "PENDIENTE"
+  | "CANCELACION_SOLICITADA"
+  | "CANCELADO"
   | "EN_PROCESO"
   | "PROCESADO"
   | "PROCESADO_CON_ERRORES"
@@ -165,6 +176,8 @@ export interface CriteriosArticulo {
 export interface ParametrosSolicitud {
   nivel?: string | null;
   factor?: string | null;
+  /** Multiplicador derivado del factor porcentual de la solicitud. */
+  multiplicador?: number | null;
   tipoVariacion?: TipoVariacion;
   variacionPorcentaje?: number | string | null;
   listaBase?: string;
@@ -201,6 +214,8 @@ export interface Solicitud {
   archivoNombre: string | null;
   archivoS3Key: string | null;
   fechaEnvio: string;
+  /** Timestamp ISO para ordenación. Siempre presente cuando viene de BD. */
+  fechaCreacion?: string;
   estado: EstadoSolicitud;
   motivoRechazo: string | null;
   idProcesoSP: string | null;
@@ -211,8 +226,13 @@ export interface Solicitud {
 }
 
 export type EventoTipo =
+  | "SOLICITUD_GUARDADA_BORRADOR"
+  | "BORRADOR_ENVIADO"
   | "SOLICITUD_ENVIADA"
   | "SOLICITUD_RECHAZADA"
+  | "CANCELACION_SOLICITADA"
+  | "CANCELACION_CONFIRMADA"
+  | "CANCELACION_DENEGADA"
   | "SIMULACION_REVISADA"
   | "SIMULACION_EJECUTADA_COMO_SOLICITANTE"
   | "EJECUCION_ENCOLADA"
@@ -232,7 +252,6 @@ export interface EventoAuditoria {
 export function esFilaMargen(fila: FilaResultado): fila is FilaMargen {
   return (
     !!fila &&
-    !!(fila as FilaMargen).validacion &&
-    Object.prototype.hasOwnProperty.call((fila as FilaMargen).validacion, "factorReduccion")
+    Object.prototype.hasOwnProperty.call(fila, "porcentajeReduccion")
   );
 }

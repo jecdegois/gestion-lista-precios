@@ -8,10 +8,12 @@ import {
   construirFilasGestionGlobal,
   construirFilasMayoreodMasivo,
   construirFilaDesdeVariacion,
+  textoFactorCalculado,
   type CatalogoContext,
 } from "@/lib/engine";
 import { estaEnAmbito } from "@/lib/catalog";
 import type {
+  FilaPrecio,
   FilaResultado,
   ArticuloCatalogo,
   CriteriosArticulo,
@@ -25,9 +27,11 @@ import type {
 import type { NivelPrecio } from "@/lib/types";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
 import { esEjecucionSoftlandBloqueada, esModoDemo, esModoSoloLectura, esModoSoloPortal, objetoPortal } from "@/server/companies";
-import { listarCatalogo, listarCatalogoPaginado, listarNivelesPrecio } from "@/server/pricing-repository";
+import { actualizarGestionGlobal, listarCatalogo, listarCatalogoPaginado, listarGestionGlobal, listarNivelesPrecio, upsertFactoresArticuloLista } from "@/server/pricing-repository";
 import {
   actualizarSolicitud,
+  actualizarMensajeErrorDetalles,
+  actualizarFactorAplicadoDetalles,
   agregarSolicitud,
   listarEventos,
   listarSolicitudes,
@@ -69,13 +73,13 @@ export async function resolverIdentidad(email: string, compania?: string): Promi
         WHERE LOWER(U.EMAIL) = @email
           AND U.ACTIVO = 'S'
           AND UA.COMPANIA = @compania
-          AND U.ROL_GLOBAL IN ('OPERADOR', 'APROBADOR')
+          AND U.ROL_GLOBAL IN ('OPERADOR', 'APROBADOR', 'AUDITOR')
         ORDER BY U.ROL_GLOBAL`,
     );
   const r = q.recordset[0] as Record<string, unknown> | undefined;
   if (!r) return undefined;
   const rol = String(r.ROL_GLOBAL ?? "");
-  if (rol !== "OPERADOR" && rol !== "APROBADOR") return undefined;
+  if (rol !== "OPERADOR" && rol !== "APROBADOR" && rol !== "AUDITOR") return undefined;
   return {
     email: String(r.EMAIL),
     nombre: String(r.NOMBRE),
@@ -222,6 +226,10 @@ export async function obtenerCatalogoSolicitud(
   };
 }
 
+export async function obtenerListasGestionGlobal(compania: string) {
+  return await listarGestionGlobal(compania);
+}
+
 // ---------------------------------------------------------------------------
 // Consultas (lectura de estado del flujo)
 // ---------------------------------------------------------------------------
@@ -295,10 +303,13 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
   }
 
   const esDescuento = procesoKey === "DESCUENTO_LISTA_PRECIO";
+  const esPrecioBase = procesoKey === "MAYOREOD_MASIVO";
   const dataRows = rows.slice(1).filter((r) => Array.isArray(r) && r.length > 0);
   const niveles = await listarNivelesPrecio(compania);
   const nivelesConsultaRaw = esDescuento
     ? dataRows.map((r) => String(r[0] ?? "").trim())
+    : esPrecioBase
+      ? [nivelPrecio || "MAYOREOD"]
     : [nivelPrecio || niveles[0]?.codigo];
   const nivelesConsulta = nivelesSolicitadosCanonicos(niveles, nivelesConsultaRaw);
   const contextosPorLista = await cargarContextosPorLista(compania, niveles, nivelesConsulta);
@@ -306,22 +317,43 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
   const filas = dataRows.map((r, idx) => {
     if (esDescuento) {
       const listaCodigo = resolverNivelPrecio(niveles, String(r[0] ?? "").trim());
-      // Convertir porcentaje a factor (10 -> 0.1 para factor de 1.1)
+      // Convertir descuento porcentual a multiplicador (10 -> 0.9000).
       const porcentajeRaw = r[2] !== undefined ? String(r[2]).trim() : "";
       const porcentaje = Number.parseFloat(porcentajeRaw.replace(",", "."));
-      const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(\.\d+)?$/.test(porcentajeRaw);
-      const factorConvertido = formatoValido ? 1 + (porcentaje / 100) : null;
-      const factorTexto = factorConvertido !== null ? String(factorConvertido) : porcentajeRaw;
+      const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(?:[.,]\d+)?$/.test(porcentajeRaw);
+      const factorConvertido = formatoValido ? 1 - (porcentaje / 100) : null;
+      const factorTexto = factorConvertido !== null ? textoFactorCalculado(factorConvertido) : porcentajeRaw;
       
       return construirFilaDescuentoMasivo(
         {
           fila: idx + 1,
           listaCodigo: r[0] !== undefined ? String(r[0]).trim() : null,
           codigo: r[1] !== undefined ? String(r[1]).trim() : "",
-          tipoVariacion: "AUMENTO",
+          tipoVariacion: "DISMINUCION",
+          variacionPorcentaje: porcentajeRaw,
           valorPropuestoRaw: factorTexto,
         },
         true, // factorDirecto = true, ahora valorPropuestoRaw contiene el factor convertido
+        listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
+      );
+    }
+    if (esPrecioBase) {
+      const porcentajeRaw = r[1] !== undefined ? String(r[1]).trim() : "";
+      const porcentaje = Number.parseFloat(porcentajeRaw.replace(",", "."));
+      const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(?:[.,]\d+)?$/.test(porcentajeRaw);
+      const factorConvertido = formatoValido ? 1 - (porcentaje / 100) : null;
+      const factorTexto = factorConvertido !== null ? textoFactorCalculado(factorConvertido) : porcentajeRaw;
+      const listaCodigo = nivelesConsulta[0];
+      return construirFilaCompleta(
+        {
+          fila: idx + 1,
+          codigo: r[0] !== undefined ? String(r[0]).trim() : "",
+          listaCodigo,
+          tipoVariacion: "DISMINUCION",
+          variacionPorcentaje: porcentajeRaw,
+          valorPropuestoRaw: factorTexto,
+        },
+        "factor",
         listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
       );
     }
@@ -330,7 +362,7 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
       {
         fila: idx + 1,
         codigo: r[0] !== undefined ? String(r[0]).trim() : "",
-        tipoVariacion: "AUMENTO",
+        tipoVariacion: "DISMINUCION",
         valorPropuestoRaw: r[1] !== undefined ? String(r[1]).trim() : "",
       },
       "factor",
@@ -358,7 +390,7 @@ export interface SimularManualInput {
 
 export async function simularManual(input: SimularManualInput): Promise<{ ok: boolean; filas: FilaResultado[] }> {
   const magnitud = input.factor ?? "";
-  const tv = input.tipoVariacion ?? "AUMENTO";
+  const tv = input.tipoVariacion ?? (input.proceso === "FACTOR_PRECIO" ? "AUMENTO" : "DISMINUCION");
   const niveles = await listarNivelesPrecio(input.compania);
   const nivelesSolicitados = input.items
     ? input.items.map((item) => item.listaCodigo)
@@ -428,6 +460,7 @@ export interface SimularGestionGlobalPaginadoInput {
   tipoVariacion?: TipoVariacion;
   offset?: number;
   maxRecords?: number;
+  soloHallazgos?: boolean;
 }
 
 export interface PaginaSimulacionGestionGlobal {
@@ -448,6 +481,22 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
   }
   const offset = Number.isInteger(input.offset) && (input.offset ?? 0) >= 0 ? input.offset as number : 0;
   const maxRecords = Number.isInteger(input.maxRecords) ? Math.min(Math.max(input.maxRecords as number, 1), 200) : 200;
+  if (input.soloHallazgos) {
+    const hallazgos: FilaPrecio[] = [];
+    let cursor = 0;
+    let hayMasCatalogo = true;
+    while (hayMasCatalogo && hallazgos.length < offset + maxRecords) {
+      const paginaCatalogo = await listarCatalogoPaginado(input.compania, nivel, "", cursor, 200);
+      const contextoPagina = crearContextoCatalogo(niveles, paginaCatalogo.items, nivel);
+      const filasPagina = construirFilasGestionGlobal(nivel, input.tipoVariacion ?? "AUMENTO", input.factor ?? "", contextoPagina);
+      hallazgos.push(...filasPagina.filter((fila) => !fila.validacion.valido && fila.validacion.estadoRedondeo === "ALERTA_MARGEN" && Boolean(fila.validacion.causa)));
+      hayMasCatalogo = paginaCatalogo.hasMore;
+      cursor = paginaCatalogo.nextOffset ?? cursor + paginaCatalogo.items.length;
+    }
+    const filas = hallazgos.slice(offset, offset + maxRecords).map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
+    const hayMas = hallazgos.length > offset + filas.length || hayMasCatalogo;
+    return { ok: true, filas, offset, maxRecords, hasMore: hayMas, nextOffset: hayMas ? offset + filas.length : null };
+  }
   const pagina = await listarCatalogoPaginado(input.compania, nivel, "", offset, maxRecords);
   const contexto = crearContextoCatalogo(niveles, pagina.items, nivel);
   const filas = construirFilasGestionGlobal(
@@ -516,11 +565,49 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
     return { ok: false, error: "La solicitud contiene una lista que no existe en los maestros de Softland." };
   }
 
-  const contextosPorLista = await cargarContextosPorLista(input.compania, niveles, nivelesCanonicos);
   const listaPredeterminada = resolverNivelPrecio(
     niveles,
     input.parametros.nivelPrecio ?? input.parametros.listaBase ?? input.parametros.nivel,
   );
+  if (!listaPredeterminada) {
+    return { ok: false, error: "La solicitud no contiene una lista de precio válida." };
+  }
+  if (input.proceso === "FACTOR_PRECIO") {
+    if (input.filas.length === 0) {
+      return { ok: false, error: "La simulación de Gestión Global no contiene filas de impacto." };
+    }
+    const filasConLista = input.filas.map((fila) => ({ ...fila, lista: listaPredeterminada }));
+    const codigo = await siguienteCodigoSolicitud();
+    const solicitud: Solicitud = {
+      id: codigo,
+      proceso: input.proceso,
+      modalidad: input.modalidad,
+      compania: input.compania,
+      solicitanteNombre: identidadPortal.nombre,
+      solicitanteEmail: identidadPortal.email,
+      idpOperador,
+      parametros: input.parametros,
+      filas: filasConLista,
+      archivoNombre: input.archivoNombre ?? null,
+      archivoS3Key: input.archivoS3Key ?? null,
+      fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
+      fechaCreacion: new Date().toISOString(),
+      estado: "PENDIENTE",
+      motivoRechazo: null,
+      idProcesoSP: null,
+      lista: listaPredeterminada,
+    };
+    try {
+      await agregarSolicitud(solicitud);
+      await registrarEvento("SOLICITUD_ENVIADA", identidadPortal.nombre, identidadPortal.rol, input.compania, solicitud.id, null, identidadPortal.email);
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de base de datos no identificado.";
+      return { ok: false, error: `No fue posible registrar la solicitud en el Portal: ${detalle}` };
+    }
+    return { ok: true, solicitud };
+  }
+
+  const contextosPorLista = await cargarContextosPorLista(input.compania, niveles, nivelesCanonicos);
   const contieneArticulo = (listaCodigo: string, codigoArticulo: string): boolean => {
     const contexto = contextosPorLista.get(listaCodigo);
     const codigoNormalizado = codigoArticulo.trim().toUpperCase();
@@ -564,6 +651,7 @@ export async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok
     archivoNombre: input.archivoNombre ?? null,
     archivoS3Key: input.archivoS3Key ?? null,
     fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
+    fechaCreacion: new Date().toISOString(),
     estado: "PENDIENTE",
     motivoRechazo: null,
     idProcesoSP: null,
@@ -660,6 +748,20 @@ export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boole
     return { ok: false, error: "La solicitud está fuera de su ámbito autorizado." };
   }
 
+  if (s.filas.length === 0) {
+    return { ok: false, error: "La solicitud no tiene filas para procesar." };
+  }
+  const fallidosPrevios = s.filas.filter((fila) => !fila.validacion.valido).length;
+  // Gestión Global conserva una página del impacto y completa el detalle bajo
+  // demanda; no se puede concluir que todas las filas sean inválidas usando
+  // únicamente esa página parcial.
+  if (fallidosPrevios === s.filas.length && s.proceso !== "FACTOR_PRECIO") {
+    return { ok: false, error: "La solicitud no se puede procesar porque todas sus filas son inválidas." };
+  }
+  if (s.proceso === "FACTOR_PRECIO" && !esModoDemo() && esModoSoloPortal()) {
+    return errorSoloPortal();
+  }
+
   const idProcesoSP = nuevoIdProcesoSP();
   await actualizarSolicitud(input.solicitudId, {
     estado: "EN_PROCESO",
@@ -673,6 +775,66 @@ export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boole
   // Este flujo no ejecuta SP/UDF ni instrucciones de modificación en Softland.
   // Solo utiliza datos que ya fueron consultados mediante SELECT para generar
   // un resultado simulado, visible y trazable en la aplicación.
+  if (s.proceso === "FACTOR_PRECIO" && !esModoDemo()) {
+    try {
+      const lista = s.lista.trim() || String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
+      const factorPorcentajeOriginal = s.parametros.factor ?? "";
+      const porcentaje = Number(factorPorcentajeOriginal);
+      const factor = 1 + porcentaje / 100;
+      console.info("[GESTION_GLOBAL] Parámetros recibidos para actualización", {
+        solicitudId: s.id,
+        compania: s.compania,
+        lista,
+        factorPorcentajeOriginal,
+        porcentajeConvertido: porcentaje,
+        factorMultiplicador: factor,
+        variacionPorcentaje: porcentaje,
+      });
+      await actualizarGestionGlobal(s.compania, lista, factor, porcentaje, input.aprobadorNombre);
+      await actualizarFactorAplicadoDetalles(s.id);
+      // En Gestión Global la operación real es un único UPDATE de la cabecera
+      // de la lista. Las filas del detalle son referenciales y no determinan
+      // el estado final del procesamiento.
+      await finalizarProcesamiento(s.id, [...s.filas], 0, input.aprobadorNombre);
+      return { ok: true, idProcesoSP };
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "No fue posible actualizar Gestión Global.";
+      await actualizarSolicitud(s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
+      await actualizarMensajeErrorDetalles(s.id, detalle).catch((detalleError) => {
+        console.error("[GESTION_GLOBAL] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
+      });
+      return { ok: false, error: detalle, idProcesoSP };
+    }
+  }
+
+  if (s.proceso === "DESCUENTO_LISTA_PRECIO" && !esModoDemo()) {
+    try {
+      const resultadoFactores = await upsertFactoresArticuloLista(
+        s.compania,
+        s.id,
+        s.filas,
+        input.aprobadorNombre,
+      );
+      await actualizarFactorAplicadoDetalles(s.id);
+      const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
+      console.info("[DESCUENTO_ARTICULO_LISTA] Factores persistidos", {
+        solicitudId: s.id,
+        insertados: resultadoFactores.insertados,
+        actualizados: resultadoFactores.actualizados,
+        omitidos: resultadoFactores.omitidos,
+      });
+      await finalizarProcesamiento(s.id, [...s.filas], fallidos, input.aprobadorNombre);
+      return { ok: true, idProcesoSP };
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "No fue posible guardar los factores por artículo y lista.";
+      await actualizarSolicitud(s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
+      await actualizarMensajeErrorDetalles(s.id, detalle).catch((detalleError) => {
+        console.error("[DESCUENTO_ARTICULO_LISTA] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
+      });
+      return { ok: false, error: detalle, idProcesoSP };
+    }
+  }
+
   void simularProcesamientoDemo(s.id);
 
   return { ok: true, idProcesoSP };
@@ -711,4 +873,132 @@ async function finalizarProcesamiento(solicitudId: string, filas: FilaResultado[
     ultimaActualizacion: new Date().toLocaleString("es-CR", { hour12: false }),
   });
   await registrarEvento("EJECUCION_FINALIZADA", aprobador, "APROBADOR", s.compania, solicitudId, s.idProcesoSP);
+}
+
+// ---------------------------------------------------------------------------
+// BORRADOR — guardar solicitud sin enviar a aprobación (DT-02)
+// ---------------------------------------------------------------------------
+export async function guardarBorrador(input: EnviarSolicitudInput): Promise<{ ok: boolean; error?: string; solicitud?: Solicitud }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
+  const identidadPortal = await resolverIdentidad(input.usuarioEmail, input.compania);
+  const idpOperador = identidadPortal?.idpSubject?.trim() || identidadPortal?.email.trim().toLowerCase();
+  if (!identidadPortal || !idpOperador) {
+    return { ok: false, error: "No se encontró una identidad activa para guardar el borrador." };
+  }
+  if (!estaEnAmbito(identidadPortal.compania, input.compania)) {
+    return { ok: false, error: "Esta solicitud está fuera de su ámbito autorizado por compañía." };
+  }
+  const codigo = await siguienteCodigoSolicitud();
+  const solicitud: Solicitud = {
+    id: codigo,
+    proceso: input.proceso,
+    modalidad: input.modalidad,
+    compania: input.compania,
+    solicitanteNombre: identidadPortal.nombre,
+    solicitanteEmail: identidadPortal.email,
+    idpOperador,
+    parametros: input.parametros,
+    filas: input.filas ?? [],
+    archivoNombre: input.archivoNombre ?? null,
+    archivoS3Key: input.archivoS3Key ?? null,
+    fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
+    fechaCreacion: new Date().toISOString(),
+    estado: "BORRADOR",
+    motivoRechazo: null,
+    idProcesoSP: null,
+    lista: input.parametros.nivelPrecio ?? input.parametros.listaBase ?? input.parametros.nivel ?? "",
+  };
+  try {
+    await agregarSolicitud(solicitud);
+  } catch (error) {
+    const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de base de datos.";
+    return { ok: false, error: `No fue posible guardar el borrador: ${detalle}` };
+  }
+  try {
+    await registrarEvento(
+      "SOLICITUD_GUARDADA_BORRADOR",
+      identidadPortal.nombre,
+      identidadPortal.rol,
+      input.compania,
+      solicitud.id,
+      null,
+      identidadPortal.email,
+    );
+  } catch (error) {
+    const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de auditoría.";
+    return { ok: false, error: `Borrador guardado pero no se pudo registrar el evento: ${detalle}` };
+  }
+  return { ok: true, solicitud };
+}
+
+// ---------------------------------------------------------------------------
+// ENVIAR BORRADOR — transicionar un borrador existente a PENDIENTE (DT-02)
+// ---------------------------------------------------------------------------
+export async function enviarBorrador(
+  solicitudId: string,
+  usuarioEmail: string,
+  usuarioNombre: string,
+  usuarioRol: Rol,
+): Promise<{ ok: boolean; error?: string }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
+  const s = await obtenerSolicitud(solicitudId);
+  if (!s) return { ok: false, error: "Solicitud no encontrada." };
+  if (s.estado !== "BORRADOR") return { ok: false, error: "Solo se puede enviar una solicitud en estado BORRADOR." };
+  if (s.solicitanteEmail !== usuarioEmail) return { ok: false, error: "Solo el solicitante original puede enviar este borrador." };
+  await actualizarSolicitud(solicitudId, { estado: "PENDIENTE" });
+  await registrarEvento("BORRADOR_ENVIADO", usuarioNombre, usuarioRol, s.compania, solicitudId, null, usuarioEmail);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// CANCELACIÓN — solicitar y decidir sobre cancelación de solicitud (DT-03)
+// ---------------------------------------------------------------------------
+export async function solicitarCancelacion(
+  solicitudId: string,
+  motivo: string,
+  usuarioEmail: string,
+  usuarioNombre: string,
+  usuarioRol: Rol,
+): Promise<{ ok: boolean; error?: string }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
+  const s = await obtenerSolicitud(solicitudId);
+  if (!s) return { ok: false, error: "Solicitud no encontrada." };
+  if (s.estado !== "PENDIENTE") {
+    return { ok: false, error: "Solo se puede solicitar la cancelación de una solicitud PENDIENTE." };
+  }
+  if (s.solicitanteEmail !== usuarioEmail) {
+    return { ok: false, error: "Solo el solicitante original puede pedir la cancelación." };
+  }
+  if (!motivo || motivo.trim().length === 0) {
+    return { ok: false, error: "El motivo de cancelación es obligatorio." };
+  }
+  await actualizarSolicitud(solicitudId, {
+    estado: "CANCELACION_SOLICITADA",
+    motivoRechazo: motivo.trim(),
+  });
+  await registrarEvento("CANCELACION_SOLICITADA", usuarioNombre, usuarioRol, s.compania, solicitudId, null, usuarioEmail);
+  return { ok: true };
+}
+
+export async function decidirCancelacion(
+  solicitudId: string,
+  aprobada: boolean,
+  aprobadorEmail: string,
+  aprobadorNombre: string,
+  aprobadorRol: Rol,
+): Promise<{ ok: boolean; error?: string }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
+  const s = await obtenerSolicitud(solicitudId);
+  if (!s) return { ok: false, error: "Solicitud no encontrada." };
+  if (s.estado !== "CANCELACION_SOLICITADA") {
+    return { ok: false, error: "La solicitud no tiene una cancelación pendiente de decisión." };
+  }
+  if (aprobadorRol !== "APROBADOR") {
+    return { ok: false, error: "Solo un Aprobador puede decidir sobre una cancelación." };
+  }
+  const nuevoEstado = aprobada ? "CANCELADO" : "PENDIENTE";
+  const evento = aprobada ? "CANCELACION_CONFIRMADA" : "CANCELACION_DENEGADA";
+  await actualizarSolicitud(solicitudId, { estado: nuevoEstado });
+  await registrarEvento(evento, aprobadorNombre, aprobadorRol, s.compania, solicitudId, null, aprobadorEmail);
+  return { ok: true };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import LoginScreen from "./LoginScreen";
 import Header, { Vista403, type NavKey } from "./Header";
 import NuevaSolicitud from "./NuevaSolicitud";
@@ -14,8 +14,11 @@ import {
   aprobarSolicitud,
   rechazarSolicitud,
   registrarRevision,
+  solicitarCancelacion,
+  decidirCancelacion,
+  enviarBorrador,
 } from "@/app/actions";
-import type { EventoAuditoria, Identidad, Solicitud } from "@/lib/domain-types";
+import type { EventoAuditoria, Identidad, ProcesoKey, Solicitud } from "@/lib/domain-types";
 
 interface Toast {
   id: number;
@@ -30,8 +33,12 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
   const [eventos, setEventos] = useState<EventoAuditoria[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [modalId, setModalId] = useState<string | null>(null);
+  const [tipoSolicitudSeleccionado, setTipoSolicitudSeleccionado] = useState<ProcesoKey>("FACTOR_PRECIO");
+  const pollingEnCurso = useRef(false);
 
   const esAprobador = user?.rol === "APROBADOR";
+  const esAuditor = user?.rol === "AUDITOR";
+  const [borradorActivo, setBorradorActivo] = useState<import("@/lib/domain-types").Solicitud | undefined>(undefined);
 
   const refrescarSolicitudes = useCallback(async () => {
     if (!user) return;
@@ -50,23 +57,38 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
 
   useEffect(() => {
     if (!user) return;
-    setNav(user.rol === "APROBADOR" ? "bandeja" : "nueva");
+    if (user.rol === "APROBADOR") setNav("bandeja");
+    else if (user.rol === "AUDITOR") setNav("auditoria");
+    else setNav("nueva");
     setModalId(null);
+    setBorradorActivo(undefined);
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
+    const navEsperada = user.rol === "APROBADOR" ? "bandeja" : user.rol === "AUDITOR" ? "auditoria" : "nueva";
+    if (nav !== navEsperada) return;
     if (nav === "auditoria") void refrescarAuditoria();
     else void refrescarSolicitudes();
   }, [user, nav, refrescarAuditoria, refrescarSolicitudes]);
 
   // La actualización periódica solo aplica a las pestañas que consultan solicitudes.
+  const haySolicitudEnProceso = solicitudes.some((s) => s.estado === "EN_PROCESO");
+
   useEffect(() => {
-    if (!user || nav === "auditoria") return;
-    const hayEnProceso = solicitudes.some((s) => s.estado === "EN_PROCESO");
-    const interval = setInterval(() => void refrescarSolicitudes(), hayEnProceso ? 2500 : 8000);
+    if (!user || nav !== "bandeja" || !haySolicitudEnProceso) return;
+    const consultarEstado = async () => {
+      if (pollingEnCurso.current) return;
+      pollingEnCurso.current = true;
+      try {
+        await refrescarSolicitudes();
+      } finally {
+        pollingEnCurso.current = false;
+      }
+    };
+    const interval = setInterval(() => void consultarEstado(), 2500);
     return () => clearInterval(interval);
-  }, [user, nav, solicitudes, refrescarSolicitudes]);
+  }, [user, nav, haySolicitudEnProceso, refrescarSolicitudes]);
 
   function pushToast(message: string, variant?: "success" | "error") {
     const id = Date.now() + Math.random();
@@ -83,6 +105,39 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
         void refrescarSolicitudes();
       }
     }
+  }
+
+  async function handleRetomar(id: string) {
+    const s = solicitudes.find((x) => x.id === id);
+    if (!s) return;
+    setBorradorActivo(s);
+    setNav("nueva");
+    // scroll suave al top para que el formulario sea visible
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function handleEnviarBorrador(id: string) {
+    if (!user || readOnly) return;
+    const res = await enviarBorrador(id, user.email, user.nombre, user.rol);
+    if (!res.ok) pushToast(res.error ?? "No fue posible enviar el borrador.", "error");
+    else pushToast(`Solicitud ${id} enviada a aprobación.`, "success");
+    await refrescarSolicitudes();
+  }
+
+  async function handleCancelar(id: string, motivo: string) {
+    if (!user || readOnly) return;
+    const res = await solicitarCancelacion(id, motivo, user.email, user.nombre, user.rol);
+    if (!res.ok) pushToast(res.error ?? "No fue posible solicitar la cancelación.", "error");
+    else pushToast(`Cancelación de ${id} solicitada. El aprobador debe confirmarla.`, "success");
+    await refrescarSolicitudes();
+  }
+
+  async function handleDecidirCancelacion(id: string, aprobada: boolean) {
+    if (!user || readOnly) return;
+    const res = await decidirCancelacion(id, aprobada, user.email, user.nombre, user.rol);
+    if (!res.ok) pushToast(res.error ?? "No fue posible procesar la cancelación.", "error");
+    else pushToast(aprobada ? `Solicitud ${id} cancelada.` : `Cancelación de ${id} denegada. Vuelve a PENDIENTE.`, aprobada ? "error" : "success");
+    await refrescarSolicitudes();
   }
 
   async function handleRechazar(id: string, motivo: string) {
@@ -124,8 +179,17 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
         {nav === "nueva" && (
           <>
             <h1 className="text-xl font-bold text-zinc-900 mb-4">Nueva solicitud de cambio de precio</h1>
-            <NuevaSolicitud readOnly={readOnly} consultaOnly={portalOnly} currentUser={user} onEnviado={refrescarSolicitudes} onToast={pushToast} />
-            <MisSolicitudes solicitudes={solicitudes} currentUser={user} onVerDetalle={handleAbrir} />
+            <NuevaSolicitud
+              key={borradorActivo?.id ?? "nueva"}
+              readOnly={readOnly}
+              consultaOnly={portalOnly}
+              currentUser={user}
+              borrador={borradorActivo}
+              onEnviado={() => { setBorradorActivo(undefined); refrescarSolicitudes(); }}
+              onTipoSolicitudChange={setTipoSolicitudSeleccionado}
+              onToast={pushToast}
+            />
+            <MisSolicitudes solicitudes={solicitudes} currentUser={user} procesoFiltro={tipoSolicitudSeleccionado} onVerDetalle={handleAbrir} onCancelar={esAuditor ? undefined : handleCancelar} onEnviarBorrador={esAuditor ? undefined : handleEnviarBorrador} onRetomar={esAuditor ? undefined : handleRetomar} />
           </>
         )}
 
@@ -154,6 +218,10 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
           onClose={() => setModalId(null)}
           onRechazar={handleRechazar}
           onAprobar={handleAprobar}
+          onCancelar={handleCancelar}
+          onDecidirCancelacion={handleDecidirCancelacion}
+          onRetomar={esAuditor ? undefined : handleRetomar}
+          onEnviarBorrador={esAuditor ? undefined : handleEnviarBorrador}
         />
       )}
 

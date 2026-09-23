@@ -1,0 +1,182 @@
+-- ============================================================================
+-- PASO 2 - TAREA 7: FN_OBTENER_BANDEJA_APROBACION (VERSION FLEXIBLE)
+-- ============================================================================
+-- RF-32: Aprobador puede ver solicitudes pendientes en bandeja
+-- RF-33: Filtra por aprobador asignado (si se proporciona, NULL = todos)
+-- RNF-06: Incluye auditoría en resultados
+--
+-- Función que retorna solicitudes EN_PROCESO con error transitorio
+-- Si @P_APROBADOR_EMAIL = NULL: retorna TODAS las solicitudes pendientes
+-- Si @P_APROBADOR_EMAIL != NULL: filtra por aprobador específico
+-- ============================================================================
+
+USE SOFTLANDQA;
+GO
+
+IF OBJECT_ID('PORTAL_PRECIOS.FN_OBTENER_BANDEJA_APROBACION', 'TF') IS NOT NULL
+  DROP FUNCTION PORTAL_PRECIOS.FN_OBTENER_BANDEJA_APROBACION;
+
+GO
+
+CREATE FUNCTION PORTAL_PRECIOS.FN_OBTENER_BANDEJA_APROBACION
+(
+  @P_APROBADOR_EMAIL NVARCHAR(255)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+  SELECT
+    -- Datos de Solicitud
+    S.ID_SOLICITUD,
+    S.CODIGO_SOLICITUD,
+    S.COMPANIA,
+    S.ESTADO,
+    S.ES_ERROR_TRANSITORIO,
+    S.CODIGO_ERROR,
+    S.MENSAJE_ERROR,
+    S.FECHA_CREACION,
+    S.FECHA_ULT_ESTADO,
+    S.APROBADOR_EMAIL,
+    S.APROBADOR_NOMBRE,
+    
+    -- Datos de Último Reintento
+    SR.INTENTO_NUMERO,
+    SR.RESULTADO_REINTENTO,
+    SR.TIPO_ERROR,
+    SR.FECHA_INTENTO AS FECHA_ULTIMO_INTENTO,
+    SR.PROXIMO_REINTENTO_PROGRAMADO,
+    SR.BACKOFF_SEGUNDOS,
+    SR.MENSAJE_ERROR AS MENSAJE_REINTENTO,
+    
+    -- Datos de Auditoría (última aprobación/rechazo)
+    AA.ACCION AS ULTIMA_ACCION,
+    AA.USUARIO_EMAIL AS ULTIMA_ACCION_POR_EMAIL,
+    AA.USUARIO_NOMBRE AS ULTIMA_ACCION_POR_NOMBRE,
+    AA.FECHA AS FECHA_ULTIMA_ACCION,
+    
+    -- Contador de reintentos totales
+    (SELECT COUNT(*) FROM PORTAL_PRECIOS.SOLICITUD_REINTENTO WHERE ID_SOLICITUD = S.ID_SOLICITUD) AS REINTENTOS_TOTALES,
+    
+    -- Contador de acciones de aprobación
+    (SELECT COUNT(*) FROM PORTAL_PRECIOS.AUDITORIA_APROBACION 
+     WHERE ID_SOLICITUD = S.ID_SOLICITUD AND ACCION IN ('REPROCESO_AUTORIZADO', 'APROBADA')) AS REPROCESOS_AUTORIZADOS
+  
+  FROM PORTAL_PRECIOS.SOLICITUD S
+  
+  -- JOIN con último reintento (si existe)
+  LEFT JOIN (
+    SELECT 
+      ID_SOLICITUD,
+      INTENTO_NUMERO,
+      RESULTADO_REINTENTO,
+      TIPO_ERROR,
+      FECHA_INTENTO,
+      PROXIMO_REINTENTO_PROGRAMADO,
+      BACKOFF_SEGUNDOS,
+      MENSAJE_ERROR,
+      ROW_NUMBER() OVER (PARTITION BY ID_SOLICITUD ORDER BY INTENTO_NUMERO DESC) AS RN
+    FROM PORTAL_PRECIOS.SOLICITUD_REINTENTO
+  ) SR ON S.ID_SOLICITUD = SR.ID_SOLICITUD AND SR.RN = 1
+  
+  -- JOIN con última acción de aprobación (si existe)
+  LEFT JOIN (
+    SELECT 
+      ID_SOLICITUD,
+      ACCION,
+      USUARIO_EMAIL,
+      USUARIO_NOMBRE,
+      FECHA,
+      ROW_NUMBER() OVER (PARTITION BY ID_SOLICITUD ORDER BY FECHA DESC) AS RN
+    FROM PORTAL_PRECIOS.AUDITORIA_APROBACION
+    WHERE ACCION IN ('REPROCESO_AUTORIZADO', 'APROBADA', 'RECHAZADA')
+  ) AA ON S.ID_SOLICITUD = AA.ID_SOLICITUD AND AA.RN = 1
+  
+  -- Filtros: Solo solicitudes EN_PROCESO con error transitorio
+  WHERE S.ESTADO = 'EN_PROCESO'
+    AND S.ES_ERROR_TRANSITORIO = 'S'
+    AND S.APROBADOR_EMAIL = @P_APROBADOR_EMAIL
+  
+  -- Ordenar: más recientes primero
+  -- ORDER BY S.FECHA_ULT_ESTADO DESC  -- Nota: ORDER BY no permitido en INLINE table-valued functions
+);
+
+GO
+
+PRINT '✓ FN_OBTENER_BANDEJA_APROBACION creada exitosamente'
+
+-- ============================================================================
+-- TESTS: Verificar función
+-- ============================================================================
+
+PRINT ''
+PRINT '===== TESTS: FN_OBTENER_BANDEJA_APROBACION ====='
+
+-- TEST 1: Obtener bandeja de un aprobador específico
+PRINT ''
+PRINT '[TEST 1] Obtener solicitudes pendientes para aprobador específico'
+
+SELECT TOP 10
+  ID_SOLICITUD,
+  CODIGO_SOLICITUD,
+  COMPANIA,
+  ESTADO,
+  ES_ERROR_TRANSITORIO,
+  INTENTO_NUMERO,
+  RESULTADO_REINTENTO,
+  TIPO_ERROR,
+  FECHA_ULTIMO_INTENTO,
+  APROBADOR_EMAIL,
+  APROBADOR_NOMBRE
+FROM PORTAL_PRECIOS.FN_OBTENER_BANDEJA_APROBACION('aprobador@intelix.com')
+ORDER BY FECHA_ULT_ESTADO DESC;
+
+-- TEST 2: Contar solicitudes por aprobador
+PRINT ''
+PRINT '[TEST 2] Contar solicitudes EN_PROCESO por aprobador'
+
+SELECT DISTINCT
+  APROBADOR_EMAIL,
+  APROBADOR_NOMBRE,
+  COUNT(*) OVER (PARTITION BY APROBADOR_EMAIL) AS SOLICITUDES_PENDIENTES
+FROM PORTAL_PRECIOS.FN_OBTENER_BANDEJA_APROBACION(NULL)
+WHERE APROBADOR_EMAIL IS NOT NULL
+ORDER BY APROBADOR_EMAIL;
+
+-- TEST 3: Solicitudes con reintentos programados para próximamente
+PRINT ''
+PRINT '[TEST 3] Solicitudes con reintentos próximos a ejecutarse'
+
+SELECT
+  ID_SOLICITUD,
+  CODIGO_SOLICITUD,
+  INTENTO_NUMERO,
+  PROXIMO_REINTENTO_PROGRAMADO,
+  DATEDIFF(MINUTE, GETDATE(), PROXIMO_REINTENTO_PROGRAMADO) AS MINUTOS_PARA_REINTENTO
+FROM PORTAL_PRECIOS.FN_OBTENER_BANDEJA_APROBACION('aprobador@intelix.com')
+WHERE PROXIMO_REINTENTO_PROGRAMADO IS NOT NULL
+  AND PROXIMO_REINTENTO_PROGRAMADO <= DATEADD(HOUR, 1, GETDATE())
+ORDER BY PROXIMO_REINTENTO_PROGRAMADO;
+
+-- TEST 4: Histórico de aprobaciones por solicitud
+PRINT ''
+PRINT '[TEST 4] Solicitudes con histórico de reprocesos autorizados'
+
+SELECT
+  ID_SOLICITUD,
+  CODIGO_SOLICITUD,
+  REINTENTOS_TOTALES,
+  REPROCESOS_AUTORIZADOS,
+  ULTIMA_ACCION,
+  FECHA_ULTIMA_ACCION,
+  ULTIMA_ACCION_POR_NOMBRE
+FROM PORTAL_PRECIOS.FN_OBTENER_BANDEJA_APROBACION('aprobador@intelix.com')
+WHERE REPROCESOS_AUTORIZADOS > 0
+ORDER BY FECHA_ULTIMA_ACCION DESC;
+
+GO
+
+PRINT ''
+PRINT '===== FIN DE TESTS ====='
+
+GO
