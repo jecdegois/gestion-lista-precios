@@ -474,13 +474,6 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
   const listaDetalle = proceso === "DESCUENTO_LISTA_PRECIO"
     ? textoNoVacio(columna("LISTA_PRECIO"))
     : textoPrimero(columna("LISTA_PRECIO"), columna("LISTA_CODIGO"), columna("LISTA"), listaSolicitud);
-  if (proceso === "DESCUENTO_LISTA_PRECIO" && !listaDetalle) {
-    console.warn("[PORTAL] SOLICITUD_DETALLE sin LISTA_PRECIO", {
-      idDetalle: d.ID_DETALLE,
-      idSolicitud: d.ID_SOLICITUD,
-      columnas: Object.keys(d),
-    });
-  }
 
   return {
     fila: numero(d.FILA) ?? numero(d.ID_DETALLE) ?? 0,

@@ -89,6 +89,8 @@ Además de la conexión, cada compañía puede mapear sus objetos SQL en el bloq
 | `spMargen` | `SP_CALCULAR_MARGEN_MINIMO_ARTICULO` |
 | `spGestionListas` | `SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO` |
 | `udfFactorReduccion` | `U_FACTOR_REDUCCION_MARGEN` |
+| `tablaGestionListaPrecio` | `GESTION_LISTAS_PRECIOS` |
+| `tablaFactorArticuloLista` | `FACTOR_ARTICULO_LISTA` |
 | `tablaArticuloPrecio` / `tablaArticulo` | `ARTICULO_PRECIO` / `ARTICULO` |
 | `colUdfCodigo` / `colUdfDescripcion` / `colUdfFactor` / `colUdfActivo` | `U_CODIGO` / `U_DESCRIP` / `U_FACTOR_REDUCCION` / `U_ACTIVO` |
 | `paramNivelPrecio` / `paramVersion` / `paramArticulo` / `paramUsuario` | `p_nivel_precio` / `p_version` / `p_articulo` / `p_usuario_ult_modif` |

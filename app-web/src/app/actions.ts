@@ -27,7 +27,7 @@ import type {
 import type { NivelPrecio } from "@/lib/types";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
 import { esEjecucionSoftlandBloqueada, esModoDemo, esModoSoloLectura, esModoSoloPortal, objetoPortal } from "@/server/companies";
-import { actualizarGestionGlobal, listarCatalogo, listarCatalogoPaginado, listarGestionGlobal, listarNivelesPrecio } from "@/server/pricing-repository";
+import { actualizarGestionGlobal, listarCatalogo, listarCatalogoPaginado, listarGestionGlobal, listarNivelesPrecio, upsertFactoresArticuloLista } from "@/server/pricing-repository";
 import {
   actualizarSolicitud,
   actualizarMensajeErrorDetalles,
@@ -802,6 +802,34 @@ export async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boole
       await actualizarSolicitud(s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
       await actualizarMensajeErrorDetalles(s.id, detalle).catch((detalleError) => {
         console.error("[GESTION_GLOBAL] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
+      });
+      return { ok: false, error: detalle, idProcesoSP };
+    }
+  }
+
+  if (s.proceso === "DESCUENTO_LISTA_PRECIO" && !esModoDemo()) {
+    try {
+      const resultadoFactores = await upsertFactoresArticuloLista(
+        s.compania,
+        s.id,
+        s.filas,
+        input.aprobadorNombre,
+      );
+      await actualizarFactorAplicadoDetalles(s.id);
+      const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
+      console.info("[DESCUENTO_ARTICULO_LISTA] Factores persistidos", {
+        solicitudId: s.id,
+        insertados: resultadoFactores.insertados,
+        actualizados: resultadoFactores.actualizados,
+        omitidos: resultadoFactores.omitidos,
+      });
+      await finalizarProcesamiento(s.id, [...s.filas], fallidos, input.aprobadorNombre);
+      return { ok: true, idProcesoSP };
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "No fue posible guardar los factores por artículo y lista.";
+      await actualizarSolicitud(s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
+      await actualizarMensajeErrorDetalles(s.id, detalle).catch((detalleError) => {
+        console.error("[DESCUENTO_ARTICULO_LISTA] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
       });
       return { ok: false, error: detalle, idProcesoSP };
     }
