@@ -126,6 +126,11 @@ Para operar contra Softland, configure `DEMO_MODE=false` y `COMPANIES_CONFIG` en
 | `aidlc-docs/inception/reverse-engineering/impacto-bd-precio-original-y-redondeo.md` | Impacto específico en base de datos y Softland. |
 | `aidlc-docs/inception/reverse-engineering/impacto-app-precio-original-y-redondeo.md` | Impacto específico en la aplicación Next.js. |
 
+## Documentación de persistencia por artículo y lista
+
+- `docs/especificacion-factor-articulo-lista.md`: mapeo, validaciones y upsert de `DESCUENTO_LISTA_PRECIO`.
+- `backend/sql/FACTOR_ARTICULO_LISTA.sql`: DDL de `FACTOR_ARTICULO_LISTA` por esquema de compañía.
+
 ## Estructura del repositorio
 
 ```text

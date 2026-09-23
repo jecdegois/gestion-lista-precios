@@ -39,7 +39,7 @@ function round2(x: number): number {
 }
 
 export function textoFactorCalculado(factor: number | null | undefined): string {
-  return factor != null && !Number.isNaN(factor) ? factor.toFixed(2) : "—";
+  return factor != null && !Number.isNaN(factor) ? factor.toFixed(4) : "—";
 }
 
 export interface ConversionFactor {
@@ -65,7 +65,7 @@ export function convertirPorcentajeAFactor(valor: unknown): ConversionFactor {
     factor,
     causa: valido
       ? null
-      : "El Factor % debe generar un multiplicador mayor que 0 y menor o igual a 2 (variación entre -100% y 100%).",
+      : "El Descuento % debe generar un multiplicador mayor que 0 y menor o igual a 2 (variación entre -100% y 100%).",
   };
 }
 
@@ -95,7 +95,7 @@ export function calcularVariacion(tipoVariacion: TipoVariacion | undefined, magn
       magnitud: null,
       porcentaje: null,
       factor: null,
-      causa: "El Factor % debe ser un valor numérico igual o mayor a cero. El signo se define únicamente con Tipo de Variación.",
+      causa: "El Descuento % debe ser un valor numérico igual o mayor a cero. El signo se define únicamente con Tipo de Variación.",
     };
   }
   const porcentajeConSigno = signoDeTipoVariacion(tipoVariacion) * magnitud;
@@ -129,12 +129,16 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
     valido: false,
     precioActual: null,
     precioPropuesto: null,
+    factorPropuesto: null,
+    multiplicador: null,
+    factorReduccion: null,
     precioRedondeado: null,
     estadoRedondeo: null,
     bandaRedondeo: null,
     margenMinimo,
     costo,
     costoMinimo,
+    precioMin: costoMinimo,
     causa: null,
   };
 
@@ -192,6 +196,7 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
     margenMinimo,
     costo,
     costoMinimo,
+    precioMin: costoMinimo,
     causa: null,
   };
 }
@@ -206,6 +211,9 @@ export function construirFilaCompleta(row: FilaInput, modo: ModoProceso, context
     tipoVariacion: row.tipoVariacion,
     variacionPorcentaje: row.variacionPorcentaje,
     valorPropuestoRaw: row.valorPropuestoRaw,
+    multiplicador: modo === "factor" ? Number(row.valorPropuestoRaw) || null : null,
+    precioMin: 0,
+    factorPropuesto: modo === "factor" ? Number(row.valorPropuestoRaw) || 0 : 0,
     grupoArticulo: row.grupoArticulo,
     validacion: validarFila(row, modo, context),
   };
@@ -216,6 +224,9 @@ export function construirFilaDesdeVariacion(row: FilaInput, modo: ModoProceso, c
   const conversion = calcularVariacion(row.tipoVariacion, row.variacionPorcentaje);
   const rowConFactor: FilaInput = { ...row, valorPropuestoRaw: textoFactorCalculado(conversion.factor) };
   const fila = construirFilaCompleta(rowConFactor, modo, context);
+  fila.multiplicador = conversion.factor;
+  fila.factorPropuesto = conversion.factor ?? 0;
+  fila.validacion = { ...fila.validacion, factorPropuesto: conversion.factor, multiplicador: conversion.factor };
   const articulo = context.articulos[row.codigo];
   if (!conversion.valido && articulo) {
     fila.validacion = { ...fila.validacion, valido: false, causa: conversion.causa };
@@ -268,6 +279,8 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
   const validacionBase: ValidacionMargen = {
     valido: false,
     precioActual: articulo ? articulo.precioActual : null,
+    multiplicador: multiplicadorMargen,
+    factorPropuesto: factorReduccion,
     precioPropuesto: null,
     precioRedondeado: null,
     estadoRedondeo: null,
@@ -275,6 +288,7 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
     costo,
     costoMinimoBase,
     costoMinimo: null,
+    precioMin: null,
     margenPromedio: null,
     margenSobrePrecioRedondeado: null,
     margenMinimoBase,

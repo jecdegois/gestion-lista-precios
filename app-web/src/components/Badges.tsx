@@ -6,7 +6,10 @@ import type { EstadoSolicitud } from "@/lib/domain-types";
 
 export function EstadoBadge({ estado }: { estado: EstadoSolicitud | string }) {
   const map: Record<string, { cls: string; dot: string | null; label: string; pulse: boolean }> = {
+    BORRADOR: { cls: "badge-outline", dot: "#71717A", label: "Borrador", pulse: false },
     PENDIENTE: { cls: "badge-pendiente", dot: "#B45309", label: "Pendiente de aprobación", pulse: false },
+    CANCELACION_SOLICITADA: { cls: "badge-conerrores", dot: "#C2410C", label: "Cancelación solicitada", pulse: false },
+    CANCELADO: { cls: "badge-rechazado", dot: "#B91C1C", label: "Cancelado", pulse: false },
     EN_PROCESO: { cls: "badge-enproceso", dot: "#4338CA", label: "En proceso", pulse: true },
     PROCESADO: { cls: "badge-aprobado", dot: "#15803D", label: "Procesado", pulse: false },
     PROCESADO_CON_ERRORES: { cls: "badge-conerrores", dot: "#C2410C", label: "Procesado con errores", pulse: false },

@@ -28,6 +28,12 @@ export interface NivelPrecio {
   nombre: string;
 }
 
+/** Registro de Gestión Global leído desde dbo.GESTION_LISTAS_PRECIOS. */
+export interface GestionGlobalLista extends NivelPrecio {
+  version: string;
+  variacionPorc: number | null;
+}
+
 /** Resultado de evaluar una fila de la carga masiva de margen. */
 export interface FilaMargenResultado {
   fila: number;

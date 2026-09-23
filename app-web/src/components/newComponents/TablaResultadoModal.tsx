@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { esHallazgoDeNegocio, ResumenValidaciones } from "../Tablas";
 import { TIPOS_VARIACION } from "@/lib/catalog";
 import { esFilaMargen, type FilaResultado } from "@/lib/domain-types";
-import { fmtFactor, fmtMonto, fmtPct } from "@/lib/format";
+import { fmtFactor, fmtMonto, fmtPct, fmtPorcentajeCapturado, fmtPorcentajeMultiplicador } from "@/lib/format";
 import ResponsiveDataTable, { type TableColumn } from "./ResponsiveDataTable";
 
 const PAGE_SIZE = 200;
@@ -30,15 +30,28 @@ const columns: readonly TableColumn<FilaResultado>[] = [
   },
   {
     key: "factor",
-    header: "Factor",
+    header: "Descuento %",
     align: "right",
-    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.factorPropuesto) : fila.valorPropuestoRaw ?? "—"}</span>,
+    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.factorPropuesto) : fmtPorcentajeCapturado(fila.variacionPorcentaje)}</span>,
+  },
+  {
+    key: "factorAplicado",
+    header: "Descuento Aplicado %",
+    align: "right",
+    value: (fila) => <span className="mono">{fmtPorcentajeMultiplicador(fila.factorAplicado)}</span>,
+  },
+  {
+    key: "mensajeError",
+    header: "Mensaje de error",
+    value: (fila) => fila.mensajeError
+      ? <span className="block max-w-[280px] truncate text-red-700" title={fila.mensajeError}>{fila.mensajeError}</span>
+      : <span className="text-zinc-400">—</span>,
   },
   {
     key: "multiplicador",
     header: "Multiplicador",
     align: "right",
-    value: (fila) => <span className="mono">{esFilaMargen(fila) ? fmtFactor(fila.validacion.multiplicador) : "—"}</span>,
+    value: (fila) => <span className="mono">{fmtFactor(esFilaMargen(fila) ? fila.validacion.multiplicador : fila.multiplicador ?? fila.factorPropuesto)}</span>,
   },
   {
     key: "precioActual",
