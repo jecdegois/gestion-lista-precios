@@ -4,6 +4,21 @@ import type { EstadoRedondeo } from "./rounding";
 
 export type Rol = "OPERADOR" | "APROBADOR" | "SIN_PERMISO";
 
+export type RoleCode = "operator" | "approver" | "auditor";
+
+export type UserStatusDomain = "pending" | "active" | "inactive";
+
+export interface AuthContext {
+  sessionId: string;
+  expiresAt: Date;
+  userId: string;
+  email: string;
+  fullName: string;
+  isAdmin: boolean;
+  mustChangePassword: boolean;
+  companies: { company: string; role: RoleCode }[];
+}
+
 export interface Identidad {
   email: string;
   nombre: string;

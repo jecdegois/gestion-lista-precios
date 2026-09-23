@@ -1,4 +1,4 @@
-# Dependencies and package-manager artifacts
+﻿# Dependencies and package-manager artifacts
 /node_modules/
 .pnp
 .pnp.*
@@ -38,8 +38,8 @@ Desktop.ini
 *.tsbuildinfo
 next-env.d.ts
 
-# Keep package manifests and lockfiles versioned:
-# package.json
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
+# Prisma generated clients
+/src/generated/
+
+# Datos locales de PostgreSQL (bind mount docker-compose)
+/postgres/

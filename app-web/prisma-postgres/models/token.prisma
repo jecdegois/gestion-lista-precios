@@ -1,0 +1,21 @@
+enum TokenPurpose {
+  password_reset
+  admin_invite
+}
+
+model SecurityToken {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tokenHash     Bytes        @unique @map("token_hash")
+  userId        String       @map("user_id") @db.Uuid
+  purpose       TokenPurpose
+  createdAt     DateTime     @map("created_at") @default(now()) @db.Timestamptz(6)
+  expiresAt     DateTime     @map("expires_at") @db.Timestamptz(6)
+  consumedAt    DateTime?    @map("consumed_at") @db.Timestamptz(6)
+  invalidatedAt DateTime?    @map("invalidated_at") @db.Timestamptz(6)
+  issuedById    String?      @map("issued_by") @db.Uuid
+
+  user     User  @relation("TokenHolder", fields: [userId], references: [id], onDelete: Cascade)
+  issuedBy User? @relation("TokenIssuer", fields: [issuedById], references: [id])
+
+  @@map("security_tokens")
+}

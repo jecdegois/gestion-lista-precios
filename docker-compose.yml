@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mv26020-identity-db
+    environment:
+      POSTGRES_DB: gestion_lista_precios
+      POSTGRES_USER: portal_app
+      POSTGRES_PASSWORD: portal_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    restart: unless-stopped

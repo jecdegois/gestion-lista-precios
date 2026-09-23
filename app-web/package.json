@@ -8,22 +8,35 @@
     "build": "next build",
     "start": "next start -p 5000",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate --schema prisma-postgres",
+    "db:migrate": "prisma migrate dev --schema prisma-postgres",
+    "db:deploy": "prisma migrate deploy --schema prisma-postgres",
+    "db:studio": "prisma studio --schema prisma-postgres",
+    "sqlserver:pull": "prisma db pull --schema prisma-sqlserver",
+    "sqlserver:generate": "prisma generate --schema prisma-sqlserver",
+    "sqlserver:studio": "prisma studio --schema prisma-sqlserver"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.9.1",
+    "@prisma/client": "^6.19.3",
+    "clsx": "^2.1.1",
+    "mssql": "10.0.2",
     "next": "14.2.33",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "mssql": "10.0.2",
-    "xlsx": "0.18.5"
+    "react-hook-form": "^7.88.0",
+    "xlsx": "0.18.5",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/node": "20.14.10",
     "@types/mssql": "9.1.5",
+    "@types/node": "^20.14.10",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "autoprefixer": "10.4.19",
     "postcss": "8.4.39",
+    "prisma": "^6.19.3",
     "tailwindcss": "3.4.6",
     "typescript": "5.5.3"
   }
