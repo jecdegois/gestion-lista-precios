@@ -1,0 +1,27 @@
+model Role {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @map("is_active") @default(true)
+  createdAt   DateTime @map("created_at") @default(now()) @db.Timestamptz(6)
+
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usersCompanyId String    @map("users_company_id") @db.Uuid
+  roleId         String    @map("role_id") @db.Uuid
+  assignedAt     DateTime  @map("assigned_at") @default(now()) @db.Timestamptz(6)
+  assignedBy     String?   @map("assigned_by") @db.Uuid
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  userCompany UserCompany @relation(fields: [usersCompanyId], references: [id], onDelete: Cascade)
+  role        Role        @relation(fields: [roleId], references: [id])
+
+  @@unique([usersCompanyId, roleId])
+  @@map("users_roles")
+}

@@ -1,0 +1,25 @@
+enum SessionRevokeReason {
+  logout
+  password_change
+  password_reset
+  deactivation
+  permissions_change
+}
+
+model Session {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tokenHash    Bytes                @unique @map("token_hash")
+  userId       String               @map("user_id") @db.Uuid
+  createdAt    DateTime             @map("created_at") @default(now()) @db.Timestamptz(6)
+  expiresAt    DateTime             @map("expires_at") @db.Timestamptz(6)
+  lastUsedAt   DateTime?            @map("last_used_at") @db.Timestamptz(6)
+  revokedAt    DateTime?            @map("revoked_at") @db.Timestamptz(6)
+  revokeReason SessionRevokeReason? @map("revoke_reason")
+  ipAddress    String?              @map("ip_address") @db.Inet
+  userAgent    String?              @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("sessions")
+}

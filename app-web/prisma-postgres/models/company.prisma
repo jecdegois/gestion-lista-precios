@@ -1,0 +1,15 @@
+model UserCompany {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  company    String
+  isActive   Boolean   @map("is_active") @default(true)
+  assignedAt DateTime  @map("assigned_at") @default(now()) @db.Timestamptz(6)
+  assignedBy String?   @map("assigned_by") @db.Uuid
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userRoles UserRole[]
+
+  @@unique([userId, company])
+  @@map("users_company")
+}
