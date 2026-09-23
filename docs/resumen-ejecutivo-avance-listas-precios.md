@@ -91,9 +91,15 @@ Si no existe excepción activa para el artículo en la UDF, se aplica el valor p
 
 El código de `upsertUdf` implementa correctamente la semántica de UPSERT sobre `U_FACTOR_REDUCCION_MARGEN` (clave `U_CODIGO + U_DESCRIP`: `UPDATE` si existe, `INSERT` si no existe), y `ejecutarSpMargen` invocaría después `SP_CALCULAR_MARGEN_MINIMO_ARTICULO` para persistir `ARTICULO_PRECIO.MARGEN_UTILIDAD_MIN`. **Ambas operaciones están bloqueadas por la guardia de aplicación** y no se ejecutan en el flujo actual.
 
-### Estado del UPSERT de Gestión Global de Listas
+### Estado del UPSERT de factores por artículo y lista
 
-No existe en el código un `MERGE`/UPSERT real contra una tabla `GESTION_LISTA` o `FACTOR_LISTA_ARTICULO` por la clave `Código Artículo + Código Lista`. El procedimiento `SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO` existe como referencia SQL y su invocación (`ejecutarSpGestionListas`) está implementada pero bloqueada. El diagrama end-to-end representa esta persistencia como objetivo pendiente, marcado explícitamente como bloqueado.
+Para `DESCUENTO_LISTA_PRECIO` ya existe el upsert transaccional de
+`FACTOR_ARTICULO_LISTA` en `pricing-repository.ts`, ejecutado después de la
+aprobación y protegido por la guardia de escritura Softland. La especificación
+funcional y el DDL se encuentran en `docs/especificacion-factor-articulo-lista.md`
+y `backend/sql/FACTOR_ARTICULO_LISTA.sql`.
+
+El upsert de `DESCUENTO_LISTA_PRECIO` está implementado para `FACTOR_ARTICULO_LISTA`. El procedimiento `SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO` continúa como referencia para otros procesos y su invocación permanece protegida por la guardia de escritura.
 
 | Condición (diseño objetivo, aún no habilitado) | Acción prevista |
 |---|---|

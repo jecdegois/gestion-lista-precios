@@ -1,4 +1,5 @@
 import "server-only";
+import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/lib/domain-types";
 import type { Articulo, GestionGlobalLista, NivelPrecio } from "@/lib/types";
 import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "./companies";
 import {
@@ -28,6 +29,12 @@ export interface ResultadoGestionGlobal {
   lista: string;
   version: string;
   factor: number;
+}
+
+export interface ResultadoFactorArticuloLista {
+  insertados: number;
+  actualizados: number;
+  omitidos: number;
 }
 
 /**
@@ -132,6 +139,156 @@ export async function actualizarGestionGlobal(
     if (!committed) {
       await transaction.rollback().catch(() => undefined);
     }
+    throw error;
+  }
+}
+
+/**
+ * Persiste los factores de Descuento Artículo - Lista después de una
+ * aprobación. Las modalidades manual y Excel llegan al mismo contrato
+ * (`solicitud.filas`), por lo que comparten exactamente este upsert.
+ */
+export async function upsertFactoresArticuloLista(
+  compania: string,
+  solicitudId: string,
+  filas: FilaResultado[],
+  usuario: string,
+): Promise<ResultadoFactorArticuloLista> {
+  assertEscrituraSoftlandHabilitada();
+  if (esModoDemo()) throw new Error("FACTOR_ARTICULO_LISTA_NO_DISPONIBLE_EN_DEMO");
+
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const usuarioNormalizado = usuario.trim();
+  if (!companiaNormalizada || !usuarioNormalizado) {
+    throw new Error("La compañía y el usuario son obligatorios para guardar factores por artículo.");
+  }
+
+  const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && fila.validacion.valido);
+  const filasOmitidas = filas.length - filasValidas.length;
+  if (filasValidas.length === 0) {
+    throw new Error("No existen filas válidas para guardar en FACTOR_ARTICULO_LISTA.");
+  }
+
+  const pool = await getPool(companiaNormalizada);
+  const target = objetoCalificado(companiaNormalizada, "tablaFactorArticuloLista");
+  const gestion = `[dbo].[${nombreSql(companiaNormalizada, "tablaGestionListaPrecio")}]`;
+  const mssql = await import("mssql");
+  const transaction = new mssql.Transaction(pool);
+  let committed = false;
+  let insertados = 0;
+  let actualizados = 0;
+
+  await transaction.begin();
+  try {
+    for (const fila of filasValidas) {
+      const nivelPrecioSolicitado = String(fila.listaCodigo ?? fila.lista ?? "").trim();
+      const articulo = fila.codigo.trim();
+      const factor = Number(fila.multiplicador ?? fila.validacion.multiplicador ?? fila.factorPropuesto);
+      if (!nivelPrecioSolicitado || !articulo) {
+        throw new Error(`La solicitud ${solicitudId} contiene una fila sin nivel de precio o artículo.`);
+      }
+      if (!Number.isFinite(factor) || factor <= 0 || factor > 2) {
+        throw new Error(`El multiplicador del artículo ${articulo} debe ser mayor que 0 y menor o igual a 2.`);
+      }
+
+      const lookup = await new mssql.Request(transaction)
+        .input("compania", mssql.VarChar(20), companiaNormalizada)
+        .input("nivelPrecio", mssql.VarChar(50), nivelPrecioSolicitado)
+        .query(
+          `SELECT TOP (1)
+                  A.NIVEL_PRECIO_BASE AS nivelPrecioBase,
+                  A.NIVEL_PRECIO AS nivelPrecio,
+                  TRY_CONVERT(INT, A.VERSION) AS version
+             FROM ${gestion} A
+            WHERE A.COMPANIA = @compania
+              AND A.NIVEL_PRECIO = @nivelPrecio
+            ORDER BY TRY_CONVERT(INT, A.VERSION) DESC, A.VERSION DESC;`,
+        );
+      const maestro = lookup.recordset[0] as Record<string, unknown> | undefined;
+      const nivelPrecioBase = String(maestro?.nivelPrecioBase ?? "").trim();
+      const nivelPrecio = String(maestro?.nivelPrecio ?? nivelPrecioSolicitado).trim();
+      const version = Number(maestro?.version);
+      if (!nivelPrecioBase || !nivelPrecio || !Number.isInteger(version)) {
+        throw new Error(`No se encontró una relación válida de lista base y versión para '${nivelPrecioSolicitado}' en ${gestion}.`);
+      }
+
+      const baseParams = (request: import("mssql").Request) => request
+        .input("nivelPrecioBase", mssql.VarChar(50), nivelPrecioBase)
+        .input("nivelPrecioDestino", mssql.VarChar(50), nivelPrecio)
+        .input("version", mssql.Int, version)
+        .input("articulo", mssql.VarChar(20), articulo)
+        .input("factor", mssql.Decimal(12, 4), Number(factor.toFixed(4)))
+        .input("observacion", mssql.VarChar(250), `Solicitud ${solicitudId}`)
+        .input("usuario", mssql.VarChar(50), usuarioNormalizado);
+
+      const update = await baseParams(new mssql.Request(transaction)).query(
+        `UPDATE T
+            SET T.NIVEL_PRECIO_BASE = @nivelPrecioBase,
+                T.FACTOR = @factor,
+                T.FECHA_INICIO = CONVERT(date, GETDATE()),
+                T.FECHA_FIN = DATEADD(YEAR, 10, CONVERT(date, GETDATE())),
+                T.ACTIVO = 'S',
+                T.OBSERVACION = @observacion,
+                T.FECHA_ULT_MODIF = GETDATE(),
+                T.USUARIO_ULT_MODIF = @usuario,
+                T.RecordDate = GETDATE(),
+                T.UpdatedBy = @usuario
+           FROM ${target} T
+          WHERE T.NIVEL_PRECIO = @nivelPrecioDestino
+            AND T.VERSION = @version
+            AND T.ARTICULO = @articulo
+            AND T.ACTIVO = 'S';`,
+      );
+
+      if ((update.rowsAffected[0] ?? 0) > 0) {
+        const filasActualizadas = update.rowsAffected[0] ?? 0;
+        actualizados += filasActualizadas;
+        console.info("[FACTOR_ARTICULO_LISTA] UPDATE ejecutado", {
+          compania: companiaNormalizada,
+          tabla: target,
+          solicitudId,
+          usuario: usuarioNormalizado,
+          nivelPrecioBase,
+          nivelPrecio,
+          version,
+          articulo,
+          factor: Number(factor.toFixed(4)),
+          filasAfectadas: filasActualizadas,
+        });
+        continue;
+      }
+
+      await baseParams(new mssql.Request(transaction)).query(
+        `INSERT INTO ${target} (
+           NIVEL_PRECIO_BASE, NIVEL_PRECIO, VERSION, ARTICULO, FACTOR,
+           FECHA_INICIO, FECHA_FIN, ACTIVO, OBSERVACION,
+           FECHA_CREACION, USUARIO_CREACION, RecordDate, RowPointer,
+           CreatedBy, UpdatedBy, CreateDate
+         ) VALUES (
+           @nivelPrecioBase, @nivelPrecioDestino, @version, @articulo, @factor,
+           CONVERT(date, GETDATE()), DATEADD(YEAR, 10, CONVERT(date, GETDATE())), 'S', @observacion,
+           GETDATE(), @usuario, GETDATE(), NEWID(), @usuario, @usuario, GETDATE()
+         );`,
+      );
+      console.info("[FACTOR_ARTICULO_LISTA] INSERT ejecutado", {
+        compania: companiaNormalizada,
+        tabla: target,
+        solicitudId,
+        usuario: usuarioNormalizado,
+        nivelPrecioBase,
+        nivelPrecio,
+        version,
+        articulo,
+        factor: Number(factor.toFixed(4)),
+      });
+      insertados += 1;
+    }
+
+    await transaction.commit();
+    committed = true;
+    return { insertados, actualizados, omitidos: filasOmitidas };
+  } catch (error) {
+    if (!committed) await transaction.rollback().catch(() => undefined);
     throw error;
   }
 }

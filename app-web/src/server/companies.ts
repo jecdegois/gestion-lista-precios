@@ -18,6 +18,8 @@ export interface SqlObjetos {
   // Tablas maestras de Softland para listas y artículos.
   tablaNivelPrecio: string;
   tablaVersionNivel: string;
+  tablaGestionListaPrecio: string;
+  tablaFactorArticuloLista: string;
   tablaArticuloPrecio: string;
   tablaArticulo: string;
   tablaClasificacion: string;
@@ -62,6 +64,8 @@ function defaultsSql(): SqlObjetos {
     udfFactorReduccion: "U_FACTOR_REDUCCION_MARGEN",
     tablaNivelPrecio: "NIVEL_PRECIO",
     tablaVersionNivel: "VERSION_NIVEL",
+    tablaGestionListaPrecio: "GESTION_LISTAS_PRECIOS",
+    tablaFactorArticuloLista: "FACTOR_ARTICULO_LISTA",
     tablaArticuloPrecio: "ARTICULO_PRECIO",
     tablaArticulo: "ARTICULO",
     tablaClasificacion: "CLASIFICACION",
