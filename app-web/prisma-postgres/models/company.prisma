@@ -1,3 +1,17 @@
+model Company {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String   @unique
+  name      String
+  sqlSchema String   @map("sql_schema")
+  isActive  Boolean  @map("is_active") @default(true)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @updatedAt @db.Timestamptz(6)
+
+  userCompanies UserCompany[]
+
+  @@map("companies")
+}
+
 model UserCompany {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId     String    @map("user_id") @db.Uuid
@@ -7,8 +21,9 @@ model UserCompany {
   assignedBy String?   @map("assigned_by") @db.Uuid
   revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userRoles UserRole[]
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyInfo Company    @relation(fields: [company], references: [code], onUpdate: Cascade)
+  userRoles   UserRole[]
 
   @@unique([userId, company])
   @@map("users_company")

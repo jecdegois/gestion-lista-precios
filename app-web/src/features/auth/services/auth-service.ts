@@ -28,7 +28,7 @@ function derivePassword(
   });
 }
 
-async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(PASSWORD_SALT_LENGTH);
   const derived = await derivePassword(password, salt, PASSWORD_KEY_LENGTH, SCRYPT_PARAMS);
   return [

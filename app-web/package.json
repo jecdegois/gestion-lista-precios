@@ -15,7 +15,8 @@
     "db:studio": "prisma studio --schema prisma-postgres",
     "sqlserver:pull": "prisma db pull --schema prisma-sqlserver",
     "sqlserver:generate": "prisma generate --schema prisma-sqlserver",
-    "sqlserver:studio": "prisma studio --schema prisma-sqlserver"
+    "sqlserver:studio": "prisma studio --schema prisma-sqlserver",
+    "seed": "node --env-file=.env prisma-postgres/seed.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

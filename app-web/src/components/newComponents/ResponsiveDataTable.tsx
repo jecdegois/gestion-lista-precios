@@ -133,16 +133,16 @@ export default function ResponsiveDataTable<Row>({
   }
 
   if (loading) {
-    return <div className={`card flex items-center justify-center border-dashed text-sm text-zinc-500 ${tableHeightClass}`}>Cargando...</div>;
+    return <div className={`card flex items-center justify-center border-dashed px-4 py-8 text-sm text-zinc-500 ${tableHeightClass}`}>Cargando...</div>;
   }
 
   if (error) {
-    return <div className={`card flex items-center justify-center border-red-200 bg-red-50 px-4 text-center text-sm text-red-700 ${tableHeightClass}`}>{errorText}</div>;
+    return <div className={`card flex items-center justify-center border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700 ${tableHeightClass}`}>{errorText}</div>;
   }
 
   if (rows.length === 0) {
     return (
-      <div className={`card flex flex-col items-center justify-center px-4 text-center ${tableHeightClass}`}>
+      <div className={`card flex flex-col items-center justify-center px-4 py-8 text-center ${tableHeightClass}`}>
         <p className="text-sm font-medium text-zinc-600">{emptyTitle}</p>
         <p className="mt-1 text-xs text-zinc-400">{emptyDescription}</p>
       </div>

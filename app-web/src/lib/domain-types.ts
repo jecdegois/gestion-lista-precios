@@ -25,6 +25,8 @@ export interface Identidad {
   rol: Rol;
   color: string;
   compania: string | null;
+  /** Administrador global: gestiona usuarios aunque no tenga compañías asignadas. */
+  isAdmin?: boolean;
   /** Subject canónico del proveedor de identidad, usado como IDP_OPERADOR. */
   idpSubject?: string | null;
 }

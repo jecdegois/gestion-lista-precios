@@ -107,7 +107,7 @@ const sessions = {
 
   revokeAllForUser(
     userId: string,
-    reason: "password_change" | "password_reset",
+    reason: "password_change" | "password_reset" | "deactivation" | "permissions_change",
     exceptSessionId?: string,
   ) {
     return prisma.session.updateMany({
