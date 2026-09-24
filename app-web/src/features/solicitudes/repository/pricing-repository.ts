@@ -1,7 +1,7 @@
 import "server-only";
 import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/lib/domain-types";
 import type { Articulo, GestionGlobalLista, NivelPrecio } from "@/lib/types";
-import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "./companies";
+import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "@/server/companies";
 import {
   buscarArticuloDemo,
   catalogoDemo,
@@ -9,7 +9,7 @@ import {
   porcentajeUdfDemo,
   upsertUdfDemo,
 } from "./demo-catalog";
-import { getPool } from "./db";
+import { getPool } from "@/server/db";
 
 /**
  * Repositorio de precios/margen por compania. Enruta cada operacion a la base
@@ -41,7 +41,7 @@ export interface ResultadoFactorArticuloLista {
  * Actualiza el factor global de una lista. El procesamiento posterior de los
  * precios por artículo pertenece al SP externo que consume esta tabla.
  */
-export async function actualizarGestionGlobal(
+async function actualizarGestionGlobal(
   compania: string,
   lista: string,
   factor: number,
@@ -148,7 +148,7 @@ export async function actualizarGestionGlobal(
  * aprobación. Las modalidades manual y Excel llegan al mismo contrato
  * (`solicitud.filas`), por lo que comparten exactamente este upsert.
  */
-export async function upsertFactoresArticuloLista(
+async function upsertFactoresArticuloLista(
   compania: string,
   solicitudId: string,
   filas: FilaResultado[],
@@ -293,7 +293,7 @@ export async function upsertFactoresArticuloLista(
   }
 }
 
-export async function listarNivelesPrecio(compania: string): Promise<NivelPrecio[]> {
+async function listarNivelesPrecio(compania: string): Promise<NivelPrecio[]> {
   if (esModoDemo()) return nivelesPrecioDemo(compania);
 
   const pool = await getPool(compania);
@@ -318,7 +318,7 @@ export async function listarNivelesPrecio(compania: string): Promise<NivelPrecio
 }
 
 /** Lista y parámetros vigentes usados exclusivamente por Gestión Global. */
-export async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista[]> {
+async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista[]> {
   if (esModoDemo()) {
     return nivelesPrecioDemo(compania).map((nivel) => ({ ...nivel, version: "1", variacionPorc: 0 }));
   }
@@ -342,7 +342,7 @@ export async function listarGestionGlobal(compania: string): Promise<GestionGlob
   })).filter((nivel) => nivel.codigo && nivel.version);
 }
 
-export async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Articulo[]> {
+async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Articulo[]> {
   const nivel = nivelPrecio.trim();
   if (!nivel) throw new Error("Debe indicar una lista de precio para consultar el catálogo.");
   if (esModoDemo()) return catalogoDemo(compania).map((articulo) => ({ ...articulo, nivelPrecio: nivel, version: 1 }));
@@ -423,7 +423,7 @@ export interface PaginaCatalogo {
   nextOffset: number | null;
 }
 
-export async function listarCatalogoPaginado(
+async function listarCatalogoPaginado(
   compania: string,
   nivelPrecio: string,
   search = "",
@@ -539,7 +539,7 @@ export async function listarCatalogoPaginado(
   };
 }
 
-export async function buscarArticulo(compania: string, codigo: string, nivelPrecio: string): Promise<Articulo | undefined> {
+async function buscarArticulo(compania: string, codigo: string, nivelPrecio: string): Promise<Articulo | undefined> {
   const nivel = nivelPrecio.trim();
   if (!nivel) throw new Error("Debe indicar una lista de precio para consultar un artículo.");
   if (esModoDemo()) {
@@ -602,7 +602,7 @@ export async function buscarArticulo(compania: string, codigo: string, nivelPrec
  * (columna activo = 'S'). Devuelve el PORCENTAJE explicito (10.00) o null.
  * Los nombres de tabla y columnas se toman del mapa configurable por compania.
  */
-export async function leerPorcentajeUdf(compania: string, codigo: string): Promise<number | null> {
+async function leerPorcentajeUdf(compania: string, codigo: string): Promise<number | null> {
   if (esModoDemo()) return porcentajeUdfDemo(compania, codigo);
 
   const pool = await getPool(compania);
@@ -629,7 +629,7 @@ export async function leerPorcentajeUdf(compania: string, codigo: string): Promi
  * el PORCENTAJE explicito capturado (10.00 = 10%). Usa el mapa configurable de
  * objeto y columnas. En DEMO_MODE actualiza el catalogo en memoria.
  */
-export async function upsertUdf(
+async function upsertUdf(
   compania: string,
   codigo: string,
   descripcion: string,
@@ -675,7 +675,7 @@ export async function upsertUdf(
  * SP_CALCULAR_MARGEN_MINIMO_ARTICULO), con los nombres de parametros del mapa.
  * Solo se invoca al aprobar (Regla de Oro) y fuera de DEMO_MODE.
  */
-export async function ejecutarSpMargen(
+async function ejecutarSpMargen(
   compania: string,
   nivelPrecio: string,
   version: number,
@@ -700,7 +700,7 @@ export async function ejecutarSpMargen(
  * Ejecuta el SP de gestion de listas con redondeo configurado para la compania
  * (procesos de precio). Solo al aprobar y fuera de DEMO_MODE.
  */
-export async function ejecutarSpGestionListas(
+async function ejecutarSpGestionListas(
   compania: string,
   nivelPrecio: string,
   version: number,
@@ -718,3 +718,17 @@ export async function ejecutarSpGestionListas(
     .input(cfg.paramUsuario, mssql.VarChar(50), usuario)
     .execute(sp);
 }
+
+export const pricingRepository = {
+  listPriceLevels: listarNivelesPrecio,
+  listGlobalManagement: listarGestionGlobal,
+  listCatalog: listarCatalogo,
+  listCatalogPage: listarCatalogoPaginado,
+  findArticle: buscarArticulo,
+  updateGlobalManagement: actualizarGestionGlobal,
+  upsertArticleListFactors: upsertFactoresArticuloLista,
+  readUdfPercentage: leerPorcentajeUdf,
+  upsertUdf,
+  runMarginSp: ejecutarSpMargen,
+  runListManagementSp: ejecutarSpGestionListas,
+};

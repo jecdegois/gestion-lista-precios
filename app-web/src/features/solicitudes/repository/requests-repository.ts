@@ -1,36 +1,34 @@
 import "server-only";
-import type { EventoAuditoria, EventoTipo, FilaMargen, FilaPrecio, FilaResultado, Rol, Solicitud, ValidacionPrecio } from "@/lib/domain-types";
-import type { EstadoRedondeo } from "@/lib/rounding";
-import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "./companies";
+import type { FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/lib/domain-types";
+import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
+import { getPortalPool } from "@/server/db";
 import {
   agregarSolicitud as demoAgregar,
   actualizarSolicitud as demoActualizar,
-  listarEventos as demoListarEventos,
   listarSolicitudes as demoListarSolicitudes,
   obtenerSolicitud as demoObtener,
-  registrarEvento as demoRegistrarEvento,
   siguienteSeq as demoSeq,
-} from "./requests-store";
-import { getPortalPool } from "./db";
+} from "./demo-store";
 
 /**
- * Repositorio del PORTAL (estado maker-checker): solicitudes, detalle y
- * auditoría. Escribe SIEMPRE en el esquema [PORTAL_PRECIOS] (no toca Softland).
+ * Repositorio del PORTAL (estado maker-checker): solicitudes y su detalle.
+ * Escribe SIEMPRE en la base PORTAL_PRECIOS, esquema de la empresa (no toca Softland). La
+ * auditoría vive en `features/auditoria/repository/audit-repository.ts`.
  *
- * En DEMO_MODE usa el store en memoria (requests-store); en modo real persiste
+ * En DEMO_MODE usa el store en memoria (demo-store); en modo real persiste
  * en las tablas del esquema del portal. Toda la API es async para servir a
  * ambos modos de forma uniforme.
  */
 
-export async function listarSolicitudes(compania?: string): Promise<Solicitud[]> {
-  const companiaNormalizada = compania?.trim().toUpperCase();
+async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
+  const companiaNormalizada = compania.trim().toUpperCase();
   if (esModoDemo()) {
     return demoListarSolicitudes().filter((solicitud) => !companiaNormalizada || solicitud.compania === companiaNormalizada);
   }
 
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD");
-  const spd = objetoPortal("SOLICITUD_DETALLE");
+  const sp = objetoPortal(companiaNormalizada, "SOLICITUD");
+  const spd = objetoPortal(companiaNormalizada, "SOLICITUD_DETALLE");
   const mssql = await import("mssql");
   
   // Obtener cabeceras de solicitudes
@@ -55,11 +53,11 @@ export async function listarSolicitudes(compania?: string): Promise<Solicitud[]>
   );
 }
 
-export async function obtenerSolicitud(codigo: string): Promise<Solicitud | undefined> {
+async function obtenerSolicitud(compania: string, codigo: string): Promise<Solicitud | undefined> {
   if (esModoDemo()) return demoObtener(codigo);
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD");
-  const spd = objetoPortal("SOLICITUD_DETALLE");
+  const sp = objetoPortal(compania, "SOLICITUD");
+  const spd = objetoPortal(compania, "SOLICITUD_DETALLE");
   const mssql = await import("mssql");
   const cab = await pool.request().input("cod", mssql.VarChar(20), codigo).query(`SELECT * FROM ${sp} WHERE CODIGO_SOLICITUD = @cod`);
   const r = cab.recordset[0];
@@ -72,29 +70,25 @@ export async function obtenerSolicitud(codigo: string): Promise<Solicitud | unde
   return mapSolicitud(r, det.recordset);
 }
 
-export async function siguienteCodigoSolicitud(): Promise<string> {
+async function siguienteCodigoSolicitud(compania: string): Promise<string> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return "SOL-" + (10450 + demoSeq());
   const pool = await getPortalPool();
-  const q = await pool.request().query(`SELECT NEXT VALUE FOR ${objetoPortal("SEQ_SOLICITUD")} AS n`);
+  const q = await pool.request().query(`SELECT NEXT VALUE FOR ${objetoPortal(compania, "SEQ_SOLICITUD")} AS n`);
   return "SOL-" + q.recordset[0].n;
 }
 
-export async function agregarSolicitud(s: Solicitud): Promise<void> {
+async function agregarSolicitud(s: Solicitud): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) {
     demoAgregar(s);
     return;
   }
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD");
-  const spd = objetoPortal("SOLICITUD_DETALLE");
+  const sp = objetoPortal(s.compania, "SOLICITUD");
+  const spd = objetoPortal(s.compania, "SOLICITUD_DETALLE");
   const mssql = await import("mssql");
   const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();  
-  const idUsuarioSolicitante = enteroSeguro(
-    await buscarIdUsuario(pool, s.solicitanteEmail),
-    "ID_USUARIO_SOLICITANTE",
-  );
   const req = pool
     .request()
     .input("cod", mssql.VarChar(20), s.id)
@@ -103,7 +97,8 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
     .input("proceso", mssql.VarChar(30), s.proceso)
     .input("mod", mssql.VarChar(10), s.modalidad)
     .input("lista", mssql.VarChar(30), lista || null)
-    .input("idUsuarioSolicitante", mssql.Int, idUsuarioSolicitante)
+    // Los usuarios viven en Postgres; la FK nullable a USUARIO (tabla heredada) queda en NULL.
+    .input("idUsuarioSolicitante", mssql.Int, null)
     .input("email", mssql.VarChar(120), s.solicitanteEmail)
     .input("nombre", mssql.VarChar(120), s.solicitanteNombre)
     .input("params", mssql.NVarChar(mssql.MAX), JSON.stringify({ ...s.parametros, filas: s.filas }))
@@ -111,11 +106,11 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
     .input("archS3", mssql.VarChar(400), s.archivoS3Key)
     .input("estado", mssql.VarChar(25), s.estado ?? "PENDIENTE");
   const ins = await req.query(
-    `INSERT INTO ${sp} (CODIGO_SOLICITUD, COMPANIA, PROCESO, MODALIDAD, LISTA_PRECIO, ID_USUARIO_SOLICITANTE,
+    `INSERT INTO ${sp} (CODIGO_SOLICITUD, COMPANIA, PROCESO, TIPO_PROCESO, MODALIDAD, LISTA_PRECIO, ID_USUARIO_SOLICITANTE,
                         SOLICITANTE_EMAIL, SOLICITANTE_NOMBRE, ESTADO, PARAMETROS_JSON,
                         ARCHIVO_NOMBRE, ARCHIVO_S3_KEY)
      OUTPUT INSERTED.ID_SOLICITUD
-     VALUES (@cod,@comp,@proceso,@mod,@lista,@idUsuarioSolicitante,@email,@nombre,@estado,@params,
+     VALUES (@cod,@comp,@proceso,@proceso,@mod,@lista,@idUsuarioSolicitante,@email,@nombre,@estado,@params,
              @archNom,@archS3);`,
   );
   const idSolicitud = enteroSeguro(ins.recordset[0]?.ID_SOLICITUD, "ID_SOLICITUD generado");
@@ -124,14 +119,14 @@ export async function agregarSolicitud(s: Solicitud): Promise<void> {
   }
 }
 
-export async function actualizarSolicitud(codigo: string, patch: Partial<Solicitud>): Promise<void> {
+async function actualizarSolicitud(compania: string, codigo: string, patch: Partial<Solicitud>): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) {
     demoActualizar(codigo, patch);
     return;
   }
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD");
+  const sp = objetoPortal(compania, "SOLICITUD");
   const mssql = await import("mssql");
   const sets: string[] = ["FECHA_ULT_ESTADO = GETDATE()"];
   const req = pool.request().input("cod", mssql.VarChar(20), codigo);
@@ -151,12 +146,12 @@ export async function actualizarSolicitud(codigo: string, patch: Partial<Solicit
 }
 
 /** Guarda el error del procesamiento en las líneas de la solicitud. */
-export async function actualizarMensajeErrorDetalles(codigo: string, mensaje: string): Promise<void> {
+async function actualizarMensajeErrorDetalles(compania: string, codigo: string, mensaje: string): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return;
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD");
-  const spd = objetoPortal("SOLICITUD_DETALLE");
+  const sp = objetoPortal(compania, "SOLICITUD");
+  const spd = objetoPortal(compania, "SOLICITUD_DETALLE");
   const mssql = await import("mssql");
   const solicitud = await pool.request()
     .input("cod", mssql.VarChar(20), codigo)
@@ -170,12 +165,12 @@ export async function actualizarMensajeErrorDetalles(codigo: string, mensaje: st
 }
 
 /** Marca como aplicado el factor solicitado únicamente en filas exitosas. */
-export async function actualizarFactorAplicadoDetalles(codigo: string): Promise<void> {
+async function actualizarFactorAplicadoDetalles(compania: string, codigo: string): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return;
   const pool = await getPortalPool();
-  const sp = objetoPortal("SOLICITUD");
-  const spd = objetoPortal("SOLICITUD_DETALLE");
+  const sp = objetoPortal(compania, "SOLICITUD");
+  const spd = objetoPortal(compania, "SOLICITUD_DETALLE");
   const mssql = await import("mssql");
   const solicitud = await pool.request()
     .input("cod", mssql.VarChar(20), codigo)
@@ -193,80 +188,6 @@ export async function actualizarFactorAplicadoDetalles(codigo: string): Promise<
          AND NULLIF(LTRIM(RTRIM(COALESCE(D.MENSAJE_ERROR, ''))), '') IS NULL;
     `);
 }
-
-export async function registrarEvento(
-  evento: EventoTipo,
-  usuario: string,
-  rol: Rol,
-  compania: string,
-  solicitudId: string | null,
-  idProcesoSP: string | null,
-  usuarioEmail = "",
-): Promise<void> {
-  assertEscrituraPortalHabilitada();
-  if (esModoDemo()) {
-    demoRegistrarEvento(evento, usuario, rol, compania, solicitudId, idProcesoSP);
-    return;
-  }
-  const pool = await getPortalPool();
-  const ae = objetoPortal("AUDITORIA_PRECIOS");
-  const mssql = await import("mssql");
-  const payload = JSON.stringify({ usuario, compania, solicitudId });
-  await pool
-    .request()
-    .input("proceso", mssql.VarChar(30), idProcesoSP ?? solicitudId ?? evento)
-    .input("subject", mssql.VarChar(120), usuarioEmail || usuario)
-    .input("rol", mssql.VarChar(15), rol)
-    .input("evento", mssql.VarChar(50), evento)
-    .input("payload", mssql.NVarChar(mssql.MAX), payload)
-    .query(
-      `INSERT INTO ${ae} (ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO)
-       VALUES (@proceso,@subject,@rol,@evento,@payload,GETDATE());`,
-    );
-}
-
-export async function listarEventos(compania?: string): Promise<EventoAuditoria[]> {
-  if (esModoDemo()) return demoListarEventos(compania);
-  const pool = await getPortalPool();
-  const ae = objetoPortal("AUDITORIA_PRECIOS");
-  const mssql = await import("mssql");
-  const columnas = "ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO";
-  const q = compania
-    ? await pool
-      .request()
-      .input("comp", mssql.VarChar(20), compania)
-      .query(
-        `SELECT TOP (200) ${columnas}
-           FROM ${ae}
-          WHERE ISJSON(PAYLOAD_JSON) = 1
-            AND JSON_VALUE(PAYLOAD_JSON, '$.compania') = @comp
-          ORDER BY FECHA_EVENTO DESC`,
-      )
-    : await pool.request().query(`SELECT TOP (200) ${columnas} FROM ${ae} ORDER BY FECHA_EVENTO DESC`);
-
-  return q.recordset.map((r: Record<string, unknown>) => {
-    let payload: Record<string, unknown> = {};
-    try {
-      const parsed = JSON.parse(String(r.PAYLOAD_JSON ?? "{}"));
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
-    } catch {
-      // Un registro histórico con JSON inválido aún debe poder visualizarse.
-    }
-
-    const rol = r.ROL === "APROBADOR" || r.ROL === "OPERADOR" || r.ROL === "AUDITOR" ? r.ROL : "OPERADOR";
-    return {
-      id: String(r.ID_AUDITORIA),
-      fecha: new Date(r.FECHA_EVENTO as string).toLocaleString("es-CR", { hour12: false }),
-      usuario: typeof payload.usuario === "string" ? payload.usuario : String(r.IDP_SUBJECT ?? ""),
-      rol: rol as Rol,
-      evento: r.EVENTO as EventoTipo,
-      solicitudId: typeof payload.solicitudId === "string" ? payload.solicitudId : null,
-      idProcesoSP: (r.ID_PROCESO as string) ?? null,
-      compania: typeof payload.compania === "string" ? payload.compania : (compania ?? ""),
-    };
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Helpers de mapeo (SQL real)
 // ---------------------------------------------------------------------------
@@ -296,7 +217,8 @@ async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, 
     .input("factorAplicado", mssql.Decimal(9, 6), numero((f as FilaPrecio | FilaMargen).factorAplicado) ?? 0)
     .input("precioSimulado", mssql.Decimal(28, 8), numero(v.precioRedondeado ?? v.precioPropuesto) ?? 0)
     .input("porcentajeMargen", mssql.Decimal(9, 6), vMargen?.margenPromedio ?? v.margenMinimo ?? 0)
-    .input("estadoFila", mssql.VarChar(20), v.valido ? "VALIDO" : "INVALIDO")
+    // CK_PP_SOLDET_ESTADO admite OK | ERROR | BAJO_COSTO | MARGEN_NEGATIVO; el motivo va en CAUSA.
+    .input("estadoFila", mssql.VarChar(20), v.valido ? "OK" : "ERROR")
     .input("mensajeError", mssql.VarChar(400), (f as FilaPrecio | FilaMargen).mensajeError ?? (!v.valido ? v.causa ?? "Error no identificado" : null))
     .input("idSolicitud", mssql.Int, idSolicitud)
     // FACTOR_SOLICITADO representa el multiplicador persistido, no el
@@ -317,16 +239,6 @@ async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, 
          @idSolicitud, @factorSolicitado, @listaPrecio, @causa
        );`,
     );
-}
-
-async function buscarIdUsuario(pool: SqlPool, email: string): Promise<number | null> {
-  const mssql = await import("mssql");
-  const resultado = await pool
-    .request()
-    .input("email", mssql.VarChar(120), email.trim().toLowerCase())
-    .query(`SELECT ID_USUARIO FROM ${objetoPortal("USUARIO")} WHERE LOWER(EMAIL) = @email AND ACTIVO = 'S'`);
-  const id = resultado.recordset[0]?.ID_USUARIO;
-  return id == null ? null : enteroSeguro(id, "ID_USUARIO");
 }
 
 function enteroSeguro(valor: unknown, etiqueta: string): number {
@@ -494,3 +406,13 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
     mensajeError,
   };
 }
+
+export const requestsRepository = {
+  list: listarSolicitudes,
+  find: obtenerSolicitud,
+  nextCode: siguienteCodigoSolicitud,
+  create: agregarSolicitud,
+  update: actualizarSolicitud,
+  setDetailError: actualizarMensajeErrorDetalles,
+  markDetailsApplied: actualizarFactorAplicadoDetalles,
+};

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { simularGestionGlobalPaginado } from "@/app/actions";
+import { solicitudesService } from "@/features/solicitudes/services/solicitudes-service";
 import { getIdentidadActual } from "@/utils/auth";
 
 function parseNonNegativeInteger(value: string | null, fallback: number): number {
@@ -27,8 +27,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const resultado = await simularGestionGlobalPaginado({
-      compania,
+    const resultado = await solicitudesService.simularGestionGlobal(identidad, {
       nivel,
       factor,
       tipoVariacion,
