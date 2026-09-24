@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import LoginScreen from "./LoginScreen";
+import { useRouter } from "next/navigation";
 import Header, { Vista403, type NavKey } from "./Header";
 import NuevaSolicitud from "./NuevaSolicitud";
 import MisSolicitudes from "./MisSolicitudes";
@@ -18,6 +18,7 @@ import {
   decidirCancelacion,
   enviarBorrador,
 } from "@/app/actions";
+import { signOut } from "@/features/auth/api/auth-api";
 import type { EventoAuditoria, Identidad, ProcesoKey, Solicitud } from "@/lib/domain-types";
 
 interface Toast {
@@ -26,8 +27,19 @@ interface Toast {
   variant?: "success" | "error";
 }
 
-export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolean; readOnly: boolean; portalOnly: boolean }) {
-  const [user, setUser] = useState<Identidad | null>(null);
+export default function PortalApp({
+  initialUser,
+  demo,
+  readOnly,
+  portalOnly,
+}: {
+  initialUser: Identidad;
+  demo: boolean;
+  readOnly: boolean;
+  portalOnly: boolean;
+}) {
+  const router = useRouter();
+  const user = initialUser;
   const [nav, setNav] = useState<NavKey>("nueva");
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
   const [eventos, setEventos] = useState<EventoAuditoria[]>([]);
@@ -96,6 +108,11 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3400);
   }
 
+  async function handleLogout() {
+    await signOut();
+    router.push("/auth/login");
+  }
+
   async function handleAbrir(id: string) {
     setModalId(id);
     if (user) {
@@ -161,14 +178,13 @@ export default function PortalApp({ demo, readOnly, portalOnly }: { demo: boolea
     await refrescarSolicitudes();
   }
 
-  if (!user) return <LoginScreen onLogin={setUser} demo={demo} />;
   if (user.rol === "SIN_PERMISO") return <Vista403 user={user} />;
 
   const solicitudModal = modalId ? solicitudes.find((s) => s.id === modalId) : undefined;
 
   return (
     <div className="min-h-screen">
-      <Header user={user} onLogout={() => setUser(null)} onNav={setNav} activeNav={nav} />
+      <Header user={user} onLogout={handleLogout} onNav={setNav} activeNav={nav} />
       <main className="max-w-6xl mx-auto px-6 py-6">
         {demo && (
           <div className="mb-4 inline-block badge badge-outline" title="Sin conexión a SQL Server; catálogo en memoria">

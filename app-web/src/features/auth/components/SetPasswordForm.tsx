@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SetPasswordInput, SetPasswordSchema } from "../schemas/auth-schema";
-import { setPasswordAction } from "../actions/auth-actions";
+import { setPassword } from "../api/auth-api";
 import Icon from "@/components/Icon";
 
 export default function SetPasswordForm() {
@@ -27,7 +27,7 @@ export default function SetPasswordForm() {
     setIsLoading(true);
     setMessage("");
 
-    const result = await setPasswordAction(data, token);
+    const result = await setPassword(data, token);
 
     setIsLoading(false);
 
