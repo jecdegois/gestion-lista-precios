@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { Articulo } from "@/lib/types";
 import type { ArticuloCatalogo } from "@/lib/domain-types";
 import { listarCatalogoPaginado } from "@/server/pricing-repository";
+import { getIdentidadActual } from "@/utils/auth";
 
 const DEFAULT_MAX_RECORDS = 50;
 const SERVER_MAX_RECORDS = 100;
@@ -46,8 +47,13 @@ function parseNonNegativeInteger(value: string | null, fallback: number): number
 }
 
 export async function GET(request: Request) {
+  const identidad = await getIdentidadActual();
+  if (!identidad || identidad.rol === "SIN_PERMISO") {
+    return NextResponse.json({ error: "Sesión no válida." }, { status: 401 });
+  }
   const url = new URL(request.url);
-  const compania = url.searchParams.get("compania")?.trim().toUpperCase() ?? "";
+  // La compañía sale de la sesión; el parámetro `compania` se ignora.
+  const compania = identidad.compania ?? "";
   const nivelPrecio = url.searchParams.get("nivelPrecio")?.trim() ?? "";
   const search = url.searchParams.get("search")?.trim() ?? "";
   const offset = parseNonNegativeInteger(url.searchParams.get("offset"), 0);

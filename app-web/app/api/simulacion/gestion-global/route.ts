@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { simularGestionGlobalPaginado } from "@/app/actions";
+import { getIdentidadActual } from "@/utils/auth";
 
 function parseNonNegativeInteger(value: string | null, fallback: number): number {
   const parsed = Number(value);
@@ -7,8 +8,13 @@ function parseNonNegativeInteger(value: string | null, fallback: number): number
 }
 
 export async function GET(request: Request) {
+  const identidad = await getIdentidadActual();
+  if (!identidad || identidad.rol === "SIN_PERMISO") {
+    return NextResponse.json({ error: "Sesión no válida." }, { status: 401 });
+  }
   const url = new URL(request.url);
-  const compania = url.searchParams.get("compania")?.trim().toUpperCase() ?? "";
+  // La compañía sale de la sesión; el parámetro `compania` se ignora.
+  const compania = identidad.compania ?? "";
   const nivel = url.searchParams.get("nivel")?.trim() ?? "";
   const factor = url.searchParams.get("factor")?.trim() ?? "";
   const tipoVariacion = url.searchParams.get("tipoVariacion") === "DISMINUCION" ? "DISMINUCION" : "AUMENTO";
