@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SignUpInput, SignUpSchema } from "../schemas/auth-schema";
-import { signUpAction } from "../actions/auth-actions";
+import { signUp } from "../api/auth-api";
 import Icon from "@/components/Icon";
 
 export default function RegisterForm() {
@@ -26,7 +26,7 @@ export default function RegisterForm() {
     setError("");
     setNotice("");
 
-    const result = await signUpAction(data);
+    const result = await signUp(data);
 
     setIsLoading(false);
 

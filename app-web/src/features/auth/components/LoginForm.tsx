@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SignInInput, SignInSchema } from "../schemas/auth-schema";
-import { signInAction } from "../actions/auth-actions";
+import { signIn } from "../api/auth-api";
 import Icon from "@/components/Icon";
 
 export default function LoginForm() {
@@ -27,7 +27,7 @@ export default function LoginForm() {
     setError("");
     setNotice("");
 
-    const result = await signInAction(data);
+    const result = await signIn(data);
 
     if (result.error) {
       setError(result.error);

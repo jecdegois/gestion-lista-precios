@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ForgotPasswordInput, ForgotPasswordSchema } from "../schemas/auth-schema";
-import { forgotPasswordAction } from "../actions/auth-actions";
+import { forgotPassword } from "../api/auth-api";
 import Icon from "@/components/Icon";
 
 export default function ForgotPasswordForm() {
@@ -24,7 +24,7 @@ export default function ForgotPasswordForm() {
     setIsLoading(true);
     setMessage("");
 
-    const result = await forgotPasswordAction(data);
+    const result = await forgotPassword(data);
 
     setIsLoading(false);
     setIsNotice(result.ok);
