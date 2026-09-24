@@ -3,17 +3,16 @@ import type { ConnectionPool as MssqlConnectionPool } from "mssql";
 import { resolverCompania } from "./companies";
 
 /**
- * Pool único para la base SQL Server compartida por el Portal y Softland.
- * Cada repositorio califica los objetos con su esquema: PORTAL_PRECIOS para el
- * Portal y el esquema configurado de la compañía (por ejemplo, FEBECA) para
- * catálogos operativos.
+ * Dos bases en el mismo servidor y con el mismo login (PORTAL_DB_*):
+ * - PORTAL_DB_NAME (PORTAL_PRECIOS): estado del portal, un esquema por empresa.
+ * - SOFTLAND_DB_NAME (SOFTLANDQA): catálogos de Softland, solo lectura.
  */
-let sharedPool: MssqlConnectionPool | null = null;
+const pools = new Map<string, Promise<MssqlConnectionPool>>();
 
-function buildSharedSqlConfig() {
+function buildSqlConfig(database: string) {
   return {
     server: process.env.PORTAL_DB_SERVER ?? "localhost",
-    database: process.env.PORTAL_DB_NAME ?? "SOFTLANDQA",
+    database,
     user: process.env.PORTAL_DB_USER ?? "app_user",
     password: process.env.PORTAL_DB_PASSWORD ?? "",
     port: Number(process.env.SQL_PORT ?? 1433),
@@ -25,13 +24,19 @@ function buildSharedSqlConfig() {
   };
 }
 
-/**
- * Obtiene el pool compartido para los catálogos de una compañía. La resolución
- * conserva la validación de la compañía y su esquema, sin abrir otra conexión.
- */
+async function poolFor(database: string): Promise<MssqlConnectionPool> {
+  const existing = await pools.get(database)?.catch(() => null);
+  if (existing?.connected) return existing;
+  const connecting = import("mssql").then((mssql) => new mssql.ConnectionPool(buildSqlConfig(database)).connect());
+  pools.set(database, connecting);
+  connecting.catch(() => pools.delete(database));
+  return connecting;
+}
+
+/** Pool de Softland para los catálogos de una compañía (valida que la compañía exista). */
 export async function getPool(compania: string): Promise<MssqlConnectionPool> {
   resolverCompania(compania);
-  return getPortalPool();
+  return poolFor(process.env.SOFTLAND_DB_NAME ?? "SOFTLANDQA");
 }
 
 /** Devuelve el esquema calificado de la compania (p. ej. "[FEBECA]"). */
@@ -39,15 +44,7 @@ export function esquemaDe(compania: string): string {
   return `[${resolverCompania(compania).schema}]`;
 }
 
-/**
- * Pool físico compartido. La conexión se configura una sola vez mediante
- * PORTAL_DB_*; los repositorios distinguen Portal y Softland por esquema.
- */
+/** Pool de la base del portal; las tablas se califican con el esquema de la empresa. */
 export async function getPortalPool(): Promise<MssqlConnectionPool> {
-  if (sharedPool && sharedPool.connected) return sharedPool;
-  const mssql = await import("mssql");
-  const pool = new mssql.ConnectionPool(buildSharedSqlConfig());
-  await pool.connect();
-  sharedPool = pool;
-  return pool;
+  return poolFor(process.env.PORTAL_DB_NAME ?? "PORTAL_PRECIOS");
 }

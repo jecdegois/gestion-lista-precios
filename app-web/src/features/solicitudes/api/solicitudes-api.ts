@@ -1,5 +1,4 @@
 import { GENERIC_NETWORK_ERROR, GENERIC_SERVER_ERROR, type ApiResult } from "@/shared/api/api-types";
-import type { CatalogoSolicitud } from "@/app/actions";
 import type { FilaResultado, ProcesoKey, Solicitud } from "@/lib/domain-types";
 import type { GestionGlobalLista, NivelPrecio } from "@/lib/types";
 import type {
@@ -9,6 +8,7 @@ import type {
   SimularManualInput,
   SolicitudInput,
 } from "../schemas/solicitud-schema";
+import type { CatalogoSolicitud } from "../types";
 
 async function request<T>(url: string, init?: { method?: "GET" | "POST"; body?: unknown }): Promise<ApiResult<T>> {
   try {

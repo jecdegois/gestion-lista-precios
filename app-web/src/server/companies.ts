@@ -43,17 +43,11 @@ export interface CompaniaConfig {
 }
 
 /**
- * Esquema del PORTAL (estado de la app: usuarios, solicitudes, auditoría).
- * Es fijo para toda la organización y NO depende de la compañía activa.
- * Configurable con PORTAL_SCHEMA (default PORTAL_PRECIOS).
+ * Objeto del portal en el esquema de la empresa dentro de la base PORTAL_PRECIOS,
+ * p. ej. [FEBECA].[SOLICITUD]. Cada empresa tiene sus propias tablas y secuencia.
  */
-export function esquemaPortal(): string {
-  return process.env.PORTAL_SCHEMA?.trim() || "PORTAL_PRECIOS";
-}
-
-/** Objeto del portal calificado: [PORTAL_PRECIOS].[NOMBRE]. */
-export function objetoPortal(nombre: string): string {
-  return `[${esquemaPortal()}].[${nombre}]`;
+export function objetoPortal(compania: string, nombre: string): string {
+  return `[${resolverCompania(compania).schema}].[${nombre}]`;
 }
 
 /** Defaults de objetos SQL (coinciden con los scripts de backend/sql). */

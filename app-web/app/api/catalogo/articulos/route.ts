@@ -1,45 +1,9 @@
 import { NextResponse } from "next/server";
-import type { Articulo } from "@/lib/types";
-import type { ArticuloCatalogo } from "@/lib/domain-types";
-import { listarCatalogoPaginado } from "@/server/pricing-repository";
+import { solicitudesService } from "@/features/solicitudes/services/solicitudes-service";
 import { getIdentidadActual } from "@/utils/auth";
 
 const DEFAULT_MAX_RECORDS = 50;
 const SERVER_MAX_RECORDS = 100;
-
-function toArticuloCatalogo(articulo: Articulo): ArticuloCatalogo {
-  const clasificaciones = [
-    articulo.clasificacion1,
-    articulo.clasificacion2,
-    articulo.clasificacion3,
-    articulo.clasificacion4,
-    articulo.clasificacion5,
-  ]
-    .map((clasificacion) => clasificacion?.trim())
-    .filter((clasificacion): clasificacion is string => Boolean(clasificacion));
-
-  return {
-    codigo: articulo.codigo,
-    descripcion: articulo.descripcion,
-    precioActual: articulo.precioLista,
-    costoReposicion: articulo.costoPromedio,
-    margenUtilidadMin: articulo.margenUtilidadMinPorcentaje == null
-      ? undefined
-      : articulo.margenUtilidadMinPorcentaje / 100,
-    categoria: "",
-    categoriaDescripcion: "",
-    subcategoria: articulo.clasificacion2 ?? "",
-    subcategoriaDescripcion: articulo.clasificacion2Descripcion ?? "",
-    grupo: articulo.clasificacion1 ?? "",
-    grupoDescripcion: articulo.clasificacion1Descripcion ?? "",
-    marca: articulo.clasificacion3 ?? "",
-    marcaDescripcion: articulo.clasificacion3Descripcion ?? "",
-    marcaGrupoCompra: articulo.clasificacion5 ?? "",
-    marcaGrupoCompraDescripcion: articulo.clasificacion5Descripcion ?? "",
-    bdf: articulo.clasificacion4 ?? "",
-    bdfDescripcion: articulo.clasificacion4Descripcion ?? "",
-  };
-}
 
 function parseNonNegativeInteger(value: string | null, fallback: number): number {
   const parsed = Number(value);
@@ -68,9 +32,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const page = await listarCatalogoPaginado(compania, nivelPrecio, search, offset, maxRecords);
+    const page = await solicitudesService.paginaArticulos(identidad, nivelPrecio, search, offset, maxRecords);
+    if (!page.ok) return NextResponse.json({ error: page.error }, { status: 400 });
     return NextResponse.json({
-      items: page.items.map(toArticuloCatalogo),
+      items: page.items,
       offset: page.offset,
       maxRecords: page.maxRecords,
       hasMore: page.hasMore,

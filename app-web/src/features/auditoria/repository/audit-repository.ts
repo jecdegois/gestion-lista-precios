@@ -1,0 +1,90 @@
+import "server-only";
+import type { EventoAuditoria, EventoTipo, Rol } from "@/lib/domain-types";
+import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
+import { getPortalPool } from "@/server/db";
+import {
+  listarEventos as demoListarEventos,
+  registrarEvento as demoRegistrarEvento,
+} from "@/features/solicitudes/repository/demo-store";
+
+export type AuditEventInput = {
+  event: EventoTipo;
+  user: string;
+  role: Rol;
+  company: string;
+  requestId: string | null;
+  processId?: string | null;
+  userEmail?: string;
+};
+
+/**
+ * Bitácora del flujo maker-checker en PORTAL_PRECIOS.<esquema de la empresa>.AUDITORIA_PRECIOS.
+ * En DEMO_MODE usa el store en memoria compartido con las solicitudes.
+ */
+async function record(input: AuditEventInput): Promise<void> {
+  const { event, user, role, company, requestId, processId = null, userEmail = "" } = input;
+  assertEscrituraPortalHabilitada();
+  if (esModoDemo()) {
+    demoRegistrarEvento(event, user, role, company, requestId, processId);
+    return;
+  }
+  const pool = await getPortalPool();
+  const ae = objetoPortal(company, "AUDITORIA_PRECIOS");
+  const mssql = await import("mssql");
+  const payload = JSON.stringify({ usuario: user, compania: company, solicitudId: requestId });
+  await pool
+    .request()
+    .input("proceso", mssql.VarChar(30), processId ?? requestId ?? event)
+    .input("subject", mssql.VarChar(120), userEmail || user)
+    .input("rol", mssql.VarChar(15), role)
+    .input("evento", mssql.VarChar(50), event)
+    .input("payload", mssql.NVarChar(mssql.MAX), payload)
+    .query(
+      `INSERT INTO ${ae} (ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO)
+       VALUES (@proceso,@subject,@rol,@evento,@payload,GETDATE());`,
+    );
+}
+
+async function list(compania: string): Promise<EventoAuditoria[]> {
+  if (esModoDemo()) return demoListarEventos(compania);
+  const pool = await getPortalPool();
+  const ae = objetoPortal(compania, "AUDITORIA_PRECIOS");
+  const mssql = await import("mssql");
+  const columnas = "ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO";
+  const q = compania
+    ? await pool
+      .request()
+      .input("comp", mssql.VarChar(20), compania)
+      .query(
+        `SELECT TOP (200) ${columnas}
+           FROM ${ae}
+          WHERE ISJSON(PAYLOAD_JSON) = 1
+            AND JSON_VALUE(PAYLOAD_JSON, '$.compania') = @comp
+          ORDER BY FECHA_EVENTO DESC`,
+      )
+    : await pool.request().query(`SELECT TOP (200) ${columnas} FROM ${ae} ORDER BY FECHA_EVENTO DESC`);
+
+  return q.recordset.map((r: Record<string, unknown>) => {
+    let payload: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(String(r.PAYLOAD_JSON ?? "{}"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
+    } catch {
+      // Un registro histórico con JSON inválido aún debe poder visualizarse.
+    }
+
+    const rol = r.ROL === "APROBADOR" || r.ROL === "OPERADOR" || r.ROL === "AUDITOR" ? r.ROL : "OPERADOR";
+    return {
+      id: String(r.ID_AUDITORIA),
+      fecha: new Date(r.FECHA_EVENTO as string).toLocaleString("es-CR", { hour12: false }),
+      usuario: typeof payload.usuario === "string" ? payload.usuario : String(r.IDP_SUBJECT ?? ""),
+      rol: rol as Rol,
+      evento: r.EVENTO as EventoTipo,
+      solicitudId: typeof payload.solicitudId === "string" ? payload.solicitudId : null,
+      idProcesoSP: (r.ID_PROCESO as string) ?? null,
+      compania: typeof payload.compania === "string" ? payload.compania : (compania ?? ""),
+    };
+  });
+}
+
+export const auditRepository = { record, list };
