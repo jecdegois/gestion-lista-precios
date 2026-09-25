@@ -353,7 +353,7 @@ BEGIN
     END;
 
     /* ------------------------------ Válidos -------------------------------- *
-       PRECIO_A_PERSISTIR = precio efectivo (redondeado). Es el que se escribe
+       PRECIO_A_PERSISTIR = precio calculado sin redondeo. Es el que se escribe
        en ARTICULO_PRECIO.PRECIO.
        ---------------------------------------------------------------------- */
     SELECT
@@ -362,7 +362,7 @@ BEGIN
         ID_DESCUENTO_LISTA_PRECIO, FACTOR_GLOBAL, FACTOR_LISTA_ARTICULO, FACTOR_FINAL,
         PRECIO_CALCULADO,
         PRECIO_REDONDEADO,
-        PRECIO_EFECTIVO AS PRECIO_A_PERSISTIR,
+        PRECIO_CALCULADO AS PRECIO_A_PERSISTIR,
         MARGEN_UTILIDAD_CALC,
         MARGEN_MULR_CALC
     INTO #Validos

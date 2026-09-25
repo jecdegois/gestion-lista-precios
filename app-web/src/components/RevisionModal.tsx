@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
 import TablaResultadoModal from "./newComponents/TablaResultadoModal";
+import TablaImpactoActualizacionMasiva from "./newComponents/TablaImpactoActualizacionMasiva";
 import TablaImpactoGestionGlobal from "./newComponents/TablaImpactoGestionGlobal";
 import { esHallazgoDeNegocio } from "./Tablas";
 import type { TableLoadParams } from "./newComponents/ResponsiveDataTable";
@@ -300,8 +301,13 @@ export default function RevisionModal({
               loadingMore={cargandoDetalle}
               onLoadMore={cargarDetalle}
             />
+          ) : esActualizacionListaBase ? (
+            <TablaImpactoActualizacionMasiva filas={filas as FilaPrecio[]} soloPrecioSolicitado />
           ) : (
-            <TablaResultadoModal filas={filas} />
+            <TablaResultadoModal
+              filas={filas}
+              modo={solicitud.proceso === "DESCUENTO_LISTA_PRECIO" ? "descuentoArticuloLista" : "general"}
+            />
           )
         ) : (
           <p className="text-sm text-zinc-500">Esta solicitud no conserva el detalle de las filas.</p>

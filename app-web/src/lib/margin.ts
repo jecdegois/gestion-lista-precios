@@ -7,8 +7,8 @@
  *  - Multiplicador de margen = 1 - factor (10% -> 0.90).
  *  - Margen Minimo = Margen Promedio * (1 - factor), acotado a >= 0.
  *
- * La UDF real [COFER].[U_FACTOR_REDUCCION_MARGEN] almacena el porcentaje
- * explicito (10.00); el SP y esta capa dividen entre 100.0 al calcular.
+ * La UDF real [COFER].[U_FACTOR_REDUCCION] almacena el factor normalizado
+ * (0.10 = 10%); el SP y esta capa lo consumen directamente.
  */
 
 export const FACTOR_REDUCCION_DEFAULT = 0.1; // fraccion interna: 10% por defecto
@@ -55,12 +55,11 @@ export function normalizarPorcentajeReduccion(valor: unknown): ResultadoNormaliz
 }
 
 /**
- * Convierte el PORCENTAJE almacenado en la UDF a la fraccion de calculo.
- * Replica la logica del SP: U_FACTOR_REDUCCION / 100.0; fallback 0.10 si es null.
+ * Devuelve el factor normalizado almacenado en la UDF; fallback 0.10 si es null.
  */
 export function factorDesdeUdf(porcentajeUdf: number | null | undefined): number {
   return porcentajeUdf !== null && porcentajeUdf !== undefined
-    ? porcentajeUdf / 100.0
+    ? porcentajeUdf
     : FACTOR_REDUCCION_DEFAULT;
 }
 

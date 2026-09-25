@@ -28,10 +28,13 @@ export interface SqlObjetos {
   colUdfDescripcion: string;
   colUdfFactor: string;
   colUdfActivo: string;
+  colUdfArticulo: string;
   // Parametros nombrados del SP de margen.
   paramNivelPrecio: string;
+  paramNivelPrecioBase: string;
   paramVersion: string;
-  paramArticulo: string;
+  paramFactorReduccionGeneral: string;
+  paramBatchSize: string;
   paramUsuario: string;
 }
 
@@ -53,13 +56,13 @@ export function objetoPortal(compania: string, nombre: string): string {
 /** Defaults de objetos SQL (coinciden con los scripts de backend/sql). */
 function defaultsSql(): SqlObjetos {
   return {
-    spMargen: "SP_CALCULAR_MARGEN_MINIMO_ARTICULO",
+    spMargen: "SP_CALCULAR_MARGEN_MINIMO",
     spGestionListas: "SP_GESTION_LISTAS_PRECIOS_CON_REDONDEO",
-    udfFactorReduccion: "U_FACTOR_REDUCCION_MARGEN",
+    udfFactorReduccion: "U_FACTOR_REDUCCION",
     tablaNivelPrecio: "NIVEL_PRECIO",
     tablaVersionNivel: "VERSION_NIVEL",
     tablaGestionListaPrecio: "GESTION_LISTAS_PRECIOS",
-    tablaFactorArticuloLista: "FACTOR_ARTICULO_LISTA",
+    tablaFactorArticuloLista: "U_FACTOR_ARTICULO",
     tablaArticuloPrecio: "ARTICULO_PRECIO",
     tablaArticulo: "ARTICULO",
     tablaClasificacion: "CLASIFICACION",
@@ -67,9 +70,12 @@ function defaultsSql(): SqlObjetos {
     colUdfDescripcion: "U_DESCRIP",
     colUdfFactor: "U_FACTOR_REDUCCION",
     colUdfActivo: "U_ACTIVO",
+    colUdfArticulo: "U_ARTICULO",
     paramNivelPrecio: "p_nivel_precio",
+    paramNivelPrecioBase: "p_nivel_precio_base",
     paramVersion: "p_version",
-    paramArticulo: "p_articulo",
+    paramFactorReduccionGeneral: "p_factor_reduccion_general",
+    paramBatchSize: "p_batch_size",
     paramUsuario: "p_usuario_ult_modif",
   };
 }

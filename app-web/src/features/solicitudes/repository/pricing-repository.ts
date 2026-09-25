@@ -184,6 +184,7 @@ async function upsertFactoresArticuloLista(
       const nivelPrecioSolicitado = String(fila.listaCodigo ?? fila.lista ?? "").trim();
       const articulo = fila.codigo.trim();
       const factor = Number(fila.multiplicador ?? fila.validacion.multiplicador ?? fila.factorPropuesto);
+      const descripcion = `Solicitud ${solicitudId}`;
       if (!nivelPrecioSolicitado || !articulo) {
         throw new Error(`La solicitud ${solicitudId} contiene una fila sin nivel de precio o artículo.`);
       }
@@ -213,31 +214,24 @@ async function upsertFactoresArticuloLista(
       }
 
       const baseParams = (request: import("mssql").Request) => request
-        .input("nivelPrecioBase", mssql.VarChar(50), nivelPrecioBase)
-        .input("nivelPrecioDestino", mssql.VarChar(50), nivelPrecio)
+        .input("nivelPrecio", mssql.VarChar(20), nivelPrecio)
         .input("version", mssql.Int, version)
         .input("articulo", mssql.VarChar(20), articulo)
-        .input("factor", mssql.Decimal(12, 4), Number(factor.toFixed(4)))
-        .input("observacion", mssql.VarChar(250), `Solicitud ${solicitudId}`)
+        .input("factor", mssql.Decimal(28, 8), Number(factor.toFixed(8)))
+        .input("descripcion", mssql.VarChar(20), descripcion)
         .input("usuario", mssql.VarChar(50), usuarioNormalizado);
 
       const update = await baseParams(new mssql.Request(transaction)).query(
         `UPDATE T
-            SET T.NIVEL_PRECIO_BASE = @nivelPrecioBase,
-                T.FACTOR = @factor,
-                T.FECHA_INICIO = CONVERT(date, GETDATE()),
-                T.FECHA_FIN = DATEADD(YEAR, 10, CONVERT(date, GETDATE())),
-                T.ACTIVO = 'S',
-                T.OBSERVACION = @observacion,
-                T.FECHA_ULT_MODIF = GETDATE(),
-                T.USUARIO_ULT_MODIF = @usuario,
+            SET T.U_DESCRIP = @descripcion,
+                T.U_FACTOR = @factor,
+                T.U_NIVEL_PRECIO = @nivelPrecio,
+                T.U_VERSION = @version,
                 T.RecordDate = GETDATE(),
                 T.UpdatedBy = @usuario
            FROM ${target} T
-          WHERE T.NIVEL_PRECIO = @nivelPrecioDestino
-            AND T.VERSION = @version
-            AND T.ARTICULO = @articulo
-            AND T.ACTIVO = 'S';`,
+          WHERE T.U_NIVEL_PRECIO = @nivelPrecio
+            AND T.U_ARTICULO = @articulo;`,
       );
 
       if ((update.rowsAffected[0] ?? 0) > 0) {
@@ -258,18 +252,26 @@ async function upsertFactoresArticuloLista(
         continue;
       }
 
-      await baseParams(new mssql.Request(transaction)).query(
-        `INSERT INTO ${target} (
-           NIVEL_PRECIO_BASE, NIVEL_PRECIO, VERSION, ARTICULO, FACTOR,
-           FECHA_INICIO, FECHA_FIN, ACTIVO, OBSERVACION,
-           FECHA_CREACION, USUARIO_CREACION, RecordDate, RowPointer,
-           CreatedBy, UpdatedBy, CreateDate
-         ) VALUES (
-           @nivelPrecioBase, @nivelPrecioDestino, @version, @articulo, @factor,
-           CONVERT(date, GETDATE()), DATEADD(YEAR, 10, CONVERT(date, GETDATE())), 'S', @observacion,
-           GETDATE(), @usuario, GETDATE(), NEWID(), @usuario, @usuario, GETDATE()
-         );`,
+      const siguienteCodigo = await new mssql.Request(transaction).query(
+        `SELECT CAST(COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.U_CODIGO)), ''))), 0) + 1 AS VARCHAR(10)) AS siguienteCodigo
+           FROM ${target} U;`,
       );
+      const codigo = String(siguienteCodigo.recordset[0]?.siguienteCodigo ?? "1");
+      if (codigo.length > 10) throw new Error(`No hay espacio disponible para generar U_CODIGO en ${target}.`);
+
+      await baseParams(new mssql.Request(transaction))
+        .input("codigo", mssql.VarChar(10), codigo)
+        .query(
+          `INSERT INTO ${target} (
+             U_CODIGO, U_DESCRIP, NoteExistsFlag, RecordDate, RowPointer,
+             CreatedBy, UpdatedBy, CreateDate, U_ARTICULO, U_FACTOR,
+             U_NIVEL_PRECIO, U_VERSION
+           ) VALUES (
+             @codigo, @descripcion, 0, GETDATE(), NEWID(),
+             @usuario, @usuario, GETDATE(), @articulo, @factor,
+             @nivelPrecio, @version
+           );`,
+        );
       console.info("[FACTOR_ARTICULO_LISTA] INSERT ejecutado", {
         compania: companiaNormalizada,
         tabla: target,
@@ -335,7 +337,7 @@ async function actualizarPreciosBase(
     }
 
     for (const fila of filasValidas) {
-      const precio = Number(fila.validacion.precioRedondeado ?? fila.validacion.precioPropuesto);
+      const precio = Number(fila.validacion.precioPropuesto);
       const articulo = fila.codigo.trim();
       if (!articulo || !Number.isFinite(precio) || precio <= 0) {
         throw new Error(`La fila ${fila.fila} no tiene un artÃ­culo o precio vÃ¡lido.`);
@@ -717,9 +719,9 @@ async function leerPorcentajeUdf(compania: string, codigo: string): Promise<numb
 
   const pool = await getPool(compania);
   const udf = objetoCalificado(compania, "udfFactorReduccion");
-  const colCodigo = nombreSql(compania, "colUdfCodigo");
   const colFactor = nombreSql(compania, "colUdfFactor");
   const colActivo = nombreSql(compania, "colUdfActivo");
+  const colArticulo = nombreSql(compania, "colUdfArticulo");
   const mssql = await import("mssql");
   const q = await pool
     .request()
@@ -727,7 +729,7 @@ async function leerPorcentajeUdf(compania: string, codigo: string): Promise<numb
     .query(
       `SELECT TOP (1) CAST(U.${colFactor} AS FLOAT) AS porcentaje
          FROM ${udf} U
-        WHERE U.${colCodigo} = @codigo AND U.${colActivo} = 'S'
+        WHERE U.${colArticulo} = @codigo AND U.${colActivo} = 'S'
         ORDER BY U.${colFactor} DESC`,
     );
   const r = q.recordset[0];
@@ -735,8 +737,8 @@ async function leerPorcentajeUdf(compania: string, codigo: string): Promise<numb
 }
 
 /**
- * Llena/actualiza (upsert) la UDF U_FACTOR_REDUCCION_MARGEN de la compania con
- * el PORCENTAJE explicito capturado (10.00 = 10%). Usa el mapa configurable de
+ * Llena/actualiza (upsert) la UDF U_FACTOR_REDUCCION de la compania con
+ * el factor normalizado capturado (0.10 = 10%). Usa el mapa configurable de
  * objeto y columnas. En DEMO_MODE actualiza el catalogo en memoria.
  */
 async function upsertUdf(
@@ -758,39 +760,48 @@ async function upsertUdf(
   const colDescrip = nombreSql(compania, "colUdfDescripcion");
   const colFactor = nombreSql(compania, "colUdfFactor");
   const colActivo = nombreSql(compania, "colUdfActivo");
+  const colArticulo = nombreSql(compania, "colUdfArticulo");
   const mssql = await import("mssql");
+  const siguienteCodigo = await pool
+    .request()
+    .query(
+      `SELECT CAST(COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.${colCodigo})), ''))), 0) + 1 AS VARCHAR(256)) AS siguienteCodigo
+         FROM ${udf} U`,
+    );
+  const codigoRegistro = String(siguienteCodigo.recordset[0]?.siguienteCodigo ?? "1");
   await pool
     .request()
-    .input("codigo", mssql.VarChar(260), codigo.trim())
+    .input("codigo", mssql.VarChar(256), codigoRegistro)
+    .input("articulo", mssql.VarChar(20), codigo.trim())
     .input("descrip", mssql.VarChar(260), descripcion)
-    .input("factor", mssql.Decimal(18, 2), porcentaje)
+    .input("factor", mssql.Decimal(18, 8), porcentaje)
     .input("usuario", mssql.VarChar(30), usuario)
     .query(
       `MERGE ${udf} AS T
-         USING (SELECT @codigo AS c, @descrip AS d) AS S
-       ON T.${colCodigo} = S.c
+         USING (SELECT @articulo AS articulo, @descrip AS d) AS S
+       ON T.${colArticulo} = S.articulo
        WHEN MATCHED THEN
-         UPDATE SET T.${colDescrip} = @descrip, T.${colFactor} = @factor, T.${colActivo} = 'S',
+         UPDATE SET T.${colDescrip} = @descrip,
+                    T.${colFactor} = @factor, T.${colActivo} = 'S',
                     T.RecordDate = GETDATE(), T.UpdatedBy = @usuario
        WHEN NOT MATCHED THEN
          INSERT (${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
-                 NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate)
+                 NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate,
+                 ${colArticulo})
          VALUES (@codigo, @descrip, @factor, 'S',
-                 0, GETDATE(), NEWID(), @usuario, @usuario, GETDATE());`,
+                 0, GETDATE(), NEWID(), @usuario, @usuario, GETDATE(), @articulo);`,
     );
 }
 
 /**
  * Ejecuta el SP de margen configurado para la compania (por defecto
- * SP_CALCULAR_MARGEN_MINIMO_ARTICULO), con los nombres de parametros del mapa.
+ * SP_CALCULAR_MARGEN_MINIMO), con los nombres de parametros del mapa.
  * Solo se invoca al aprobar (Regla de Oro) y fuera de DEMO_MODE.
  */
 async function ejecutarSpMargen(
   compania: string,
-  nivelPrecio: string,
+  nivelPrecioBase: string,
   version: number,
-  articulo: string | null,
-  usuario: string,
 ): Promise<void> {
   assertEscrituraSoftlandHabilitada();
   const pool = await getPool(compania);
@@ -799,10 +810,10 @@ async function ejecutarSpMargen(
   const mssql = await import("mssql");
   await pool
     .request()
-    .input(cfg.paramNivelPrecio, mssql.VarChar(50), nivelPrecio)
+    .input(cfg.paramNivelPrecioBase, mssql.VarChar(50), nivelPrecioBase)
     .input(cfg.paramVersion, mssql.Int, version)
-    .input(cfg.paramArticulo, mssql.VarChar(20), articulo)
-    .input(cfg.paramUsuario, mssql.VarChar(50), usuario)
+    .input(cfg.paramFactorReduccionGeneral, mssql.Decimal(5, 4), 0.10)
+    .input(cfg.paramBatchSize, mssql.Int, 2000)
     .execute(sp);
 }
 

@@ -2,7 +2,7 @@
 
 import { esHallazgoDeNegocio, ResumenValidaciones } from "../Tablas";
 import { TIPOS_VARIACION } from "@/lib/catalog";
-import { fmtFactor, fmtMonto, fmtPorcentajeCapturado, fmtPorcentajeMultiplicador } from "@/lib/format";
+import { fmtFactor, fmtMonto, fmtPorcentajeCapturado } from "@/lib/format";
 import type { FilaPrecio } from "@/lib/domain-types";
 import ResponsiveDataTable, { type TableColumn, type TableLoadParams } from "./ResponsiveDataTable";
 
@@ -21,7 +21,6 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
   },*/
   { key: "factor", header: "Descuento %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeCapturado(fila.variacionPorcentaje)}</span> },
   { key: "multiplicador", header: "Multiplicador", align: "right", value: (fila) => <span className="mono">{fmtFactor(fila.multiplicador ?? fila.factorPropuesto)}</span> },
-  { key: "factorAplicado", header: "Descuento Aplicado %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeMultiplicador(fila.factorAplicado)}</span> },
   {
     key: "mensajeError",
     header: "Mensaje de error",
@@ -30,19 +29,12 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
       : <span className="text-zinc-400">—</span>,
   },
   { key: "precioPropuesto", header: "Precio Calc.", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioPropuesto)}</span> },
-  {
-    key: "precioRedondeado",
-    header: "Precio Red.",
-    align: "right",
-    value: (fila) => fila.validacion.precioRedondeado != null
-      ? <b className="mono">{fmtMonto(fila.validacion.precioRedondeado)}</b>
-      : <span className="text-zinc-400">—</span>,
-  },
   { key: "costoMinimo", header: "Precio Mín.", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.costoMinimo)}</span> },
 ];
 
 interface TablaImpactoDescuentoManualProps {
   filas: FilaPrecio[];
+  modo?: "descuento" | "precioBase" | "precioBaseRevision";
   hallazgos?: FilaPrecio[];
   hallazgosHasMore?: boolean;
   hallazgosNextOffset?: number | null;
@@ -56,6 +48,7 @@ interface TablaImpactoDescuentoManualProps {
 
 export default function TablaImpactoDescuentoManual({
   filas,
+  modo = "descuento",
   hallazgos,
   hallazgosHasMore = false,
   hallazgosNextOffset = null,
@@ -69,7 +62,18 @@ export default function TablaImpactoDescuentoManual({
   const totalHallazgosVisibles = filas.filter(esHallazgoDeNegocio).length;
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila)).length;
   const etiquetaVariacion = filas.some((fila) => fila.tipoVariacion === "AUMENTO") ? "Variación %" : "Descuento %";
-  const columnas = columns.map((column) => column.key === "factor" ? { ...column, header: etiquetaVariacion } : column);
+  const columnas = columns
+    .filter((column) => {
+      const key = String(column.key);
+      if (modo === "precioBaseRevision") {
+        return !["lista", "factor", "multiplicador", "factorAplicado", "mensajeError", "precioActual", "precioRedondeado", "costoMinimo"].includes(key);
+      }
+      return modo !== "precioBase" || !["lista", "factor", "multiplicador", "factorAplicado", "mensajeError"].includes(key);
+    })
+    .map((column) => {
+      if (modo === "precioBaseRevision" && column.key === "precioPropuesto") return { ...column, header: "Precio Solicitado" };
+      return column.key === "factor" ? { ...column, header: etiquetaVariacion } : column;
+    });
 
   return (
     <div>

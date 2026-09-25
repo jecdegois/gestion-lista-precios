@@ -10,16 +10,7 @@ const columns: readonly TableColumn<FilaMargen>[] = [
   { key: "descripcion", header: "Descripción", value: (fila) => <span className="block max-w-[280px] truncate whitespace-nowrap" title={fila.descripcion || "—"}>{fila.descripcion || "—"}</span> },
   { key: "porcentaje", header: "% Reducción", align: "right", value: (fila) => <span className="mono">{fila.validacion.porcentajeReduccion != null ? `${fila.validacion.porcentajeReduccion.toFixed(2)}%` : "—"}</span> },
   { key: "factor", header: "Factor norm.", align: "right", value: (fila) => <span className="mono">{fmtFactor(fila.validacion.factorReduccion)}</span> },
-  { key: "multiplicador", header: "Multiplicador", align: "right", value: (fila) => <span className="mono">{fmtFactor(fila.validacion.multiplicadorMargen)}</span> },
   { key: "precioActual", header: "Precio Lista", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioActual)}</span> },
-  {
-    key: "precioRedondeado",
-    header: "Precio Redondeado",
-    align: "right",
-    value: (fila) => fila.validacion.precioRedondeado != null
-      ? <b className="mono">{fmtMonto(fila.validacion.precioRedondeado)}</b>
-      : <span className="text-zinc-400">—</span>,
-  },
   { key: "margen", header: "Margen Promedio", align: "right", value: (fila) => <span className="mono">{fmtPct(fila.validacion.margenPromedio)}</span> },
   { key: "costoMinimoBase", header: "Precio Mín. Base", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.costoMinimoBase)}</span> },
   {

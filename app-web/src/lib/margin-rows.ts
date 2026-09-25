@@ -6,7 +6,7 @@ import type { Articulo, FilaMargenResultado } from "./types";
  * Evalua una fila de la carga masiva de margen contra el catalogo de la
  * compania activa. Aplica normalizacion de porcentaje, redondeo de 12 bandas y
  * validacion de margen sobre el PRECIO REDONDEADO. Es la contraparte
- * (previsualizacion) del SP [COFER].[SP_CALCULAR_MARGEN_MINIMO_ARTICULO].
+ * (previsualizacion) del SP [COFER].[SP_CALCULAR_MARGEN_MINIMO].
  */
 export function evaluarFilaMargen(
   fila: number,

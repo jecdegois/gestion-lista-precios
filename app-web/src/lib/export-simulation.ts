@@ -19,7 +19,6 @@ export function descargarSimulacionExcel(filas: FilaResultado[], nombre = "simul
       Descripción: fila.descripcion,
       [etiquetaVariacion]: esMargen ? numero(filaMargen.validacion.porcentajeReduccion) : filaPrecio.variacionPorcentaje ?? "",
       Multiplicador: esMargen ? numero(filaMargen.validacion.multiplicadorMargen) : filaPrecio.multiplicador ?? filaPrecio.factorPropuesto ?? "",
-      "Factor Aplicado": fila.factorAplicado ?? "",
       "Precio Actual": numero(v.precioActual) ?? "",
       "Precio Calculado": numero(v.precioPropuesto) ?? "",
       "Precio Redondeado": numero(v.precioRedondeado) ?? "",

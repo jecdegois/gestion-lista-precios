@@ -163,7 +163,11 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
     };
   }
 
-  const precioPropuesto = modo === "factor" ? round2(articulo.precioActual * numero) : round2(numero);
+  const precioPropuesto = modo === "factor"
+    ? round2(articulo.precioActual * numero)
+    : modo === "precio"
+      ? numero
+      : round2(numero);
   if (precioPropuesto <= 0) {
     return { ...base, precioActual: articulo.precioActual, precioPropuesto, causa: "El precio propuesto resultante debe ser mayor que cero." };
   }

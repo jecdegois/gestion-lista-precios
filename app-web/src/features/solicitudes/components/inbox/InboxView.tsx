@@ -35,7 +35,7 @@ export default function InboxView({ readOnly }: { readOnly: boolean }) {
 
   return (
     <>
-      <InboxTable requests={inbox.requests} currentUser={user} onOpen={open} />
+      <InboxTable requests={inbox.requests} currentUser={user} onOpen={open} onRefresh={inbox.refresh} refreshing={inbox.refreshing} />
       {modalRequest && (
         <RevisionModal
           solicitud={modalRequest}

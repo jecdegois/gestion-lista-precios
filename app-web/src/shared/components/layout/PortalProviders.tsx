@@ -25,6 +25,8 @@ export default function PortalProviders({ user, children }: { user: Identidad; c
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const pushToast = useCallback<PushToast>((message, variant) => {
+    const nivel = variant === "error" ? "error" : "info";
+    console[nivel](`[Toast${variant ? `/${variant}` : ""}] ${message}`);
     const id = Date.now() + Math.random();
     setToasts((t) => t.concat([{ id, message, variant }]));
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3400);

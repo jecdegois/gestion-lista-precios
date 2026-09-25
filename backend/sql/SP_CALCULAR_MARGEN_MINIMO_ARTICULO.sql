@@ -6,7 +6,7 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 /* ============================================================================
-   PROCEDIMIENTO: [COFER].[SP_CALCULAR_MARGEN_MINIMO_ARTICULO]
+   PROCEDIMIENTO: [COFER].[SP_CALCULAR_MARGEN_MINIMO]
    ----------------------------------------------------------------------------
    Regla de Mayoreo — calcula y persiste el MARGEN MÍNIMO por artículo en la
    columna nativa [COFER].[ARTICULO_PRECIO].[MARGEN_UTILIDAD_MIN].
@@ -17,10 +17,9 @@ GO
         (equivalente a 1 - Costo/Precio; se protege contra Precio <= 0).
 
      2) Factor de Reducción: se lee la excepción activa del artículo en la UDF
-        real [COFER].[U_FACTOR_REDUCCION_MARGEN] (U_CODIGO = ARTICULO,
+        real [COFER].[U_FACTOR_REDUCCION] (U_ARTICULO = ARTICULO,
         U_ACTIVO = 'S'). Esa columna almacena el PORCENTAJE explícito
-        (10.00 = 10%), por lo que el SP lo divide entre 100.0 para obtener el
-        factor normalizado (0.10). Si no existe registro, aplica el 10% general
+        (0.10 = 10%), ya normalizado. Si no existe registro, aplica el 10% general
         por defecto (@p_factor_reduccion_default = 0.10, ya normalizado).
 
      3) Margen Mínimo = Margen Promedio * (1 - Factor Reducción normalizado).
@@ -38,7 +37,7 @@ GO
 
    Es idempotente: recalcula y sobrescribe MARGEN_UTILIDAD_MIN en cada corrida.
    ============================================================================ */
-CREATE OR ALTER PROCEDURE [COFER].[SP_CALCULAR_MARGEN_MINIMO_ARTICULO]
+CREATE OR ALTER PROCEDURE [COFER].[SP_CALCULAR_MARGEN_MINIMO]
     @p_nivel_precio VARCHAR(50),
     @p_version INTEGER,
     @p_articulo VARCHAR(20) = NULL,                 -- NULL => todos los artículos de la lista/versión
@@ -84,13 +83,13 @@ BEGIN
             END AS DECIMAL(28,8)
         ) AS MARGEN_PROMEDIO,
         /* Factor de reducción efectivo del artículo, ya NORMALIZADO en [0,1).
-           La UDF real [COFER].[U_FACTOR_REDUCCION_MARGEN] guarda el PORCENTAJE
-           explícito (10.00 = 10%), por lo que se divide entre 100.0. Si el
-           artículo no tiene excepción activa, se usa el default normalizado. */
+           La UDF real [COFER].[U_FACTOR_REDUCCION] guarda el factor normalizado
+           (0.10 = 10%). Si el artículo no tiene excepción activa, se usa el
+           default normalizado. */
         CAST(
             CASE
                 WHEN FR.U_FACTOR_REDUCCION IS NULL THEN @p_factor_reduccion_default
-                ELSE FR.U_FACTOR_REDUCCION / 100.0
+                ELSE FR.U_FACTOR_REDUCCION
             END AS DECIMAL(9,6)
         ) AS FACTOR_REDUCCION_EFECTIVO,
         CASE WHEN FR.U_FACTOR_REDUCCION IS NULL THEN 0 ELSE 1 END AS TIENE_EXCEPCION
@@ -101,10 +100,10 @@ BEGIN
     OUTER APPLY
     (
         /* Excepción activa por artículo. La UDF no maneja vigencias: solo se
-           evalúa U_ACTIVO = 'S' (U_CODIGO es el código de artículo). */
+           evalúa U_ACTIVO = 'S' (U_ARTICULO es el código de artículo). */
         SELECT TOP (1) U.U_FACTOR_REDUCCION
-        FROM [COFER].[U_FACTOR_REDUCCION_MARGEN] U
-        WHERE U.U_CODIGO = AP.ARTICULO
+        FROM [COFER].[U_FACTOR_REDUCCION] U
+        WHERE U.U_ARTICULO = AP.ARTICULO
           AND U.U_ACTIVO = 'S'
         ORDER BY U.U_FACTOR_REDUCCION DESC
     ) FR
