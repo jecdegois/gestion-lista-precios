@@ -20,12 +20,18 @@ const POLLING_MS = 2500;
 export function useInbox(readOnly: boolean) {
   const pushToast = useToast();
   const [requests, setRequests] = useState<Solicitud[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const pollingInFlight = useRef(false);
 
   const refresh = useCallback(async () => {
-    const res = await getBandeja();
-    if (res.ok) setRequests(res.data.solicitudes);
-    else pushToast(res.error, "error");
+    setRefreshing(true);
+    try {
+      const res = await getBandeja();
+      if (res.ok) setRequests(res.data.solicitudes);
+      else pushToast(res.error, "error");
+    } finally {
+      setRefreshing(false);
+    }
   }, [pushToast]);
 
   useEffect(() => {
@@ -80,6 +86,8 @@ export function useInbox(readOnly: boolean) {
 
   return {
     requests,
+    refresh,
+    refreshing,
     approve,
     retry,
     markReviewed,

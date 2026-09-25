@@ -93,7 +93,6 @@ export function TablaMargenMinimo({ filas }: { filas: FilaMargen[] }) {
               <th className="text-right font-medium px-3 py-2">Factor norm.</th>
               <th className="text-right font-medium px-3 py-2">Multiplicador</th>
               <th className="text-right font-medium px-3 py-2">Precio Lista</th>
-              <th className="text-right font-medium px-3 py-2">Precio Redondeado</th>
               <th className="text-left font-medium px-3 py-2">Banda / Estado</th>
               <th className="text-right font-medium px-3 py-2">Margen Promedio</th>
               <th className="text-right font-medium px-3 py-2">Precio Mín. Base</th>
@@ -110,9 +109,7 @@ export function TablaMargenMinimo({ filas }: { filas: FilaMargen[] }) {
                   <td className="px-3 py-2">{fila.descripcion || "—"}</td>
                   <td className="px-3 py-2 text-right mono">{validacion.porcentajeReduccion != null ? `${validacion.porcentajeReduccion.toFixed(2)}%` : "—"}</td>
                   <td className="px-3 py-2 text-right mono">{fmtFactor(validacion.factorReduccion)}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtFactor(validacion.multiplicadorMargen)}</td>
                   <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioActual)}</td>
-                  <td className="px-3 py-2 text-right mono">{validacion.precioRedondeado != null ? <b>{fmtMonto(validacion.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
                   <td className="px-3 py-2"><EstadoRedondeoBadge estado={validacion.estadoRedondeo} banda={validacion.bandaRedondeo} /></td>
                   <td className="px-3 py-2 text-right mono">{fmtPct(validacion.margenPromedio)}</td>
                   <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.costoMinimoBase)}</td>
@@ -165,7 +162,6 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
               <th className="text-right font-medium px-3 py-2">Precio Actual</th>
               <th className="text-left font-medium px-3 py-2">Tipo Var.</th>
               <th className="text-right font-medium px-3 py-2">Descuento %</th>
-              <th className="text-right font-medium px-3 py-2">Multiplicador</th>
               <th className="text-right font-medium px-3 py-2">Precio Calc.</th>
               <th className="text-right font-medium px-3 py-2">Precio Redondeado</th>
               <th className="text-right font-medium px-3 py-2">Precio Mínimo Equiv.</th>

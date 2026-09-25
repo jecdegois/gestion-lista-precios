@@ -66,14 +66,6 @@ const columns: readonly TableColumn<FilaResultado>[] = [
     value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioPropuesto)}</span>,
   },
   {
-    key: "precioRedondeado",
-    header: "Precio Redondeado",
-    align: "right",
-    value: (fila) => fila.validacion.precioRedondeado != null
-      ? <b className="mono">{fmtMonto(fila.validacion.precioRedondeado)}</b>
-      : <span className="text-zinc-400">—</span>,
-  },
-  {
     key: "precioMinimo",
     header: "Precio Mínimo",
     align: "right",
@@ -87,13 +79,35 @@ const columns: readonly TableColumn<FilaResultado>[] = [
   },
 ];
 
-export default function TablaResultadoModal({ filas }: { filas: FilaResultado[] }) {
+export default function TablaResultadoModal({
+  filas,
+  modo = "general",
+}: {
+  filas: FilaResultado[];
+  modo?: "general" | "descuentoArticuloLista";
+}) {
   const [pagina, setPagina] = useState(1);
   const totalPaginas = Math.max(1, Math.ceil(filas.length / PAGE_SIZE));
   const paginaSegura = Math.min(pagina, totalPaginas);
   const visibles = filas.slice((paginaSegura - 1) * PAGE_SIZE, paginaSegura * PAGE_SIZE);
   const hallazgos = filas.filter(esHallazgoDeNegocio).length;
   const invalidas = filas.filter((fila) => !fila.validacion.valido).length;
+  const esDetalleMargen = filas.length > 0 && filas.every(esFilaMargen);
+  const columnasVisibles = esDetalleMargen
+    ? columns.filter((column) => !["lista", "factor", "factorAplicado", "multiplicador"].includes(String(column.key)))
+    : modo === "descuentoArticuloLista"
+      ? columns.filter((column) => !["variacion", "factorAplicado", "mensajeError", "margen"].includes(String(column.key)))
+      : columns;
+  const columnasFormateadas = columnasVisibles.map((column) => {
+    if (modo === "descuentoArticuloLista" && column.key === "variacion") {
+      return {
+        ...column,
+        header: "VariaciÃ³n %",
+        value: (fila: FilaResultado) => fmtPorcentajeCapturado(!esFilaMargen(fila) ? fila.variacionPorcentaje : null),
+      };
+    }
+    return column;
+  });
 
   useEffect(() => {
     setPagina(1);
@@ -109,7 +123,7 @@ export default function TablaResultadoModal({ filas }: { filas: FilaResultado[] 
       </p>
       <ResponsiveDataTable
         rows={visibles}
-        columns={columns}
+        columns={columnasFormateadas}
         rowKey={(fila) => `${fila.fila}-${fila.codigo}-${!esFilaMargen(fila) ? fila.listaCodigo ?? "" : "margen"}`}
         meta={{ total: filas.length, page: paginaSegura, limit: PAGE_SIZE, totalPages: totalPaginas }}
         page={paginaSegura}

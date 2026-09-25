@@ -82,10 +82,13 @@ async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boole
     return { ok: false, error: "La solicitud contiene una lista que no existe en los maestros de Softland." };
   }
 
-  const listaPredeterminada = resolverNivelPrecio(
-    niveles,
-    input.parametros.nivelPrecio ?? input.parametros.listaBase ?? input.parametros.nivel,
-  );
+  const nivelSolicitud = [
+    input.parametros.nivelPrecio,
+    input.parametros.listaBase,
+    input.parametros.nivel,
+    ...(input.proceso === "DESCUENTO_LISTA_PRECIO" ? listasEnFilas : []),
+  ].find((valor): valor is string => Boolean(valor?.trim()));
+  const listaPredeterminada = resolverNivelPrecio(niveles, nivelSolicitud);
   if (!listaPredeterminada) {
     return { ok: false, error: "La solicitud no contiene una lista de precio válida." };
   }
@@ -381,7 +384,6 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
   if (s.proceso === "MARGEN_UTILIDAD_MASIVO" && !esModoDemo()) {
     try {
       const lista = "MAYOREOD";
-      const version = await pricingRepository.activePriceVersion(s.compania, lista);
       const filasValidas = s.filas.filter((fila): fila is FilaMargen => esFilaMargen(fila) && fila.validacion.valido);
       if (filasValidas.length === 0) {
         throw new Error("No existen filas vÃ¡lidas para actualizar el margen de utilidad.");
@@ -389,21 +391,21 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
 
       for (const fila of filasValidas) {
         const porcentaje = Number(fila.porcentajeReduccion);
-        if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje >= 100) {
+        const factorNormalizado = Number(fila.factorReduccion ?? (porcentaje / 100));
+        if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje >= 100 || !Number.isFinite(factorNormalizado) || factorNormalizado < 0 || factorNormalizado >= 1) {
           throw new Error(`El porcentaje de reducciÃ³n del artÃ­culo '${fila.codigo}' no es vÃ¡lido.`);
         }
+        console.info("[MARGEN_UTILIDAD] Factor U_FACTOR_REDUCCION a persistir", {
+          solicitudId: s.id,
+          articulo: fila.codigo,
+          porcentajeSolicitado: porcentaje,
+          factorNormalizado,
+        });
         await pricingRepository.upsertUdf(
           s.compania,
           fila.codigo,
-          fila.descripcion,
-          porcentaje,
-          input.aprobadorNombre,
-        );
-        await pricingRepository.runMarginSp(
-          s.compania,
-          lista,
-          version,
-          fila.codigo,
+          `Solicitud ${s.id}`,
+          factorNormalizado,
           input.aprobadorNombre,
         );
       }
@@ -414,7 +416,6 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
         solicitudId: s.id,
         compania: s.compania,
         lista,
-        version,
         actualizados: filasValidas.length,
       });
       await finalizarProcesamiento(s.compania, s.id, [...s.filas], fallidos, input.aprobadorNombre);

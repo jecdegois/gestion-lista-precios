@@ -8,16 +8,21 @@ import { ALL, filterInbox, type InboxFilters as Filters } from "../../utils/inbo
 import { inboxColumns } from "./inbox-columns";
 import InboxFilters from "./InboxFilters";
 import InboxNotice from "./InboxNotice";
+import Icon from "@/components/Icon";
 
 /** Listado filtrable de la bandeja con carga incremental; al activar una fila abre su detalle. */
 export default function InboxTable({
   requests,
   currentUser,
   onOpen,
+  onRefresh,
+  refreshing,
 }: {
   requests: Solicitud[];
   currentUser: Identidad;
   onOpen: (id: string) => void;
+  onRefresh: () => Promise<void>;
+  refreshing: boolean;
 }) {
   const [filters, setFilters] = useState<Filters>({ status: ALL, process: ALL, search: "" });
   const filtered = filterInbox(requests, currentUser.compania, filters);
@@ -27,6 +32,19 @@ export default function InboxTable({
   return (
     <div className="space-y-4">
       <InboxNotice />
+      <div className="flex justify-end">
+        <button
+          type="button"
+          className="btn btn-outline !px-2.5 !py-1.5 text-xs"
+          onClick={() => void onRefresh()}
+          disabled={refreshing}
+          title="Refrescar solicitudes pendientes"
+          aria-label="Refrescar solicitudes pendientes"
+        >
+          <Icon name="loader" className="h-3.5 w-3.5" spin={refreshing} />
+          {refreshing ? "Actualizando..." : "Refrescar"}
+        </button>
+      </div>
       <InboxFilters filters={filters} onChange={setFilters} />
 
       <p className="text-xs text-zinc-500">

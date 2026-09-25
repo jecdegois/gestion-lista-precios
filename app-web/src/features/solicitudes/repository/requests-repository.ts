@@ -115,7 +115,7 @@ async function agregarSolicitud(s: Solicitud): Promise<void> {
   );
   const idSolicitud = enteroSeguro(ins.recordset[0]?.ID_SOLICITUD, "ID_SOLICITUD generado");
   for (const f of s.filas) {
-    await insertarDetalle(pool, spd, idSolicitud, f);
+    await insertarDetalle(pool, spd, idSolicitud, f, s.proceso);
   }
 }
 
@@ -193,7 +193,13 @@ async function actualizarFactorAplicadoDetalles(compania: string, codigo: string
 // ---------------------------------------------------------------------------
 type SqlPool = Awaited<ReturnType<typeof getPortalPool>>;
 
-async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, f: FilaResultado): Promise<void> {
+async function insertarDetalle(
+  pool: SqlPool,
+  spd: string,
+  idSolicitud: number,
+  f: FilaResultado,
+  proceso: Solicitud["proceso"],
+): Promise<void> {
   const mssql = await import("mssql");
   const v = f.validacion;
   const numero = (valor: unknown): number | null =>
@@ -218,8 +224,16 @@ async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, 
     // Precio Base no aplica un factor, por lo que 1.000000 representa el
     // multiplicador neutro; el precio absoluto viaja en PRECIO_SIMULADO.
     .input("factorAplicado", mssql.Decimal(9, 6), numero((f as FilaPrecio | FilaMargen).factorAplicado) ?? 1)
-    .input("precioSimulado", mssql.Decimal(28, 8), numero(v.precioRedondeado ?? v.precioPropuesto) ?? 0)
-    .input("porcentajeMargen", mssql.Decimal(9, 6), vMargen?.margenPromedio ?? v.margenMinimo ?? 0)
+    .input(
+      "precioSimulado",
+      mssql.Decimal(28, 8),
+      numero(proceso === "MAYOREOD_MASIVO" ? v.precioPropuesto : v.precioRedondeado ?? v.precioPropuesto) ?? 0,
+    )
+    .input(
+      "porcentajeMargen",
+      mssql.Decimal(9, 6),
+      esMargen ? filaMargen?.porcentajeReduccion ?? 0 : v.margenMinimo ?? 0,
+    )
     // CK_PP_SOLDET_ESTADO admite OK | ERROR | BAJO_COSTO | MARGEN_NEGATIVO; el motivo va en CAUSA.
     .input("estadoFila", mssql.VarChar(20), v.valido ? "OK" : "ERROR")
     .input("mensajeError", mssql.VarChar(400), (f as FilaPrecio | FilaMargen).mensajeError ?? (!v.valido ? v.causa ?? "Error no identificado" : null))
@@ -361,13 +375,17 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
   };
 
   if (esMargen) {
+    const porcentajeReduccionSolicitado = numero(d.PORCENTAJE_MARGEN);
+    const factorReduccionSolicitado = porcentajeReduccionSolicitado != null && porcentajeReduccionSolicitado >= 0 && porcentajeReduccionSolicitado < 100
+      ? porcentajeReduccionSolicitado / 100
+      : null;
     return {
       fila: numero(d.FILA) ?? numero(d.ID_DETALLE) ?? 0,
       codigo: String(d.SKU ?? ""),
       descripcion: String(d.DESCRIPCION ?? ""),
-      porcentajeReduccion: null,
-      factorReduccion: null,
-      multiplicadorMargen: null,
+      porcentajeReduccion: porcentajeReduccionSolicitado,
+      factorReduccion: factorReduccionSolicitado,
+      multiplicadorMargen: factorReduccionSolicitado == null ? null : 1 - factorReduccionSolicitado,
       factorAplicado,
       mensajeError,
       validacion: {
@@ -377,9 +395,10 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
         margenPromedio: numero(d.PORCENTAJE_MARGEN),
         margenSobrePrecioRedondeado: null,
         margenMinimoBase: null,
-        porcentajeReduccion: null,
-        factorReduccion: null,
-        multiplicadorMargen: null,
+        factorPropuesto: factorReduccionSolicitado,
+        porcentajeReduccion: porcentajeReduccionSolicitado,
+        factorReduccion: factorReduccionSolicitado,
+        multiplicadorMargen: factorReduccionSolicitado == null ? null : 1 - factorReduccionSolicitado,
         codigoRechazo: null,
         causa,
       },
