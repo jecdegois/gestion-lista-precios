@@ -293,6 +293,92 @@ async function upsertFactoresArticuloLista(
   }
 }
 
+/** Actualiza directamente el precio de los artÃ­culos de MAYOREOD en la versiÃ³n activa. */
+async function actualizarPreciosBase(
+  compania: string,
+  solicitudId: string,
+  filas: FilaResultado[],
+  usuario: string,
+): Promise<{ actualizados: number }> {
+  assertEscrituraSoftlandHabilitada();
+  if (esModoDemo()) throw new Error("PRECIO_BASE_NO_DISPONIBLE_EN_DEMO");
+
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const lista = "MAYOREOD";
+  const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && fila.validacion.valido);
+  if (filasValidas.length === 0) {
+    throw new Error("No existen filas vÃ¡lidas para actualizar precios base.");
+  }
+
+  const pool = await getPool(companiaNormalizada);
+  const ap = objetoCalificado(companiaNormalizada, "tablaArticuloPrecio");
+  const versiones = objetoCalificado(companiaNormalizada, "tablaVersionNivel");
+  const mssql = await import("mssql");
+  const transaction = new mssql.Transaction(pool);
+  let committed = false;
+  let actualizados = 0;
+
+  await transaction.begin();
+  try {
+    const versionResult = await new mssql.Request(transaction)
+      .input("lista", mssql.VarChar(50), lista)
+      .query(
+        `SELECT TOP (1) VN.VERSION AS version
+           FROM ${versiones} VN
+          WHERE VN.NIVEL_PRECIO = @lista
+            AND VN.ESTADO = 'A'
+          ORDER BY TRY_CONVERT(INT, VN.VERSION) DESC, VN.VERSION DESC;`,
+      );
+    const version = versionResult.recordset[0]?.version;
+    if (version == null || String(version).trim() === "") {
+      throw new Error(`No existe una versiÃ³n activa para la lista '${lista}'.`);
+    }
+
+    for (const fila of filasValidas) {
+      const precio = Number(fila.validacion.precioRedondeado ?? fila.validacion.precioPropuesto);
+      const articulo = fila.codigo.trim();
+      if (!articulo || !Number.isFinite(precio) || precio <= 0) {
+        throw new Error(`La fila ${fila.fila} no tiene un artÃ­culo o precio vÃ¡lido.`);
+      }
+
+      const result = await new mssql.Request(transaction)
+        .input("lista", mssql.VarChar(50), lista)
+        .input("version", mssql.Int, Number(version))
+        .input("articulo", mssql.VarChar(20), articulo)
+        .input("precio", mssql.Decimal(28, 8), precio)
+        .input("usuario", mssql.VarChar(50), usuario.trim())
+        .query(
+          `UPDATE ${ap}
+              SET PRECIO = @precio,
+                  FECHA_ULT_MODIF = GETDATE(),
+                  USUARIO_ULT_MODIF = @usuario
+            WHERE NIVEL_PRECIO = @lista
+              AND VERSION = @version
+              AND ARTICULO = @articulo;`,
+        );
+      if ((result.rowsAffected[0] ?? 0) !== 1) {
+        throw new Error(`No se encontrÃ³ ${ap} para el artÃ­culo '${articulo}', lista '${lista}' y versiÃ³n activa '${version}'.`);
+      }
+      actualizados += result.rowsAffected[0] ?? 0;
+    }
+
+    await transaction.commit();
+    committed = true;
+    console.info("[PRECIO_BASE] ARTICULO_PRECIO actualizado", {
+      solicitudId,
+      compania: companiaNormalizada,
+      tabla: ap,
+      lista,
+      version: String(version),
+      actualizados,
+    });
+    return { actualizados };
+  } catch (error) {
+    if (!committed) await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
+}
+
 async function listarNivelesPrecio(compania: string): Promise<NivelPrecio[]> {
   if (esModoDemo()) return nivelesPrecioDemo(compania);
 
@@ -727,6 +813,7 @@ export const pricingRepository = {
   findArticle: buscarArticulo,
   updateGlobalManagement: actualizarGestionGlobal,
   upsertArticleListFactors: upsertFactoresArticuloLista,
+  updateBasePrices: actualizarPreciosBase,
   readUdfPercentage: leerPorcentajeUdf,
   upsertUdf,
   runMarginSp: ejecutarSpMargen,

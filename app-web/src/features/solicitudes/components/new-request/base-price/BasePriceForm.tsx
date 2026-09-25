@@ -43,7 +43,7 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
 
   const catalog = useRequestCatalog(level, true);
   useDefaultLevel(level, catalog.levels, BASE_LIST, setLevel);
-  const { exporting, exportRows } = useSimulationExport("mayoreod_masivo", "Descuento %");
+  const { exporting, exportRows } = useSimulationExport("mayoreod_masivo", "Precio");
   const submission = useRequestSubmission({ draft, onSubmitted, onReset: () => selectMode(mode) });
 
   const isExcel = mode === "excel";
@@ -109,7 +109,7 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
     return {
       proceso: "MAYOREOD_MASIVO",
       // Precio Base siempre se registra como "manual", también cuando viene de plantilla (comportamiento heredado).
-      modalidad: "manual",
+      modalidad: isExcel ? "excel" : "manual",
       parametros: {
         nivel: level,
         factor,
@@ -142,7 +142,7 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
           process="MAYOREOD_MASIVO"
           level={level}
           disabled={lockInput}
-          instructions="Use las columnas Código Artículo y Descuento %."
+          instructions="Use las columnas Articulo y Precio."
           templateHref="/api/plantilla?proceso=MAYOREOD_MASIVO"
           errorCount={errorCount}
           errorMessage="Corrija y cargue nuevamente."

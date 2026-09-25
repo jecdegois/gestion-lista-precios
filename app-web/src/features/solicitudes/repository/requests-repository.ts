@@ -214,7 +214,10 @@ async function insertarDetalle(pool: SqlPool, spd: string, idSolicitud: number, 
     .input("costo", mssql.Decimal(28, 8), numero(v.costo) ?? 0)
     // El procesador externo todavía no aplica el precio por fila en este
     // flujo; por eso el valor inicial y el valor visible al cerrar queda en 0.
-    .input("factorAplicado", mssql.Decimal(9, 6), numero((f as FilaPrecio | FilaMargen).factorAplicado) ?? 0)
+    // El esquema real de SOLICITUD_DETALLE exige FACTOR_APLICADO. Para
+    // Precio Base no aplica un factor, por lo que 1.000000 representa el
+    // multiplicador neutro; el precio absoluto viaja en PRECIO_SIMULADO.
+    .input("factorAplicado", mssql.Decimal(9, 6), numero((f as FilaPrecio | FilaMargen).factorAplicado) ?? 1)
     .input("precioSimulado", mssql.Decimal(28, 8), numero(v.precioRedondeado ?? v.precioPropuesto) ?? 0)
     .input("porcentajeMargen", mssql.Decimal(9, 6), vMargen?.margenPromedio ?? v.margenMinimo ?? 0)
     // CK_PP_SOLDET_ESTADO admite OK | ERROR | BAJO_COSTO | MARGEN_NEGATIVO; el motivo va en CAUSA.

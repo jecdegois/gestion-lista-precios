@@ -44,7 +44,7 @@ export function esquemaDe(compania: string): string {
   return `[${resolverCompania(compania).schema}]`;
 }
 
-/** Pool de la base del portal; las tablas se califican con el esquema de la empresa. */
+/** Pool de la BD del portal; las tablas se califican con el esquema de la empresa. */
 export async function getPortalPool(): Promise<MssqlConnectionPool> {
   return poolFor(process.env.PORTAL_DB_NAME ?? "PORTAL_PRECIOS");
 }

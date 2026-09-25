@@ -344,6 +344,31 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
     }
   }
 
+  if (s.proceso === "MAYOREOD_MASIVO" && !esModoDemo()) {
+    try {
+      const resultadoPrecios = await pricingRepository.updateBasePrices(
+        s.compania,
+        s.id,
+        s.filas,
+        input.aprobadorNombre,
+      );
+      const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
+      console.info("[PRECIO_BASE] Precios de MAYOREOD persistidos", {
+        solicitudId: s.id,
+        actualizados: resultadoPrecios.actualizados,
+      });
+      await finalizarProcesamiento(s.compania, s.id, [...s.filas], fallidos, input.aprobadorNombre);
+      return { ok: true, idProcesoSP };
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "No fue posible actualizar los precios base.";
+      await repo.update(s.compania, s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
+      await repo.setDetailError(s.compania, s.id, detalle).catch((detalleError) => {
+        console.error("[PRECIO_BASE] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
+      });
+      return { ok: false, error: detalle, idProcesoSP };
+    }
+  }
+
   void simularProcesamientoDemo(s.compania, s.id);
 
   return { ok: true, idProcesoSP };

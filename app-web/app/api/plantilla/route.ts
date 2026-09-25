@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const encabezado = esDescuento
     ? ["Lista de Precio", "Codigo Articulo", "Descuento %"]
     : esPrecioBase
-      ? ["Codigo Articulo", "Descuento %"]
+      ? ["Articulo", "Precio"]
     : ["Codigo Articulo", "Porcentaje Reduccion"];
   const anchos = esDescuento ? [{ wch: 22 }, { wch: 18 }, { wch: 24 }] : [{ wch: 18 }, { wch: 18 }];
   const nombreArchivo = esDescuento ? "plantilla-descuento-lista-precio.xlsx" : esPrecioBase ? "plantilla-precio-base.xlsx" : "plantilla-margen-utilidad.xlsx";
