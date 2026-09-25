@@ -24,6 +24,8 @@ import {
 /** Previsualizaciones (catálogo, Excel y simulaciones): solo leen Softland, NO escriben en la BD. */
 
 const ENCABEZADO_CODIGO = "codigo articulo";
+const ENCABEZADO_ARTICULO = "articulo";
+const ENCABEZADO_PRECIO = "precio";
 const ENCABEZADO_PORCENTAJE = "porcentaje reduccion";
 const ENCABEZADO_LEGADO = "factor reduccion";
 
@@ -112,6 +114,12 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
 
   const esDescuento = procesoKey === "DESCUENTO_LISTA_PRECIO";
   const esPrecioBase = procesoKey === "MAYOREOD_MASIVO";
+  if (esPrecioBase) {
+    const enc = rows[0] ?? [];
+    if (normalizarEncabezado(enc[0]) !== ENCABEZADO_ARTICULO || normalizarEncabezado(enc[1]) !== ENCABEZADO_PRECIO) {
+      return { ok: false, error: "Encabezados invalidos: se requieren 'Articulo' y 'Precio'.", filas: [] };
+    }
+  }
   const dataRows = rows.slice(1).filter((r) => Array.isArray(r) && r.length > 0);
   const niveles = await pricingRepository.listPriceLevels(compania);
   const nivelesConsultaRaw = esDescuento
@@ -146,22 +154,16 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
       );
     }
     if (esPrecioBase) {
-      const porcentajeRaw = r[1] !== undefined ? String(r[1]).trim() : "";
-      const porcentaje = Number.parseFloat(porcentajeRaw.replace(",", "."));
-      const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(?:[.,]\d+)?$/.test(porcentajeRaw);
-      const factorConvertido = formatoValido ? 1 - (porcentaje / 100) : null;
-      const factorTexto = factorConvertido !== null ? textoFactorCalculado(factorConvertido) : porcentajeRaw;
+      const precioRaw = r[1] !== undefined ? String(r[1]).trim() : "";
       const listaCodigo = nivelesConsulta[0];
       return construirFilaCompleta(
         {
           fila: idx + 1,
           codigo: r[0] !== undefined ? String(r[0]).trim() : "",
           listaCodigo,
-          tipoVariacion: "DISMINUCION",
-          variacionPorcentaje: porcentajeRaw,
-          valorPropuestoRaw: factorTexto,
+          valorPropuestoRaw: precioRaw,
         },
-        "factor",
+        "precio",
         listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
       );
     }

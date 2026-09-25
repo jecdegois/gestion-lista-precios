@@ -213,7 +213,7 @@ export function construirFilaCompleta(row: FilaInput, modo: ModoProceso, context
     valorPropuestoRaw: row.valorPropuestoRaw,
     multiplicador: modo === "factor" ? Number(row.valorPropuestoRaw) || null : null,
     precioMin: 0,
-    factorPropuesto: modo === "factor" ? Number(row.valorPropuestoRaw) || 0 : 0,
+    factorPropuesto: modo === "factor" ? Number(row.valorPropuestoRaw) || 0 : undefined,
     grupoArticulo: row.grupoArticulo,
     validacion: validarFila(row, modo, context),
   };

@@ -37,7 +37,7 @@ export type ProcesoKey =
   | "DESCUENTO_LISTA_PRECIO"
   | "MARGEN_UTILIDAD_MASIVO";
 
-export type ModoProceso = "factor" | "margen";
+export type ModoProceso = "factor" | "precio" | "margen";
 
 export interface ProcesoDef {
   label: string;
