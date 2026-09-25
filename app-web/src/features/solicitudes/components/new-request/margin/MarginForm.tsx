@@ -49,7 +49,7 @@ export default function MarginForm({ readOnly, consultOnly, draft, onSubmitted, 
   function buildRequest(): SolicitudInput {
     return {
       proceso: "MARGEN_UTILIDAD_MASIVO",
-      modalidad: "manual",
+      modalidad: "excel",
       parametros: {
         nivel: level,
         factor: "",
@@ -82,7 +82,7 @@ export default function MarginForm({ readOnly, consultOnly, draft, onSubmitted, 
         onParsed={(parsed, name, s3Key) => {
           setRows(parsed);
           setFile({ name, s3Key });
-          setSimulated(false);
+          setSimulated(parsed.length > 0);
           submission.setSent(false);
         }}
       />

@@ -49,6 +49,7 @@ export default function RevisionModal({
   onClose,
   onRechazar,
   onAprobar,
+  onReintentar,
   onCancelar,
   onDecidirCancelacion,
   onRetomar,
@@ -60,6 +61,7 @@ export default function RevisionModal({
   onClose: () => void;
   onRechazar: (id: string, motivo: string) => void;
   onAprobar: (id: string) => void;
+  onReintentar?: (id: string) => void;
   onCancelar?: (id: string, motivo: string) => void;
   onDecidirCancelacion?: (id: string, aprobada: boolean) => void;
   onRetomar?: (id: string) => void;
@@ -187,6 +189,12 @@ export default function RevisionModal({
     !readOnly && currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
   const puedeAprobar = puedeDecidir && filas.length > 0;
   const enProceso = solicitud.estado === "EN_PROCESO";
+  const puedeReintentar =
+    !readOnly &&
+    onReintentar != null &&
+    currentUser.rol === "APROBADOR" &&
+    solicitud.estado === "ERROR_EJECUCION" &&
+    solicitud.solicitanteEmail !== currentUser.email;
   const resultado = solicitud.resultado;
 
   // Cancelación: solicitante puede pedir cancelación de su propia solicitud PENDIENTE
@@ -250,6 +258,16 @@ export default function RevisionModal({
             <p className="text-sm text-indigo-900 font-medium">Procesamiento en segundo plano · {solicitud.idProcesoSP}</p>
             <div className="progress-track mt-2"><div className="progress-fill progress-indeterminate" /></div>
             <p className="text-[11px] text-indigo-700 mt-1">Última actualización: {solicitud.ultimaActualizacion ?? "—"}</p>
+          </div>
+        )}
+
+        {solicitud.estado === "ERROR_EJECUCION" && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 mb-4">
+            <p className="text-sm text-amber-900 font-medium">La ejecución terminó con error.</p>
+            <p className="text-xs text-amber-800 mt-1">
+              No reenvíe la solicitud manualmente mientras el flujo automático de reintentos esté activo.
+              Utilice el reintento manual únicamente cuando corresponda según el estado del proceso.
+            </p>
           </div>
         )}
 
@@ -369,6 +387,11 @@ export default function RevisionModal({
           </div>
         ) : (
           <div className="mt-5 flex justify-end border-t border-zinc-100 pt-4">
+            {puedeReintentar && (
+              <button className="btn btn-default mr-2" onClick={() => { onReintentar!(solicitud.id); onClose(); }}>
+                        <Icon name="loader" className="w-3.5 h-3.5" /> Reintentar ejecución
+              </button>
+            )}
             <button className="btn btn-outline" onClick={onClose}>Cerrar</button>
           </div>
         )}

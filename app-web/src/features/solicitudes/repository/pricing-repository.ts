@@ -403,6 +403,30 @@ async function listarNivelesPrecio(compania: string): Promise<NivelPrecio[]> {
   });
 }
 
+async function obtenerVersionActiva(compania: string, nivelPrecio: string): Promise<number> {
+  const nivel = nivelPrecio.trim();
+  if (!nivel) throw new Error("Debe indicar una lista de precio para consultar la versiÃ³n activa.");
+  if (esModoDemo()) return 1;
+
+  const pool = await getPool(compania);
+  const versiones = objetoCalificado(compania, "tablaVersionNivel");
+  const mssql = await import("mssql");
+  const result = await pool.request()
+    .input("nivelPrecio", mssql.VarChar(50), nivel)
+    .query(
+      `SELECT TOP (1) VN.VERSION AS version
+         FROM ${versiones} VN
+        WHERE VN.NIVEL_PRECIO = @nivelPrecio
+          AND VN.ESTADO = 'A'
+        ORDER BY TRY_CONVERT(INT, VN.VERSION) DESC, VN.VERSION DESC;`,
+    );
+  const version = Number(result.recordset[0]?.version);
+  if (!Number.isInteger(version)) {
+    throw new Error(`No existe una versiÃ³n activa para la lista '${nivel}'.`);
+  }
+  return version;
+}
+
 /** Lista y parámetros vigentes usados exclusivamente por Gestión Global. */
 async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista[]> {
   if (esModoDemo()) {
@@ -744,9 +768,9 @@ async function upsertUdf(
     .query(
       `MERGE ${udf} AS T
          USING (SELECT @codigo AS c, @descrip AS d) AS S
-            ON T.${colCodigo} = S.c AND T.${colDescrip} = S.d
+       ON T.${colCodigo} = S.c
        WHEN MATCHED THEN
-         UPDATE SET T.${colFactor} = @factor, T.${colActivo} = 'S',
+         UPDATE SET T.${colDescrip} = @descrip, T.${colFactor} = @factor, T.${colActivo} = 'S',
                     T.RecordDate = GETDATE(), T.UpdatedBy = @usuario
        WHEN NOT MATCHED THEN
          INSERT (${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
@@ -807,6 +831,7 @@ async function ejecutarSpGestionListas(
 
 export const pricingRepository = {
   listPriceLevels: listarNivelesPrecio,
+  activePriceVersion: obtenerVersionActiva,
   listGlobalManagement: listarGestionGlobal,
   listCatalog: listarCatalogo,
   listCatalogPage: listarCatalogoPaginado,
