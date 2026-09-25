@@ -149,7 +149,7 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
           onParsed={(parsed, name, s3Key) => {
             setRows(parsed);
             setFile({ name, s3Key });
-            setSimulated(false);
+            setSimulated(parsed.length > 0);
             submission.setSent(false);
           }}
         />

@@ -9,6 +9,7 @@ import {
   decidirCancelacion,
   getBandeja,
   rechazarSolicitud,
+  reintentarSolicitud,
   registrarRevision,
   solicitarCancelacion,
 } from "../api/solicitudes-api";
@@ -64,6 +65,14 @@ export function useInbox(readOnly: boolean) {
     await refresh();
   }
 
+  async function retry(id: string) {
+    if (readOnly) return;
+    const res = await reintentarSolicitud(id);
+    if (!res.ok) pushToast(res.error, "error");
+    else pushToast(`Solicitud ${id} reintentada y enviada a proceso.`, "success");
+    await refresh();
+  }
+
   async function markReviewed(id: string) {
     await registrarRevision(id);
     void refresh();
@@ -72,6 +81,7 @@ export function useInbox(readOnly: boolean) {
   return {
     requests,
     approve,
+    retry,
     markReviewed,
     reject: (id: string, reason: string) =>
       run(() => rechazarSolicitud(id, { motivo: reason }), `Solicitud ${id} rechazada. El solicitante fue notificado.`, "error"),

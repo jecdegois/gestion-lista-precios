@@ -43,6 +43,7 @@ export default function InboxView({ readOnly }: { readOnly: boolean }) {
           readOnly={readOnly}
           onClose={() => setModalId(null)}
           onAprobar={(id) => void inbox.approve(id)}
+          onReintentar={(id) => void inbox.retry(id)}
           onRechazar={(id, reason) => void inbox.reject(id, reason)}
           onCancelar={(id, reason) => void inbox.requestCancellation(id, reason)}
           onDecidirCancelacion={(id, approved) => void inbox.decideCancellation(id, approved)}

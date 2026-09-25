@@ -126,7 +126,7 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
     }) as FilaResultado[];
     setRows(adjusted);
     setFile({ name, s3Key });
-    setSimulated(false);
+    setSimulated(adjusted.length > 0);
     submission.setSent(false);
   }
 

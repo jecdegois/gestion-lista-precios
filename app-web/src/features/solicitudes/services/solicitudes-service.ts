@@ -3,6 +3,7 @@ import { estaEnAmbito } from "@/lib/catalog";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
 import type {
   CriteriosArticulo,
+  FilaMargen,
   FilaResultado,
   Identidad,
   ParametrosSolicitud,
@@ -10,6 +11,7 @@ import type {
   Rol,
   Solicitud,
 } from "@/lib/domain-types";
+import { esFilaMargen } from "@/lib/domain-types";
 import { esModoDemo, esModoSoloLectura, esModoSoloPortal } from "@/server/companies";
 import { auditRepository } from "@/features/auditoria/repository/audit-repository";
 import { requestsRepository as repo } from "../repository/requests-repository";
@@ -237,6 +239,7 @@ interface AprobarInput {
   aprobadorNombre: string;
   aprobadorEmail: string;
   aprobadorRol: Rol;
+  reintento?: boolean;
 }
 
 async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; error?: string; idProcesoSP?: string }> {
@@ -245,6 +248,12 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
   // operativa permanece bloqueada: Softland se consulta exclusivamente con SELECT.
   const s = await repo.find(input.compania, input.solicitudId);
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
+  if (input.reintento && s.estado !== "ERROR_EJECUCION") {
+    return { ok: false, error: "Solo se pueden reintentar solicitudes en ERROR_EJECUCION." };
+  }
+  // Reutiliza el flujo de ejecución aprobado; la validación anterior garantiza
+  // que el cambio de estado solo sea posible desde ERROR_EJECUCION.
+  if (input.reintento) s.estado = "PENDIENTE";
   if (s.estado !== "PENDIENTE") return { ok: false, error: "La solicitud no está pendiente de aprobación." };
   // Bloqueo estricto de autoaprobación (segregación de funciones).
   if (s.solicitanteEmail === input.aprobadorEmail) {
@@ -364,6 +373,57 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
       await repo.update(s.compania, s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
       await repo.setDetailError(s.compania, s.id, detalle).catch((detalleError) => {
         console.error("[PRECIO_BASE] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
+      });
+      return { ok: false, error: detalle, idProcesoSP };
+    }
+  }
+
+  if (s.proceso === "MARGEN_UTILIDAD_MASIVO" && !esModoDemo()) {
+    try {
+      const lista = "MAYOREOD";
+      const version = await pricingRepository.activePriceVersion(s.compania, lista);
+      const filasValidas = s.filas.filter((fila): fila is FilaMargen => esFilaMargen(fila) && fila.validacion.valido);
+      if (filasValidas.length === 0) {
+        throw new Error("No existen filas vÃ¡lidas para actualizar el margen de utilidad.");
+      }
+
+      for (const fila of filasValidas) {
+        const porcentaje = Number(fila.porcentajeReduccion);
+        if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje >= 100) {
+          throw new Error(`El porcentaje de reducciÃ³n del artÃ­culo '${fila.codigo}' no es vÃ¡lido.`);
+        }
+        await pricingRepository.upsertUdf(
+          s.compania,
+          fila.codigo,
+          fila.descripcion,
+          porcentaje,
+          input.aprobadorNombre,
+        );
+        await pricingRepository.runMarginSp(
+          s.compania,
+          lista,
+          version,
+          fila.codigo,
+          input.aprobadorNombre,
+        );
+      }
+
+      await repo.markDetailsApplied(s.compania, s.id);
+      const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
+      console.info("[MARGEN_UTILIDAD] Margen mÃ­nimo persistido", {
+        solicitudId: s.id,
+        compania: s.compania,
+        lista,
+        version,
+        actualizados: filasValidas.length,
+      });
+      await finalizarProcesamiento(s.compania, s.id, [...s.filas], fallidos, input.aprobadorNombre);
+      return { ok: true, idProcesoSP };
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "No fue posible actualizar el margen de utilidad.";
+      await repo.update(s.compania, s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
+      await repo.setDetailError(s.compania, s.id, detalle).catch((detalleError) => {
+        console.error("[MARGEN_UTILIDAD] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
       });
       return { ok: false, error: detalle, idProcesoSP };
     }
@@ -633,6 +693,19 @@ export const solicitudesService = {
       aprobadorNombre: identidad.nombre,
       aprobadorEmail: identidad.email,
       aprobadorRol: identidad.rol,
+    });
+  },
+
+  async reintentar(identidad: Identidad, solicitudId: string) {
+    const { solicitud, error } = await validarDecision(identidad, solicitudId);
+    if (error) return error;
+    return aprobarSolicitud({
+      compania: solicitud.compania,
+      solicitudId,
+      aprobadorNombre: identidad.nombre,
+      aprobadorEmail: identidad.email,
+      aprobadorRol: identidad.rol,
+      reintento: true,
     });
   },
 

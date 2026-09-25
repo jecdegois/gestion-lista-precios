@@ -91,6 +91,10 @@ export function aprobarSolicitud(id: string) {
   return request<{ idProcesoSP?: string }>(`/api/solicitudes/${encodeURIComponent(id)}/aprobacion`, { method: "POST" });
 }
 
+export function reintentarSolicitud(id: string) {
+  return request<{ idProcesoSP?: string }>(`/api/solicitudes/${encodeURIComponent(id)}/reintento`, { method: "POST" });
+}
+
 export function rechazarSolicitud(id: string, input: RechazoInput) {
   return request<Record<string, never>>(`/api/solicitudes/${encodeURIComponent(id)}/rechazo`, { method: "POST", body: input });
 }
