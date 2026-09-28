@@ -88,22 +88,35 @@ export default function RevisionModal({
   const factorConsulta = String(solicitud.parametros.factor ?? "");
   const tipoVariacionConsulta = solicitud.parametros.tipoVariacion === "DISMINUCION" ? "DISMINUCION" : "AUMENTO";
   useEffect(() => {
-    setFilasDetalle(solicitud.filas);
     offsetsDetalleEnCarga.current.clear();
     setHallazgosDetalle([]);
     setHallazgosDetalleCargados(false);
     setHallazgosHasMore(false);
     setHallazgosNextOffset(null);
     offsetsHallazgosEnCarga.current.clear();
-    // Las solicitudes nuevas de Gestión Global conservan la primera página
-    // (máximo 200 filas); las páginas restantes se consultan bajo demanda.
-    setDetalleHasMore(esGestionGlobal && solicitud.filas.length >= 200);
-    setDetalleNextOffset(esGestionGlobal && solicitud.filas.length >= 200 ? solicitud.filas.length : null);
+
+    if (esGestionGlobal) {
+      // La fila resumen persiste solo los parámetros de la operación, no el
+      // detalle artículo por artículo. Se vacía para que la tabla no muestre
+      // la fila sintética y se carga la primera página desde Softland.
+      setFilasDetalle([]);
+      setDetalleHasMore(true);
+      setDetalleNextOffset(0);
+    } else {
+      setFilasDetalle(solicitud.filas);
+      setDetalleHasMore(false);
+      setDetalleNextOffset(null);
+    }
   }, [solicitud.id, solicitud.filas, esGestionGlobal]);
 
+
+  // cargarDetalle: usado por ResponsiveDataTable al llegar al final del scroll.
   const cargarDetalle = async ({ offset, limit }: TableLoadParams) => {
-    if (!esGestionGlobal || cargandoDetalle || !detalleHasMore || offsetsDetalleEnCarga.current.has(offset)) return;
-    if (!nivelConsulta) return;
+    if (!esGestionGlobal || cargandoDetalle || !detalleHasMore) return;
+    await fetchPaginaGestionGlobal(offset, limit);
+  };
+  const fetchPaginaGestionGlobal = async (offset: number, limit: number) => {
+    if (!nivelConsulta || offsetsDetalleEnCarga.current.has(offset)) return;
     offsetsDetalleEnCarga.current.add(offset);
     setCargandoDetalle(true);
     try {
@@ -123,12 +136,15 @@ export default function RevisionModal({
       };
       if (!response.ok || !Array.isArray(pagina.filas)) return;
       const filasPagina = pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
-      setFilasDetalle((actuales) => [...actuales, ...filasPagina]);
+      setFilasDetalle((actuales) =>
+        offset === 0 ? filasPagina : [...actuales, ...filasPagina],
+      );
       const siguienteOffset = pagina.nextOffset ?? null;
-      const haySiguientePagina = Boolean(pagina.hasMore)
-        && filasPagina.length > 0
-        && siguienteOffset != null
-        && siguienteOffset > offset;
+      const haySiguientePagina =
+        Boolean(pagina.hasMore) &&
+        filasPagina.length > 0 &&
+        siguienteOffset != null &&
+        siguienteOffset > offset;
       setDetalleHasMore(haySiguientePagina);
       setDetalleNextOffset(haySiguientePagina ? siguienteOffset : null);
     } catch (error) {
@@ -186,10 +202,19 @@ export default function RevisionModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [solicitud.id, solicitud.compania, esGestionGlobal, nivelConsulta, factorConsulta, tipoVariacionConsulta]);
 
+  // Carga automática de la primera página al abrir el modal para Gestión Global.
+  // Usa fetchPaginaGestionGlobal directamente para evitar la guarda detalleHasMore
+  // que podría no estar comprometida aún en el mismo ciclo de render.
+  useEffect(() => {
+    if (!esGestionGlobal || !nivelConsulta) return;
+    void fetchPaginaGestionGlobal(0, 200);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solicitud.id, esGestionGlobal, nivelConsulta, factorConsulta, tipoVariacionConsulta]);
+
   const filas = filasDetalle;
   const puedeDecidir =
     !readOnly && currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
-  const puedeAprobar = puedeDecidir && filas.length > 0;
+  const puedeAprobar = puedeDecidir && solicitud.filas.length > 0;
   const enProceso = solicitud.estado === "EN_PROCESO";
   const puedeReintentar =
     !readOnly &&
