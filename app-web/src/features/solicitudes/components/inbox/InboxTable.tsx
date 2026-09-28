@@ -3,30 +3,38 @@
 import { useState } from "react";
 import ResponsiveDataTable from "@/components/newComponents/ResponsiveDataTable";
 import type { Identidad, Solicitud } from "@/lib/domain-types";
-import { INBOX_PAGE_SIZE, useInboxRows } from "../../hooks/useInboxRows";
-import { ALL, filterInbox, type InboxFilters as Filters } from "../../utils/inbox-filters";
+import { INBOX_PAGE_SIZE } from "../../hooks/useInbox";
+import { ALL, type InboxFilters as Filters } from "../../utils/inbox-filters";
+import { useInboxRows } from "../../hooks/useInboxRows";
 import { inboxColumns } from "./inbox-columns";
 import InboxFilters from "./InboxFilters";
 import InboxNotice from "./InboxNotice";
 import Icon from "@/components/Icon";
 
-/** Listado filtrable de la bandeja con carga incremental; al activar una fila abre su detalle. */
+/** Listado filtrable de la bandeja con carga incremental server-side. */
 export default function InboxTable({
   requests,
+  total,
+  hasMore,
+  loadingMore,
   currentUser,
   onOpen,
   onRefresh,
+  onLoadMore,
   refreshing,
 }: {
   requests: Solicitud[];
+  total: number;
+  hasMore: boolean;
+  loadingMore: boolean;
   currentUser: Identidad;
   onOpen: (id: string) => void;
   onRefresh: () => Promise<void>;
+  onLoadMore: () => Promise<void>;
   refreshing: boolean;
 }) {
   const [filters, setFilters] = useState<Filters>({ status: ALL, process: ALL, search: "" });
-  const filtered = filterInbox(requests, currentUser.compania, filters);
-  const rows = useInboxRows(requests, filtered, JSON.stringify(filters));
+  const filtered = useInboxRows(requests, currentUser.compania, filters);
   const searchText = filters.search.trim();
 
   return (
@@ -48,32 +56,33 @@ export default function InboxTable({
       <InboxFilters filters={filters} onChange={setFilters} />
 
       <p className="text-xs text-zinc-500">
-        Mostrando {rows.displayed.length} de {filtered.length} solicitud(es)
-        {searchText ? ` que coinciden con “${searchText}”` : ""}.
-        {rows.hasMore ? " Desplácese dentro de la tabla para cargar más." : ""}
+        Mostrando {filtered.length} de {total} solicitud(es)
+        {searchText ? ` que coinciden con "${searchText}"` : ""}.
+        {hasMore ? " Hay más solicitudes — desplácese o use el botón para cargar." : ""}
       </p>
 
       <ResponsiveDataTable<Solicitud>
-        rows={rows.displayed}
+        rows={filtered}
         columns={inboxColumns(currentUser.email)}
         rowKey={(s) => s.id}
-        loading={false}
-        loadingMore={rows.loadingMore}
-        hasMore={rows.hasMore}
-        nextOffset={rows.nextOffset}
-        onLoadMore={rows.loadMore}
+        loading={refreshing && requests.length === 0}
+        loadingMore={loadingMore}
+        hasMore={hasMore}
+        nextOffset={requests.length}
+        onLoadMore={() => void onLoadMore()}
         onRowActivate={(s) => onOpen(s.id)}
         emptyTitle="No hay solicitudes"
         emptyDescription="No hay solicitudes que coincidan con los filtros seleccionados."
       />
-      {rows.hasMore && (
+
+      {hasMore && (
         <div className="mt-2 flex justify-center">
           <button
             className="btn btn-outline"
-            disabled={rows.loadingMore}
-            onClick={() => void rows.loadMore({ offset: rows.nextOffset, limit: INBOX_PAGE_SIZE })}
+            disabled={loadingMore}
+            onClick={() => void onLoadMore()}
           >
-            {rows.loadingMore ? "Cargando..." : "Cargar más solicitudes"}
+            {loadingMore ? "Cargando..." : `Cargar más (${INBOX_PAGE_SIZE} por página)`}
           </button>
         </div>
       )}

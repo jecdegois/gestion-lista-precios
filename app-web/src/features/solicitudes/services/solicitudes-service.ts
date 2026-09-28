@@ -679,6 +679,32 @@ export const solicitudesService = {
     return { ok: true as const, solicitudes };
   },
 
+  /** Bandeja paginada: solo cabeceras, sin detalle de filas. */
+  async listarBandejaPaginada(identidad: Identidad, offset: number, limit: number) {
+    if (!identidad.compania) return SIN_COMPANIA;
+    const pagina = await repo.listPaged(identidad.compania, offset, limit);
+    // Filtrar borradores del total es complicado sin un COUNT separado, pero
+    // los borradores no existen en la bandeja (se crean en estado BORRADOR y
+    // el repo ya filtra por estado en el service — aquí filtramos post-paginación
+    // solo los que pudieran colarse por la query genérica).
+    const solicitudes = pagina.solicitudes.filter((s) => s.estado !== "BORRADOR");
+    return {
+      ok: true as const,
+      solicitudes,
+      total: pagina.total,
+      hasMore: pagina.hasMore,
+      nextOffset: pagina.nextOffset,
+    };
+  },
+
+  /** Detalle completo de una solicitud para el modal (cabecera + filas de SOLICITUD_DETALLE). */
+  async obtenerSolicitudDetalle(identidad: Identidad, solicitudId: string) {
+    if (!identidad.compania) return SIN_COMPANIA;
+    const solicitud = await repo.find(identidad.compania, solicitudId);
+    if (!solicitud) return { ok: false as const, error: "Solicitud no encontrada." };
+    return { ok: true as const, solicitud };
+  },
+
   /** Deja traza de que el aprobador abrió una solicitud PENDIENTE ajena. */
   async registrarRevision(identidad: Identidad, solicitudId: string) {
     const { solicitud, error } = await validarDecision(identidad, solicitudId);

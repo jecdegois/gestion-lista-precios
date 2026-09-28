@@ -39,6 +39,7 @@ interface TablaImpactoDescuentoManualProps {
   hallazgosHasMore?: boolean;
   hallazgosNextOffset?: number | null;
   hallazgosLoadingMore?: boolean;
+  hallazgosCargando?: boolean;
   onLoadMoreHallazgos?: (params: TableLoadParams) => void | Promise<void>;
   hasMore?: boolean;
   nextOffset?: number | null;
@@ -53,6 +54,7 @@ export default function TablaImpactoDescuentoManual({
   hallazgosHasMore = false,
   hallazgosNextOffset = null,
   hallazgosLoadingMore = false,
+  hallazgosCargando = false,
   onLoadMoreHallazgos,
   hasMore = false,
   nextOffset = null,
@@ -102,6 +104,7 @@ export default function TablaImpactoDescuentoManual({
         hallazgosHasMore={hallazgosHasMore}
         hallazgosNextOffset={hallazgosNextOffset}
         hallazgosLoadingMore={hallazgosLoadingMore}
+        hallazgosCargando={hallazgosCargando}
         onLoadMoreHallazgos={onLoadMoreHallazgos}
       />
     </div>

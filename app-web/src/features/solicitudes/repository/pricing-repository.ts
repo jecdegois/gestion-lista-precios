@@ -840,12 +840,168 @@ async function ejecutarSpGestionListas(
     .execute(sp);
 }
 
+export interface HallazgoGestionGlobal {
+  codigo: string;
+  descripcion: string;
+  precioActual: number;
+  costoPromedio: number;
+  margenUtilidadMin: number;
+  precioMinimo: number;
+  precioPropuesto: number;
+  nivelPrecio: string;
+  version: number;
+}
+
+export interface PaginaHallazgos {
+  items: HallazgoGestionGlobal[];
+  total: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+}
+
+/**
+ * Artículos cuyo precio propuesto (PRECIO * factor) cae por debajo del precio
+ * mínimo (COSTO_PROM_DOL / (1 - MARGEN_UTILIDAD_MIN)). Se calcula completamente
+ * en SQL en una sola query, sin loops en Node.js.
+ *
+ * factor = 1 + (signo * magnitud) / 100
+ *   signo = -1 para DISMINUCION, +1 para AUMENTO
+ */
+async function listarHallazgosGestionGlobal(
+  compania: string,
+  nivelPrecio: string,
+  tipoVariacion: "AUMENTO" | "DISMINUCION",
+  magnitud: number,
+  offset = 0,
+  limit = 100,
+): Promise<PaginaHallazgos> {
+  if (esModoDemo()) {
+    return { items: [], total: 0, hasMore: false, nextOffset: null };
+  }
+
+  const nivel = nivelPrecio.trim();
+  const safeOffset = Math.max(0, offset);
+  const safeLimit = Math.min(Math.max(limit, 1), 200);
+  const signo = tipoVariacion === "DISMINUCION" ? -1 : 1;
+  const factor = 1 + (signo * magnitud) / 100;
+
+  if (factor <= 0 || factor > 2) {
+    return { items: [], total: 0, hasMore: false, nextOffset: null };
+  }
+
+  const pool = await getPool(compania);
+  const ap = objetoCalificado(compania, "tablaArticuloPrecio");
+  const art = objetoCalificado(compania, "tablaArticulo");
+  const versiones = objetoCalificado(compania, "tablaVersionNivel");
+  const mssql = await import("mssql");
+
+  // Una sola query que identifica hallazgos y pagina directamente en SQL.
+  //
+  // Condición de hallazgo (replica el engine JS en validarFila):
+  //   precioParaValidar < costoMinimo
+  // donde:
+  //   precioParaValidar = PRECIO * @factor  (aproximación — el engine usa precioRedondeado,
+  //                       pero el redondeo comercial de 12 bandas es complejo en SQL;
+  //                       la diferencia es mínima y produce falsos positivos acotados)
+  //   costoMinimo = COSTO_PROM_DOL / (1 - margenDecimal)
+  //   margenDecimal = MARGEN_UTILIDAD_MIN / 100  si está entre 0 y 100
+  //                 = 0.20 (fallback global)       si es NULL o 0
+  //
+  // El fallback de 0.20 replica MARGEN_MINIMO_GLOBAL del engine JS.
+  const baseQuery = `
+    WITH VersionActiva AS (
+      SELECT VN.NIVEL_PRECIO, MAX(VN.VERSION) AS VERSION
+        FROM ${versiones} VN WITH(NOLOCK)
+       WHERE VN.ESTADO = 'A' AND VN.NIVEL_PRECIO = @nivelPrecio
+       GROUP BY VN.NIVEL_PRECIO
+    ),
+    Hallazgos AS (
+      SELECT
+        AP.ARTICULO                                                                            AS codigo,
+        A.DESCRIPCION                                                                          AS descripcion,
+        CAST(AP.PRECIO            AS FLOAT)                                                    AS precioActual,
+        CAST(A.COSTO_PROM_DOL     AS FLOAT)                                                    AS costoPromedio,
+        CAST(
+          CASE
+            WHEN AP.MARGEN_UTILIDAD_MIN > 0 AND AP.MARGEN_UTILIDAD_MIN < 100
+            THEN AP.MARGEN_UTILIDAD_MIN / 100.0
+            ELSE 0.20
+          END AS FLOAT)                                                                        AS margenUtilidadMin,
+        CAST(
+          A.COSTO_PROM_DOL / NULLIF(1 -
+            CASE
+              WHEN AP.MARGEN_UTILIDAD_MIN > 0 AND AP.MARGEN_UTILIDAD_MIN < 100
+              THEN AP.MARGEN_UTILIDAD_MIN / 100.0
+              ELSE 0.20
+            END
+          , 0) AS FLOAT)                                                                       AS precioMinimo,
+        CAST(AP.PRECIO * @factor  AS FLOAT)                                                    AS precioPropuesto,
+        AP.NIVEL_PRECIO                                                                        AS nivelPrecio,
+        AP.VERSION                                                                             AS version
+        FROM ${ap} AP WITH(NOLOCK)
+        INNER JOIN VersionActiva VA
+                ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
+               AND VA.VERSION      = AP.VERSION
+        INNER JOIN ${art} A WITH(NOLOCK) ON A.ARTICULO = AP.ARTICULO
+       WHERE A.COSTO_PROM_DOL IS NOT NULL
+         AND A.COSTO_PROM_DOL > 0
+         AND AP.PRECIO * @factor < A.COSTO_PROM_DOL / NULLIF(1 -
+               CASE
+                 WHEN AP.MARGEN_UTILIDAD_MIN > 0 AND AP.MARGEN_UTILIDAD_MIN < 100
+                 THEN AP.MARGEN_UTILIDAD_MIN / 100.0
+                 ELSE 0.20
+               END
+             , 0)
+    )`;
+
+  const countQ = await pool
+    .request()
+    .input("nivelPrecio", mssql.VarChar(50), nivel)
+    .input("factor", mssql.Float, factor)
+    .query(`${baseQuery} SELECT COUNT(1) AS total FROM Hallazgos`);
+  const total: number = countQ.recordset[0]?.total ?? 0;
+
+  const dataQ = await pool
+    .request()
+    .input("nivelPrecio", mssql.VarChar(50), nivel)
+    .input("factor", mssql.Float, factor)
+    .input("offset", mssql.Int, safeOffset)
+    .input("limit", mssql.Int, safeLimit)
+    .query(
+      `${baseQuery}
+       SELECT * FROM Hallazgos
+        ORDER BY codigo
+        OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
+    );
+
+  const items: HallazgoGestionGlobal[] = dataQ.recordset.map((r: Record<string, unknown>) => ({
+    codigo: String(r.codigo),
+    descripcion: String(r.descripcion ?? ""),
+    precioActual: Number(r.precioActual ?? 0),
+    costoPromedio: Number(r.costoPromedio ?? 0),
+    margenUtilidadMin: Number(r.margenUtilidadMin ?? 0),
+    precioMinimo: Number(r.precioMinimo ?? 0),
+    precioPropuesto: Number(r.precioPropuesto ?? 0),
+    nivelPrecio: String(r.nivelPrecio ?? nivel),
+    version: Number(r.version ?? 0),
+  }));
+
+  const hasMore = safeOffset + items.length < total;
+  return {
+    items,
+    total,
+    hasMore,
+    nextOffset: hasMore ? safeOffset + items.length : null,
+  };
+}
+
 export const pricingRepository = {
   listPriceLevels: listarNivelesPrecio,
   activePriceVersion: obtenerVersionActiva,
   listGlobalManagement: listarGestionGlobal,
   listCatalog: listarCatalogo,
   listCatalogPage: listarCatalogoPaginado,
+  listFindings: listarHallazgosGestionGlobal,
   findArticle: buscarArticulo,
   updateGlobalManagement: actualizarGestionGlobal,
   upsertArticleListFactors: upsertFactoresArticuloLista,

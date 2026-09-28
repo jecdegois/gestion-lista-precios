@@ -11,7 +11,7 @@ import {
 } from "@/lib/engine";
 import type { CriteriosArticulo, FilaPrecio, FilaResultado, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
 import { nombreArchivoS3 } from "@/lib/ids";
-import { pricingRepository } from "../repository/pricing-repository";
+import { pricingRepository, type HallazgoGestionGlobal } from "../repository/pricing-repository";
 import type { CatalogoSolicitud } from "../types";
 import {
   cargarContextosPorLista,
@@ -292,20 +292,56 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
   const offset = Number.isInteger(input.offset) && (input.offset ?? 0) >= 0 ? input.offset as number : 0;
   const maxRecords = Number.isInteger(input.maxRecords) ? Math.min(Math.max(input.maxRecords as number, 1), 200) : 200;
   if (input.soloHallazgos) {
-    const hallazgos: FilaPrecio[] = [];
-    let cursor = 0;
-    let hayMasCatalogo = true;
-    while (hayMasCatalogo && hallazgos.length < offset + maxRecords) {
-      const paginaCatalogo = await pricingRepository.listCatalogPage(input.compania, nivel, "", cursor, 200);
-      const contextoPagina = crearContextoCatalogo(niveles, paginaCatalogo.items, nivel);
-      const filasPagina = construirFilasGestionGlobal(nivel, input.tipoVariacion ?? "AUMENTO", input.factor ?? "", contextoPagina);
-      hallazgos.push(...filasPagina.filter((fila) => !fila.validacion.valido && fila.validacion.estadoRedondeo === "ALERTA_MARGEN" && Boolean(fila.validacion.causa)));
-      hayMasCatalogo = paginaCatalogo.hasMore;
-      cursor = paginaCatalogo.nextOffset ?? cursor + paginaCatalogo.items.length;
-    }
-    const filas = hallazgos.slice(offset, offset + maxRecords).map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
-    const hayMas = hallazgos.length > offset + filas.length || hayMasCatalogo;
-    return { ok: true, filas, offset, maxRecords, hasMore: hayMas, nextOffset: hayMas ? offset + filas.length : null };
+    // Consulta directa en SQL: una sola query calcula la condición de hallazgo
+    // (precio propuesto < precio mínimo) sin loops en Node.js.
+    const magnitudRaw = Number.parseFloat(String(input.factor ?? "").replace(",", "."));
+    const magnitud = Number.isFinite(magnitudRaw) && magnitudRaw >= 0 ? magnitudRaw : 0;
+    const tv = input.tipoVariacion ?? "AUMENTO";
+    const pagina = await pricingRepository.listFindings(
+      input.compania,
+      nivel,
+      tv,
+      magnitud,
+      offset,
+      maxRecords,
+    );
+    const nombreLista = nivel;
+    const filas: FilaPrecio[] = pagina.items.map((h: HallazgoGestionGlobal, index: number) => ({
+      fila: offset + index + 1,
+      codigo: h.codigo,
+      descripcion: h.descripcion,
+      lista: nombreLista,
+      listaCodigo: nivel,
+      tipoVariacion: tv,
+      variacionPorcentaje: input.factor ?? "",
+      multiplicador: h.precioPropuesto > 0 && h.precioActual > 0 ? h.precioPropuesto / h.precioActual : null,
+      factorPropuesto: h.precioPropuesto > 0 && h.precioActual > 0 ? h.precioPropuesto / h.precioActual : 0,
+      precioMin: h.precioMinimo,
+      validacion: {
+        valido: false,
+        precioActual: h.precioActual,
+        precioPropuesto: h.precioPropuesto,
+        factorPropuesto: h.precioPropuesto > 0 && h.precioActual > 0 ? h.precioPropuesto / h.precioActual : null,
+        multiplicador: h.precioPropuesto > 0 && h.precioActual > 0 ? h.precioPropuesto / h.precioActual : null,
+        factorReduccion: null,
+        precioRedondeado: h.precioPropuesto,
+        estadoRedondeo: "ALERTA_MARGEN" as const,
+        bandaRedondeo: null,
+        margenMinimo: h.margenUtilidadMin,
+        costo: h.costoPromedio,
+        costoMinimo: h.precioMinimo,
+        precioMin: h.precioMinimo,
+        causa: `El precio propuesto (${h.precioPropuesto.toFixed(2)}) es menor que el precio mínimo del artículo (${h.precioMinimo.toFixed(2)}).`,
+      },
+    }));
+    return {
+      ok: true,
+      filas,
+      offset,
+      maxRecords,
+      hasMore: pagina.hasMore,
+      nextOffset: pagina.nextOffset,
+    };
   }
   const pagina = await pricingRepository.listCatalogPage(input.compania, nivel, "", offset, maxRecords);
   const contexto = crearContextoCatalogo(niveles, pagina.items, nivel);

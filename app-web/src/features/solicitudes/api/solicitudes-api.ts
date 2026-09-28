@@ -79,8 +79,15 @@ export async function parsearExcel(input: { proceso: ProcesoKey; nivelPrecio?: s
   }
 }
 
-export function getBandeja() {
-  return request<{ solicitudes: Solicitud[] }>("/api/bandeja");
+export function getBandeja(offset = 0, limit = 20) {
+  const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  return request<{ solicitudes: Solicitud[]; total: number; hasMore: boolean; nextOffset: number | null }>(
+    `/api/bandeja?${q.toString()}`,
+  );
+}
+
+export function getSolicitudDetalle(id: string) {
+  return request<{ solicitud: Solicitud }>(`/api/bandeja/${encodeURIComponent(id)}`);
 }
 
 export function registrarRevision(id: string) {
