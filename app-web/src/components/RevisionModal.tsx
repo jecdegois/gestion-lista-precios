@@ -6,11 +6,12 @@ import { EstadoBadge } from "./Badges";
 import TablaResultadoModal from "./newComponents/TablaResultadoModal";
 import TablaImpactoActualizacionMasiva from "./newComponents/TablaImpactoActualizacionMasiva";
 import TablaImpactoGestionGlobal from "./newComponents/TablaImpactoGestionGlobal";
+import TablaImpactoMargen from "./newComponents/TablaImpactoMargen";
 import { esHallazgoDeNegocio } from "./Tablas";
 import type { TableLoadParams } from "./newComponents/ResponsiveDataTable";
 import { PROCESOS } from "@/lib/catalog";
 import { textoResultadoAuditoria } from "@/lib/events";
-import type { FilaPrecio, Identidad, Solicitud } from "@/lib/domain-types";
+import type { FilaMargen, FilaPrecio, Identidad, Solicitud } from "@/lib/domain-types";
 
 function pasoDeEstado(estado: string): number {
   if (estado === "BORRADOR" || estado === "CANCELACION_SOLICITADA" || estado === "CANCELADO") return 0;
@@ -303,6 +304,14 @@ export default function RevisionModal({
             />
           ) : esActualizacionListaBase ? (
             <TablaImpactoActualizacionMasiva filas={filas as FilaPrecio[]} soloPrecioSolicitado />
+          ) : solicitud.proceso === "MARGEN_UTILIDAD_MASIVO" ? (
+            <TablaImpactoMargen
+              filas={filas as FilaMargen[]}
+              hasMore={detalleHasMore}
+              nextOffset={detalleNextOffset}
+              loadingMore={cargandoDetalle}
+              onLoadMore={cargarDetalle}
+            />
           ) : (
             <TablaResultadoModal
               filas={filas}
