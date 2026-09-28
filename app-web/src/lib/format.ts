@@ -22,10 +22,11 @@ export function fmtPorcentajeMultiplicador(x: number | null | undefined): string
   return `${((x - 1) * 100).toLocaleString("es-CR", { maximumFractionDigits: 4 })}%`;
 }
 
-/** Formatea un porcentaje ya capturado sin exponer decimales técnicos. */
+/** Formatea un porcentaje ya capturado sin exponer decimales técnicos.
+ *  Los descuentos se expresan siempre como valor positivo (ej. -20 → "20%"). */
 export function fmtPorcentajeCapturado(x: number | string | null | undefined): string {
   if (x == null || String(x).trim() === "") return "—";
-  const numero = Number(String(x).replace(",", "."));
+  const numero = Math.abs(Number(String(x).replace(",", ".")));
   if (!Number.isFinite(numero)) return String(x);
   return `${numero.toLocaleString("es-CR", { maximumFractionDigits: 4 })}%`;
 }
