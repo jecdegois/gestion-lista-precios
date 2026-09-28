@@ -4,6 +4,7 @@ import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
 import type {
   CriteriosArticulo,
   FilaMargen,
+  FilaPrecio,
   FilaResultado,
   Identidad,
   ParametrosSolicitud,
@@ -93,10 +94,10 @@ async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boole
     return { ok: false, error: "La solicitud no contiene una lista de precio válida." };
   }
   if (input.proceso === "FACTOR_PRECIO") {
-    if (input.filas.length === 0) {
-      return { ok: false, error: "La simulación de Gestión Global no contiene filas de impacto." };
-    }
-    const filasConLista = input.filas.map((fila) => ({ ...fila, lista: listaPredeterminada }));
+    // Gestión Global persiste una sola fila resumen con los parámetros de la
+    // operación. El detalle artículo por artículo es informativo y se consulta
+    // en tiempo real desde Softland al abrir el modal — no se persiste.
+    const filaResumen = construirFilaResumenGestionGlobal(input.parametros, listaPredeterminada);
     const codigo = await repo.nextCode(input.compania);
     const solicitud: Solicitud = {
       id: codigo,
@@ -107,7 +108,7 @@ async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boole
       solicitanteEmail: identidadPortal.email,
       idpOperador,
       parametros: input.parametros,
-      filas: filasConLista,
+      filas: [filaResumen],
       archivoNombre: input.archivoNombre ?? null,
       archivoS3Key: input.archivoS3Key ?? null,
       fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
@@ -750,3 +751,57 @@ export const solicitudesService = {
     return solicitarCancelacion(identidad.compania, solicitudId, input.motivo, identidad.email, identidad.nombre, identidad.rol);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Helpers internos
+// ---------------------------------------------------------------------------
+
+/**
+ * Construye la fila resumen que se persiste en SOLICITUD_DETALLE para una
+ * solicitud de Gestión Global. El detalle artículo por artículo es informativo
+ * y se consulta en tiempo real desde Softland al abrir el modal.
+ *
+ * Campos sin sentido para este proceso (precio por artículo, costo) reciben
+ * valores neutros (0 / null) que satisfacen los constraints NOT NULL de BD.
+ */
+function construirFilaResumenGestionGlobal(
+  parametros: ParametrosSolicitud,
+  lista: string,
+): FilaPrecio {
+  const factor = Number(parametros.factor ?? 0);
+  const multiplicador = Number(
+    parametros.multiplicador ?? (1 + factor / 100),
+  );
+  const tipo =
+    parametros.tipoVariacion === "DISMINUCION" ? "DISMINUCION" : "AUMENTO";
+  const descripcion =
+    `Gestión Global · ${lista} · ${tipo} ${factor}%`.slice(0, 200);
+
+  return {
+    fila: 1,
+    codigo: "GESTION_GLOBAL",
+    descripcion,
+    lista,
+    listaCodigo: lista,
+    tipoVariacion: tipo,
+    variacionPorcentaje: factor,
+    valorPropuestoRaw: String(multiplicador),
+    factorPropuesto: multiplicador,
+    multiplicador,
+    precioCalculado: 0,
+    validacion: {
+      valido: true,
+      precioActual: 0,
+      precioPropuesto: 0,
+      factorPropuesto: multiplicador,
+      precioRedondeado: 0,
+      estadoRedondeo: null,
+      bandaRedondeo: null,
+      margenMinimo: null,
+      costoMinimo: null,
+      costo: 0,
+      precioMin: null,
+      causa: null,
+    },
+  };
+}

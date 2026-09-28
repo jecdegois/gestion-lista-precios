@@ -71,7 +71,9 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
         variacionPorcentaje: factor,
         nivelPrecio: level || undefined,
       },
-      filas: (rows ?? []) as unknown as SolicitudInput["filas"],
+      // El servicio construye la fila resumen a partir de los parámetros;
+      // el formulario no envía artículos simulados para Gestión Global.
+      filas: [] as unknown as SolicitudInput["filas"],
     };
   }
 
