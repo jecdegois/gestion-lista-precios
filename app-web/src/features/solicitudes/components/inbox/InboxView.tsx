@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import RevisionModal from "@/components/RevisionModal";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
@@ -8,20 +7,24 @@ import { useInbox } from "../../hooks/useInbox";
 import { resumeDraftRoute } from "../../routes";
 import InboxTable from "./InboxTable";
 
-/** Bandeja de aprobación: solicitudes de la compañía, detalle y decisiones del aprobador. */
+/** Bandeja de aprobación: solicitudes paginadas (cabeceras) + detalle lazy al abrir el modal. */
 export default function InboxView({ readOnly }: { readOnly: boolean }) {
   const user = useCurrentUser();
   const router = useRouter();
   const inbox = useInbox(readOnly);
-  const [modalId, setModalId] = useState<string | null>(null);
   const isApprover = user.rol === "APROBADOR";
   const isAuditor = user.rol === "AUDITOR";
 
-  function open(id: string) {
-    setModalId(id);
-    const request = inbox.requests.find((s) => s.id === id);
-    // Abrir una solicitud pendiente de otro usuario registra la revisión del aprobador.
-    if (request?.estado === "PENDIENTE" && isApprover && !readOnly && request.solicitanteEmail !== user.email) {
+  async function open(id: string) {
+    await inbox.openWithDetail(id);
+    // Registrar revisión del aprobador sobre solicitudes PENDIENTE ajenas
+    const cabecera = inbox.requests.find((s) => s.id === id);
+    if (
+      cabecera?.estado === "PENDIENTE" &&
+      isApprover &&
+      !readOnly &&
+      cabecera.solicitanteEmail !== user.email
+    ) {
       void inbox.markReviewed(id);
     }
   }
@@ -31,23 +34,33 @@ export default function InboxView({ readOnly }: { readOnly: boolean }) {
     if (request) router.push(resumeDraftRoute(request.proceso, id));
   }
 
-  const modalRequest = modalId ? inbox.requests.find((s) => s.id === modalId) : undefined;
-
   return (
     <>
-      <InboxTable requests={inbox.requests} currentUser={user} onOpen={open} onRefresh={inbox.refresh} refreshing={inbox.refreshing} />
-      {modalRequest && (
+      <InboxTable
+        requests={inbox.requests}
+        total={inbox.total}
+        hasMore={inbox.hasMore}
+        loadingMore={inbox.loadingMore}
+        currentUser={user}
+        onOpen={(id) => void open(id)}
+        onRefresh={inbox.refresh}
+        onLoadMore={inbox.loadMore}
+        refreshing={inbox.refreshing}
+      />
+
+      {inbox.modalRequest && (
         <RevisionModal
-          solicitud={modalRequest}
+          solicitud={inbox.modalRequest}
           currentUser={user}
           readOnly={readOnly}
-          onClose={() => setModalId(null)}
+          onClose={inbox.closeModal}
           onAprobar={(id) => void inbox.approve(id)}
           onReintentar={(id) => void inbox.retry(id)}
           onRechazar={(id, reason) => void inbox.reject(id, reason)}
           onCancelar={(id, reason) => void inbox.requestCancellation(id, reason)}
           onDecidirCancelacion={(id, approved) => void inbox.decideCancellation(id, approved)}
           onRetomar={isAuditor ? undefined : resume}
+          loadingDetail={inbox.loadingDetail}
         />
       )}
     </>

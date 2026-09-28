@@ -32,6 +32,7 @@ export function ResumenValidaciones({
   hallazgosHasMore = false,
   hallazgosNextOffset = null,
   hallazgosLoadingMore = false,
+  hallazgosCargando = false,
   onLoadMoreHallazgos,
 }: {
   filas: FilaResultado[];
@@ -39,23 +40,30 @@ export function ResumenValidaciones({
   hallazgosHasMore?: boolean;
   hallazgosNextOffset?: number | null;
   hallazgosLoadingMore?: boolean;
+  /** true mientras la primera página de hallazgos está en vuelo. Muestra spinner en lugar de "sin hallazgos". */
+  hallazgosCargando?: boolean;
   onLoadMoreHallazgos?: (params: TableLoadParams) => void | Promise<void>;
 }) {
   const hallazgos = hallazgosExternos ?? filas.filter(esHallazgoDeNegocio);
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila));
+  const mostrarSeccionHallazgos = hallazgosExternos !== undefined || hallazgos.length > 0 || hallazgosHasMore || hallazgosCargando;
 
   return (
     <>
-      {(hallazgos.length > 0 || hallazgosHasMore) && (
+      {mostrarSeccionHallazgos && (
         <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
           <p className="text-xs font-semibold text-red-800 mb-1.5">Hallazgos de margen:</p>
-          <TablaHallazgosMargen
-            filas={hallazgos}
-            hasMore={hallazgosHasMore}
-            nextOffset={hallazgosNextOffset}
-            loadingMore={hallazgosLoadingMore}
-            onLoadMore={onLoadMoreHallazgos}
-          />
+          {hallazgosCargando && hallazgos.length === 0 ? (
+            <p className="text-xs text-red-700">Consultando hallazgos…</p>
+          ) : (
+            <TablaHallazgosMargen
+              filas={hallazgos}
+              hasMore={hallazgosHasMore}
+              nextOffset={hallazgosNextOffset}
+              loadingMore={hallazgosLoadingMore}
+              onLoadMore={onLoadMoreHallazgos}
+            />
+          )}
         </div>
       )}
       {datosPorCorregir.length > 0 && (

@@ -53,6 +53,77 @@ async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
   );
 }
 
+export interface PaginaSolicitudes {
+  solicitudes: Solicitud[];
+  total: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+}
+
+/**
+ * Cabeceras de solicitudes paginadas, SIN detalle de filas.
+ * Las filas de detalle se obtienen con `obtenerSolicitud` al abrir el modal.
+ */
+async function listarSolicitudesPaginado(
+  compania: string,
+  offset: number,
+  limit: number,
+): Promise<PaginaSolicitudes> {
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const safeOffset = Math.max(0, offset);
+  const safeLimit = Math.min(Math.max(limit, 1), 100);
+
+  if (esModoDemo()) {
+    const todas = demoListarSolicitudes().filter(
+      (s) => !companiaNormalizada || s.compania === companiaNormalizada,
+    );
+    const pagina = todas.slice(safeOffset, safeOffset + safeLimit);
+    const hasMore = safeOffset + pagina.length < todas.length;
+    return {
+      solicitudes: pagina,
+      total: todas.length,
+      hasMore,
+      nextOffset: hasMore ? safeOffset + pagina.length : null,
+    };
+  }
+
+  const pool = await getPortalPool();
+  const sp = objetoPortal(companiaNormalizada, "SOLICITUD");
+  const mssql = await import("mssql");
+
+  // Total sin detalle (COUNT)
+  const countQ = await pool
+    .request()
+    .input("comp", mssql.VarChar(20), companiaNormalizada)
+    .query(`SELECT COUNT(1) AS total FROM ${sp} WITH(NOLOCK) WHERE COMPANIA = @comp`);
+  const total: number = countQ.recordset[0]?.total ?? 0;
+
+  // Cabeceras paginadas — sin JOIN a SOLICITUD_DETALLE
+  const cab = await pool
+    .request()
+    .input("comp", mssql.VarChar(20), companiaNormalizada)
+    .input("offset", mssql.Int, safeOffset)
+    .input("limit", mssql.Int, safeLimit)
+    .query(
+      `SELECT * FROM ${sp} WITH(NOLOCK)
+        WHERE COMPANIA = @comp
+        ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC
+        OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
+    );
+
+  const solicitudes = cab.recordset.map((r: Record<string, unknown>) =>
+    // Sin detalle: filas vacías y parametros sin las filas embedidas
+    mapSolicitudCabecera(r),
+  );
+  const hasMore = safeOffset + solicitudes.length < total;
+  return {
+    solicitudes,
+    total,
+    hasMore,
+    nextOffset: hasMore ? safeOffset + solicitudes.length : null,
+  };
+}
+
 async function obtenerSolicitud(compania: string, codigo: string): Promise<Solicitud | undefined> {
   if (esModoDemo()) return demoObtener(codigo);
   const pool = await getPortalPool();
@@ -272,6 +343,58 @@ function textoPrimero(...valores: unknown[]): string | undefined {
     .find((valor) => Boolean(valor?.trim()));
 }
 
+/**
+ * Mapea una fila de SOLICITUD a un objeto Solicitud SIN filas de detalle.
+ * Elimina además `filas` del PARAMETROS_JSON para que la respuesta de la
+ * bandeja no cargue datos que no se necesitan hasta abrir el modal.
+ */
+function mapSolicitudCabecera(r: Record<string, unknown>): Solicitud {
+  let parametrosRaw: Record<string, unknown> = {};
+  try {
+    parametrosRaw = r.PARAMETROS_JSON ? (JSON.parse(String(r.PARAMETROS_JSON)) as Record<string, unknown>) : {};
+  } catch {
+    parametrosRaw = {};
+  }
+  // Eliminar las filas embedidas — solo se cargan al abrir el modal
+  const { filas: _filas, articulos: _articulos, ...parametros } = parametrosRaw;
+  void _filas;
+  void _articulos;
+
+  const lista =
+    textoPrimero(r.LISTA_PRECIO, r.LISTA, r.NIVEL_PRECIO, parametros.nivelPrecio, parametros.listaBase) ?? "";
+  return {
+    id: String(r.CODIGO_SOLICITUD ?? r.ID_PROCESO),
+    proceso: r.PROCESO as Solicitud["proceso"],
+    modalidad: r.MODALIDAD as Solicitud["modalidad"],
+    compania: String(r.COMPANIA),
+    lista,
+    solicitanteNombre: String(r.SOLICITANTE_NOMBRE),
+    solicitanteEmail: String(r.SOLICITANTE_EMAIL),
+    idpOperador: null,
+    parametros,
+    filas: [],
+    archivoNombre: (r.ARCHIVO_NOMBRE as string) ?? null,
+    archivoS3Key: (r.ARCHIVO_S3_KEY as string) ?? null,
+    fechaEnvio: (() => {
+      const v = r.FECHA_CREACION ?? r.FECHA_ENVIO;
+      if (!v) return "—";
+      const d = v instanceof Date ? v : new Date(v as string);
+      return isNaN(d.getTime()) ? "—" : d.toLocaleString("es-CR", { hour12: false });
+    })(),
+    fechaCreacion: (() => {
+      const v = r.FECHA_CREACION ?? r.FECHA_ENVIO;
+      if (!v) return undefined;
+      const d = v instanceof Date ? v : new Date(v as string);
+      return isNaN(d.getTime()) ? undefined : d.toISOString();
+    })(),
+    estado: r.ESTADO as Solicitud["estado"],
+    motivoRechazo: (r.MOTIVO_RECHAZO as string) ?? null,
+    idProcesoSP: (r.ID_PROCESO_SP as string) ?? null,
+    autorizadoPor: (r.APROBADOR_NOMBRE as string) ?? undefined,
+    autorizadoPorEmail: (r.APROBADOR_EMAIL as string) ?? undefined,
+  };
+}
+
 function mapSolicitud(r: Record<string, unknown>, detalle: Record<string, unknown>[]): Solicitud {
   let parametros = {};
   try {
@@ -431,6 +554,7 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
 
 export const requestsRepository = {
   list: listarSolicitudes,
+  listPaged: listarSolicitudesPaginado,
   find: obtenerSolicitud,
   nextCode: siguienteCodigoSolicitud,
   create: agregarSolicitud,

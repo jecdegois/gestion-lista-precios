@@ -56,6 +56,7 @@ export default function RevisionModal({
   onDecidirCancelacion,
   onRetomar,
   onEnviarBorrador,
+  loadingDetail = false,
 }: {
   solicitud: Solicitud;
   currentUser: Identidad;
@@ -68,9 +69,18 @@ export default function RevisionModal({
   onDecidirCancelacion?: (id: string, aprobada: boolean) => void;
   onRetomar?: (id: string) => void;
   onEnviarBorrador?: (id: string) => void;
+  /** Mientras sea true, el detalle (filas) está cargando desde el servidor. */
+  loadingDetail?: boolean;
 }) {
   const [motivo, setMotivo] = useState("");
   const [motivoCancelacion, setMotivoCancelacion] = useState("");
+
+  // Derivado de props — se calcula antes del estado para usarlo en los inicializadores
+  const esGestionGlobal = solicitud.proceso === "FACTOR_PRECIO";
+  const nivelConsulta = solicitud.lista?.trim() || solicitud.parametros.nivelPrecio?.trim() || solicitud.parametros.listaBase?.trim() || "";
+  const factorConsulta = String(solicitud.parametros.factor ?? "");
+  const tipoVariacionConsulta = solicitud.parametros.tipoVariacion === "DISMINUCION" ? "DISMINUCION" : "AUMENTO";
+
   const [filasDetalle, setFilasDetalle] = useState(solicitud.filas);
   const [detalleHasMore, setDetalleHasMore] = useState(false);
   const [detalleNextOffset, setDetalleNextOffset] = useState<number | null>(null);
@@ -82,11 +92,12 @@ export default function RevisionModal({
   const [cargandoHallazgos, setCargandoHallazgos] = useState(false);
   const offsetsDetalleEnCarga = useRef(new Set<number>());
   const offsetsHallazgosEnCarga = useRef(new Set<number>());
-
-  const esGestionGlobal = solicitud.proceso === "FACTOR_PRECIO";
-  const nivelConsulta = solicitud.lista?.trim() || solicitud.parametros.nivelPrecio?.trim() || solicitud.parametros.listaBase?.trim() || "";
-  const factorConsulta = String(solicitud.parametros.factor ?? "");
-  const tipoVariacionConsulta = solicitud.parametros.tipoVariacion === "DISMINUCION" ? "DISMINUCION" : "AUMENTO";
+  // Para Gestión Global: true en cuanto llega la primera página de artículos.
+  // Estado one-way (false → true, nunca vuelve) que desacopla la visibilidad
+  // de las tablas de los re-renders causados por setCargandoHallazgos u otros.
+  const [articulosCargados, setArticulosCargados] = useState(
+    !esGestionGlobal || solicitud.filas.length > 0,
+  );
   useEffect(() => {
     offsetsDetalleEnCarga.current.clear();
     setHallazgosDetalle([]);
@@ -96,21 +107,31 @@ export default function RevisionModal({
     offsetsHallazgosEnCarga.current.clear();
 
     if (esGestionGlobal) {
-      // La fila resumen persiste solo los parámetros de la operación, no el
-      // detalle artículo por artículo. Se vacía para que la tabla no muestre
-      // la fila sintética y se carga la primera página desde Softland.
+      // Para GG las filas se cargan desde Softland, no vienen en solicitud.filas.
+      // No usamos solicitud.filas como dependencia para evitar que el reset se
+      // dispare cuando llega el detalle lazy del modal (que cambiaría solicitud.filas
+      // de [] a [...] y volvería a poner articulosCargados en false).
       setFilasDetalle([]);
+      setArticulosCargados(false);
       setDetalleHasMore(true);
       setDetalleNextOffset(0);
     } else {
       setFilasDetalle(solicitud.filas);
+      setArticulosCargados(true);
       setDetalleHasMore(false);
       setDetalleNextOffset(null);
     }
-  }, [solicitud.id, solicitud.filas, esGestionGlobal]);
+  // solicitud.filas se excluye intencionalmente de las dependencias para GG:
+  // ver comentario arriba. El ID es suficiente para detectar cambio de solicitud.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solicitud.id, esGestionGlobal]);
 
 
-  // cargarDetalle: usado por ResponsiveDataTable al llegar al final del scroll.
+  // Para procesos no-GG: sincronizar filas cuando llega el detalle lazy del modal.
+  useEffect(() => {
+    if (esGestionGlobal) return;
+    setFilasDetalle(solicitud.filas);
+  }, [solicitud.filas, esGestionGlobal]);
   const cargarDetalle = async ({ offset, limit }: TableLoadParams) => {
     if (!esGestionGlobal || cargandoDetalle || !detalleHasMore) return;
     await fetchPaginaGestionGlobal(offset, limit);
@@ -134,6 +155,9 @@ export default function RevisionModal({
         hasMore?: boolean;
         nextOffset?: number | null;
       };
+      // One-way: se activa en cuanto la API responde (incluso si viene vacía),
+      // garantizando que las tablas permanecen montadas si hallazgos tarda más.
+      setArticulosCargados(true);
       if (!response.ok || !Array.isArray(pagina.filas)) return;
       const filasPagina = pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
       setFilasDetalle((actuales) =>
@@ -156,8 +180,9 @@ export default function RevisionModal({
   };
 
   const cargarHallazgosDetalle = async ({ offset, limit }: TableLoadParams) => {
-    if (!esGestionGlobal || cargandoHallazgos || offsetsHallazgosEnCarga.current.has(offset)) return;
-    if (!nivelConsulta) return;
+    if (!esGestionGlobal || !nivelConsulta) return;
+    // Guard con ref para evitar stale-closure con el estado de cargandoHallazgos
+    if (offsetsHallazgosEnCarga.current.has(offset)) return;
     offsetsHallazgosEnCarga.current.add(offset);
     setCargandoHallazgos(true);
     try {
@@ -168,10 +193,11 @@ export default function RevisionModal({
         tipoVariacion: tipoVariacionConsulta,
         soloHallazgos: "1",
         offset: String(offset),
-        maxRecords: String(limit),
+        maxRecords: String(Math.min(limit, 100)),
       });
       const response = await fetch(`/api/simulacion/gestion-global?${query.toString()}`, { cache: "no-store" });
       const pagina = await response.json() as {
+        ok?: boolean;
         filas?: FilaPrecio[];
         hasMore?: boolean;
         nextOffset?: number | null;
@@ -214,7 +240,7 @@ export default function RevisionModal({
   const filas = filasDetalle;
   const puedeDecidir =
     !readOnly && currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
-  const puedeAprobar = puedeDecidir && solicitud.filas.length > 0;
+  const puedeAprobar = puedeDecidir && (solicitud.filas.length > 0 || (esGestionGlobal && articulosCargados));
   const enProceso = solicitud.estado === "EN_PROCESO";
   const puedeReintentar =
     !readOnly &&
@@ -313,14 +339,19 @@ export default function RevisionModal({
         )}
 
         {/* Diff / tabla */}
-        {filas.length > 0 ? (
+        {loadingDetail ? (
+          <div className="flex items-center justify-center py-10 text-sm text-zinc-500">
+            <span className="mr-2 animate-spin">⏳</span> Cargando detalle…
+          </div>
+        ) : (esGestionGlobal ? articulosCargados : filas.length > 0) ? (
           esGestionGlobal ? (
             <TablaImpactoGestionGlobal
               filas={filas as FilaPrecio[]}
-              hallazgos={hallazgosDetalleCargados ? hallazgosDetalle : undefined}
+              hallazgos={hallazgosDetalle}
               hallazgosHasMore={hallazgosHasMore}
               hallazgosNextOffset={hallazgosNextOffset}
-              hallazgosLoadingMore={cargandoHallazgos}
+              hallazgosLoadingMore={hallazgosHasMore ? cargandoHallazgos : false}
+              hallazgosCargando={cargandoHallazgos}
               onLoadMoreHallazgos={cargarHallazgosDetalle}
               hasMore={detalleHasMore}
               nextOffset={detalleNextOffset}

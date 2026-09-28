@@ -53,6 +53,11 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
   const levelMissing = !!level && !catalog.levels.some((item) => item.codigo === level);
   const fieldsComplete = !!level && conversion.valido && !levelMissing;
   const rows = simulation.rows;
+  // Las tablas se muestran en cuanto hay una simulación en curso o ya hubo
+  // al menos una. El estado `everSimulated` solo va de false → true, por lo
+  // que las tablas permanecen montadas independientemente de cualquier
+  // re-render causado por findings, loadingFindings u otros efectos secundarios.
+  const showTables = simulation.everSimulated || simulation.simulating;
   const canSubmit = simulation.simulated && fieldsComplete && !readOnly && !simulation.simulating;
 
   const levelOptions: SelectOption[] = catalog.lists
@@ -109,7 +114,7 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
         onSubmit={() => canSubmit && void submission.submit(buildRequest())}
       />
 
-      {rows && rows.length > 0 && (
+      {showTables && (
         <SimulationResult
           exporting={exporting}
           exportDisabled={simulation.simulating}
@@ -122,11 +127,12 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
             </div>
           )}
           <TablaImpactoGestionGlobal
-            filas={rows}
+            filas={rows ?? []}
             hallazgos={simulation.findings.rows}
             hallazgosHasMore={simulation.findings.hasMore}
             hallazgosNextOffset={simulation.findings.nextOffset}
             hallazgosLoadingMore={simulation.findings.loading}
+            hallazgosCargando={simulation.findings.loading}
             onLoadMoreHallazgos={simulation.findings.load}
             hasMore={simulation.page.hasMore}
             nextOffset={simulation.page.nextOffset}
