@@ -83,8 +83,8 @@ async function actualizarGestionGlobal(
       .input("lista", mssql.VarChar(50), listaNormalizada)
       .query(
         `SELECT TOP (1) A.VERSION AS version
-           FROM [dbo].[GESTION_LISTAS_PRECIOS] A
-           INNER JOIN ${versiones} B
+           FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
+           INNER JOIN ${versiones} B WITH(NOLOCK)
                    ON A.NIVEL_PRECIO = B.NIVEL_PRECIO
                   AND A.VERSION = CONVERT(VARCHAR(50), B.VERSION)
           WHERE A.COMPANIA = @compania
@@ -200,7 +200,7 @@ async function upsertFactoresArticuloLista(
                   A.NIVEL_PRECIO_BASE AS nivelPrecioBase,
                   A.NIVEL_PRECIO AS nivelPrecio,
                   TRY_CONVERT(INT, A.VERSION) AS version
-             FROM ${gestion} A
+             FROM ${gestion} A WITH(NOLOCK)
             WHERE A.COMPANIA = @compania
               AND A.NIVEL_PRECIO = @nivelPrecio
             ORDER BY TRY_CONVERT(INT, A.VERSION) DESC, A.VERSION DESC;`,
@@ -254,7 +254,7 @@ async function upsertFactoresArticuloLista(
 
       const siguienteCodigo = await new mssql.Request(transaction).query(
         `SELECT CAST(COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.U_CODIGO)), ''))), 0) + 1 AS VARCHAR(10)) AS siguienteCodigo
-           FROM ${target} U;`,
+           FROM ${target} U WITH(NOLOCK);`,
       );
       const codigo = String(siguienteCodigo.recordset[0]?.siguienteCodigo ?? "1");
       if (codigo.length > 10) throw new Error(`No hay espacio disponible para generar U_CODIGO en ${target}.`);
@@ -326,7 +326,7 @@ async function actualizarPreciosBase(
       .input("lista", mssql.VarChar(50), lista)
       .query(
         `SELECT TOP (1) VN.VERSION AS version
-           FROM ${versiones} VN
+           FROM ${versiones} VN WITH(NOLOCK)
           WHERE VN.NIVEL_PRECIO = @lista
             AND VN.ESTADO = 'A'
           ORDER BY TRY_CONVERT(INT, VN.VERSION) DESC, VN.VERSION DESC;`,
@@ -389,11 +389,11 @@ async function listarNivelesPrecio(compania: string): Promise<NivelPrecio[]> {
   const versiones = objetoCalificado(compania, "tablaVersionNivel");
   const q = await pool.request().query(
     `SELECT DISTINCT NP.NIVEL_PRECIO AS codigo
-       FROM ${tabla} NP
+       FROM ${tabla} NP WITH(NOLOCK)
       WHERE NP.NIVEL_PRECIO IS NOT NULL
         AND EXISTS (
               SELECT 1
-                FROM ${versiones} VN
+                FROM ${versiones} VN WITH(NOLOCK)
                WHERE VN.NIVEL_PRECIO = NP.NIVEL_PRECIO
                  AND VN.ESTADO = 'A'
         )
@@ -417,7 +417,7 @@ async function obtenerVersionActiva(compania: string, nivelPrecio: string): Prom
     .input("nivelPrecio", mssql.VarChar(50), nivel)
     .query(
       `SELECT TOP (1) VN.VERSION AS version
-         FROM ${versiones} VN
+         FROM ${versiones} VN WITH(NOLOCK)
         WHERE VN.NIVEL_PRECIO = @nivelPrecio
           AND VN.ESTADO = 'A'
         ORDER BY TRY_CONVERT(INT, VN.VERSION) DESC, VN.VERSION DESC;`,
@@ -442,7 +442,7 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       `SELECT A.NIVEL_PRECIO AS codigo,
               A.VERSION AS version,
               A.VARIACION_PORC AS variacionPorc
-         FROM [dbo].[GESTION_LISTAS_PRECIOS] A
+         FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
         WHERE A.COMPANIA = @compania
         ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION), A.VERSION;`,
     );
@@ -471,7 +471,7 @@ async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Ar
       `WITH VersionActiva AS
        (
          SELECT VN.NIVEL_PRECIO, MAX(VN.VERSION) AS VERSION
-           FROM ${versiones} VN
+           FROM ${versiones} VN WITH(NOLOCK)
           WHERE VN.ESTADO = 'A'
             AND VN.NIVEL_PRECIO = @nivelPrecio
           GROUP BY VN.NIVEL_PRECIO
@@ -493,16 +493,16 @@ async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Ar
               C4.DESCRIPCION AS clasificacion4Descripcion,
               A.CLASIFICACION_5 AS clasificacion5,
               C5.DESCRIPCION AS clasificacion5Descripcion
-         FROM ${ap} AP
+         FROM ${ap} AP WITH(NOLOCK)
          INNER JOIN VersionActiva VA
                  ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
                 AND VA.VERSION = AP.VERSION
-         INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C1 ON A.CLASIFICACION_1 = C1.CLASIFICACION AND C1.AGRUPACION = 1
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C2 ON A.CLASIFICACION_2 = C2.CLASIFICACION AND C2.AGRUPACION = 2
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C3 ON A.CLASIFICACION_3 = C3.CLASIFICACION AND C3.AGRUPACION = 3
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C4 ON A.CLASIFICACION_4 = C4.CLASIFICACION AND C4.AGRUPACION = 4
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C5 ON A.CLASIFICACION_5 = C5.CLASIFICACION AND C5.AGRUPACION = 5
+         INNER JOIN ${art} A WITH(NOLOCK) ON A.ARTICULO = AP.ARTICULO
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C1 WITH(NOLOCK) ON A.CLASIFICACION_1 = C1.CLASIFICACION AND C1.AGRUPACION = 1
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C2 WITH(NOLOCK) ON A.CLASIFICACION_2 = C2.CLASIFICACION AND C2.AGRUPACION = 2
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C3 WITH(NOLOCK) ON A.CLASIFICACION_3 = C3.CLASIFICACION AND C3.AGRUPACION = 3
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C4 WITH(NOLOCK) ON A.CLASIFICACION_4 = C4.CLASIFICACION AND C4.AGRUPACION = 4
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C5 WITH(NOLOCK) ON A.CLASIFICACION_5 = C5.CLASIFICACION AND C5.AGRUPACION = 5
         WHERE AP.NIVEL_PRECIO = @nivelPrecio
         ORDER BY AP.ARTICULO`,
     );
@@ -585,7 +585,7 @@ async function listarCatalogoPaginado(
       `WITH VersionActiva AS
        (
          SELECT VN.NIVEL_PRECIO, MAX(VN.VERSION) AS VERSION
-           FROM ${versiones} VN
+           FROM ${versiones} VN WITH(NOLOCK)
           WHERE VN.ESTADO = 'A'
             AND VN.NIVEL_PRECIO = @nivelPrecio
           GROUP BY VN.NIVEL_PRECIO
@@ -607,16 +607,16 @@ async function listarCatalogoPaginado(
               C4.DESCRIPCION AS clasificacion4Descripcion,
               A.CLASIFICACION_5 AS clasificacion5,
               C5.DESCRIPCION AS clasificacion5Descripcion
-         FROM ${ap} AP
+         FROM ${ap} AP WITH(NOLOCK)
          INNER JOIN VersionActiva VA
                  ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
                 AND VA.VERSION = AP.VERSION
-         INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C1 ON A.CLASIFICACION_1 = C1.CLASIFICACION AND C1.AGRUPACION = 1
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C2 ON A.CLASIFICACION_2 = C2.CLASIFICACION AND C2.AGRUPACION = 2
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C3 ON A.CLASIFICACION_3 = C3.CLASIFICACION AND C3.AGRUPACION = 3
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C4 ON A.CLASIFICACION_4 = C4.CLASIFICACION AND C4.AGRUPACION = 4
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C5 ON A.CLASIFICACION_5 = C5.CLASIFICACION AND C5.AGRUPACION = 5
+         INNER JOIN ${art} A WITH(NOLOCK) ON A.ARTICULO = AP.ARTICULO
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C1 WITH(NOLOCK) ON A.CLASIFICACION_1 = C1.CLASIFICACION AND C1.AGRUPACION = 1
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C2 WITH(NOLOCK) ON A.CLASIFICACION_2 = C2.CLASIFICACION AND C2.AGRUPACION = 2
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C3 WITH(NOLOCK) ON A.CLASIFICACION_3 = C3.CLASIFICACION AND C3.AGRUPACION = 3
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C4 WITH(NOLOCK) ON A.CLASIFICACION_4 = C4.CLASIFICACION AND C4.AGRUPACION = 4
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C5 WITH(NOLOCK) ON A.CLASIFICACION_5 = C5.CLASIFICACION AND C5.AGRUPACION = 5
         WHERE AP.NIVEL_PRECIO = @nivelPrecio
           AND (@search = '' OR AP.ARTICULO LIKE @searchLike OR A.DESCRIPCION LIKE @searchLike)
         ORDER BY AP.ARTICULO
@@ -672,7 +672,7 @@ async function buscarArticulo(compania: string, codigo: string, nivelPrecio: str
       `WITH VersionActiva AS
        (
          SELECT VN.NIVEL_PRECIO, MAX(VN.VERSION) AS VERSION
-           FROM ${versiones} VN
+           FROM ${versiones} VN WITH(NOLOCK)
           WHERE VN.ESTADO = 'A'
             AND VN.NIVEL_PRECIO = @nivelPrecio
           GROUP BY VN.NIVEL_PRECIO
@@ -683,16 +683,16 @@ async function buscarArticulo(compania: string, codigo: string, nivelPrecio: str
               AP.NIVEL_PRECIO AS nivelPrecio,
               AP.VERSION AS version,
               CAST(AP.MARGEN_UTILIDAD_MIN AS FLOAT) AS margenUtilidadMinPorcentaje
-         FROM ${ap} AP
+         FROM ${ap} AP WITH(NOLOCK)
          INNER JOIN VersionActiva VA
                  ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
                 AND VA.VERSION = AP.VERSION
-         INNER JOIN ${art} A ON A.ARTICULO = AP.ARTICULO
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C1 ON A.CLASIFICACION_1 = C1.CLASIFICACION AND C1.AGRUPACION = 1
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C2 ON A.CLASIFICACION_2 = C2.CLASIFICACION AND C2.AGRUPACION = 2
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C3 ON A.CLASIFICACION_3 = C3.CLASIFICACION AND C3.AGRUPACION = 3
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C4 ON A.CLASIFICACION_4 = C4.CLASIFICACION AND C4.AGRUPACION = 4
-         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C5 ON A.CLASIFICACION_5 = C5.CLASIFICACION AND C5.AGRUPACION = 5
+         INNER JOIN ${art} A WITH(NOLOCK) ON A.ARTICULO = AP.ARTICULO
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C1 WITH(NOLOCK) ON A.CLASIFICACION_1 = C1.CLASIFICACION AND C1.AGRUPACION = 1
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C2 WITH(NOLOCK) ON A.CLASIFICACION_2 = C2.CLASIFICACION AND C2.AGRUPACION = 2
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C3 WITH(NOLOCK) ON A.CLASIFICACION_3 = C3.CLASIFICACION AND C3.AGRUPACION = 3
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C4 WITH(NOLOCK) ON A.CLASIFICACION_4 = C4.CLASIFICACION AND C4.AGRUPACION = 4
+         LEFT JOIN ${objetoCalificado(compania, "tablaClasificacion")} C5 WITH(NOLOCK) ON A.CLASIFICACION_5 = C5.CLASIFICACION AND C5.AGRUPACION = 5
         WHERE AP.ARTICULO = @articulo
           AND AP.NIVEL_PRECIO = @nivelPrecio`,
     );
@@ -728,7 +728,7 @@ async function leerPorcentajeUdf(compania: string, codigo: string): Promise<numb
     .input("codigo", mssql.VarChar(260), codigo.trim())
     .query(
       `SELECT TOP (1) CAST(U.${colFactor} AS FLOAT) AS porcentaje
-         FROM ${udf} U
+         FROM ${udf} U WITH(NOLOCK)
         WHERE U.${colArticulo} = @codigo AND U.${colActivo} = 'S'
         ORDER BY U.${colFactor} DESC`,
     );
@@ -766,7 +766,7 @@ async function upsertUdf(
     .request()
     .query(
       `SELECT CAST(COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.${colCodigo})), ''))), 0) + 1 AS VARCHAR(256)) AS siguienteCodigo
-         FROM ${udf} U`,
+         FROM ${udf} U WITH(NOLOCK)`,
     );
   const codigoRegistro = String(siguienteCodigo.recordset[0]?.siguienteCodigo ?? "1");
   await pool

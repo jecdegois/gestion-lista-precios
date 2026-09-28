@@ -36,15 +36,15 @@ async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
     ? await pool
       .request()
       .input("comp", mssql.VarChar(20), companiaNormalizada)
-      .query(`SELECT * FROM ${sp} WHERE COMPANIA = @comp ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC`)
-    : await pool.request().query(`SELECT * FROM ${sp} ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC`);
+      .query(`SELECT * FROM ${sp} WITH(NOLOCK) WHERE COMPANIA = @comp ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC`)
+    : await pool.request().query(`SELECT * FROM ${sp} WITH(NOLOCK) ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC`);
   
   // Obtener detalles - join siempre necesario para mapear filas a solicitudes
   const detRequest = pool.request();
   const detQuery = companiaNormalizada
     ? (detRequest.input("comp", mssql.VarChar(20), companiaNormalizada),
-       `SELECT D.* FROM ${spd} D INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp`)
-    : `SELECT D.* FROM ${spd} D ORDER BY D.ID_SOLICITUD, D.ID_DETALLE`;
+       `SELECT D.* FROM ${spd} D WITH(NOLOCK) INNER JOIN ${sp} S WITH(NOLOCK) ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp`)
+    : `SELECT D.* FROM ${spd} D WITH(NOLOCK) ORDER BY D.ID_SOLICITUD, D.ID_DETALLE`;
   
   const det = await detRequest.query(detQuery);
 
@@ -59,14 +59,14 @@ async function obtenerSolicitud(compania: string, codigo: string): Promise<Solic
   const sp = objetoPortal(compania, "SOLICITUD");
   const spd = objetoPortal(compania, "SOLICITUD_DETALLE");
   const mssql = await import("mssql");
-  const cab = await pool.request().input("cod", mssql.VarChar(20), codigo).query(`SELECT * FROM ${sp} WHERE CODIGO_SOLICITUD = @cod`);
+  const cab = await pool.request().input("cod", mssql.VarChar(20), codigo).query(`SELECT * FROM ${sp} WITH(NOLOCK) WHERE CODIGO_SOLICITUD = @cod`);
   const r = cab.recordset[0];
   if (!r) return undefined;
   const idSolicitud = enteroSeguro(r.ID_SOLICITUD, "ID_SOLICITUD de la solicitud");
   const det = await pool
     .request()
     .input("idSolicitud", mssql.Int, idSolicitud)
-    .query(`SELECT D.* FROM ${spd} D WHERE D.ID_SOLICITUD = @idSolicitud ORDER BY D.ID_DETALLE`);
+    .query(`SELECT D.* FROM ${spd} D WITH(NOLOCK) WHERE D.ID_SOLICITUD = @idSolicitud ORDER BY D.ID_DETALLE`);
   return mapSolicitud(r, det.recordset);
 }
 
@@ -155,7 +155,7 @@ async function actualizarMensajeErrorDetalles(compania: string, codigo: string, 
   const mssql = await import("mssql");
   const solicitud = await pool.request()
     .input("cod", mssql.VarChar(20), codigo)
-    .query(`SELECT ID_SOLICITUD FROM ${sp} WHERE CODIGO_SOLICITUD = @cod`);
+    .query(`SELECT ID_SOLICITUD FROM ${sp} WITH(NOLOCK) WHERE CODIGO_SOLICITUD = @cod`);
   const idSolicitud = solicitud.recordset[0]?.ID_SOLICITUD;
   if (idSolicitud == null) return;
   await pool.request()
@@ -174,7 +174,7 @@ async function actualizarFactorAplicadoDetalles(compania: string, codigo: string
   const mssql = await import("mssql");
   const solicitud = await pool.request()
     .input("cod", mssql.VarChar(20), codigo)
-    .query(`SELECT ID_SOLICITUD FROM ${sp} WHERE CODIGO_SOLICITUD = @cod`);
+    .query(`SELECT ID_SOLICITUD FROM ${sp} WITH(NOLOCK) WHERE CODIGO_SOLICITUD = @cod`);
   const idSolicitud = solicitud.recordset[0]?.ID_SOLICITUD;
   if (idSolicitud == null) return;
   await pool.request()

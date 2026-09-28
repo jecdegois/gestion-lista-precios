@@ -57,12 +57,12 @@ async function list(compania: string): Promise<EventoAuditoria[]> {
       .input("comp", mssql.VarChar(20), compania)
       .query(
         `SELECT TOP (200) ${columnas}
-           FROM ${ae}
+           FROM ${ae} WITH(NOLOCK)
           WHERE ISJSON(PAYLOAD_JSON) = 1
             AND JSON_VALUE(PAYLOAD_JSON, '$.compania') = @comp
           ORDER BY FECHA_EVENTO DESC`,
       )
-    : await pool.request().query(`SELECT TOP (200) ${columnas} FROM ${ae} ORDER BY FECHA_EVENTO DESC`);
+    : await pool.request().query(`SELECT TOP (200) ${columnas} FROM ${ae} WITH(NOLOCK) ORDER BY FECHA_EVENTO DESC`);
 
   return q.recordset.map((r: Record<string, unknown>) => {
     let payload: Record<string, unknown> = {};
