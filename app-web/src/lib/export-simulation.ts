@@ -13,14 +13,51 @@ function numero(valor: unknown): number | null {
  * @param etiquetaVariacion - Encabezado de la columna de variación (Descuento % / Variación %).
  * @param mensajeListaBase  - Cuando se recibe, omite la columna "Lista" de los datos y agrega
  *                            una hoja "Información" con la nota descriptiva de la lista padre.
+ * @param modo            - "precioBase" genera solo las columnas relevantes para Precio Base.
  */
 export function descargarSimulacionExcel(
   filas: FilaResultado[],
   nombre = "simulacion-precios.xlsx",
   etiquetaVariacion = "Descuento %",
   mensajeListaBase?: string,
+  modo?: "precioBase",
 ): void {
   const omitirColumnaLista = Boolean(mensajeListaBase);
+
+  // Exportación simplificada para Precio Base: solo columnas relevantes.
+  if (modo === "precioBase") {
+    const rows = filas.map((fila) => {
+      const v = fila.validacion;
+      const estado = v.valido
+        ? "VÁLIDO"
+        : v.estadoRedondeo === "ALERTA_MARGEN"
+          ? "ADVERTENCIA MARGEN"
+          : "INVÁLIDO";
+      return {
+        "Código": fila.codigo,
+        "Descripción": fila.descripcion,
+        "Precio Actual": numero(v.precioActual) ?? "",
+        "Precio Calc.": numero(v.precioPropuesto) ?? "",
+        "Precio Mínimo": numero(v.costoMinimo) ?? "",
+        "Estado": estado,
+        "Causa": v.causa ?? fila.mensajeError ?? "",
+      };
+    });
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    sheet["!cols"] = [
+      { wch: 18 }, // Código
+      { wch: 34 }, // Descripción
+      { wch: 16 }, // Precio Actual
+      { wch: 16 }, // Precio Calc.
+      { wch: 16 }, // Precio Mínimo
+      { wch: 22 }, // Estado
+      { wch: 55 }, // Causa
+    ];
+    XLSX.utils.book_append_sheet(workbook, sheet, "Simulación Precio Base");
+    XLSX.writeFile(workbook, nombre);
+    return;
+  }
 
   const rows = filas.map((fila) => {
     const v = fila.validacion;

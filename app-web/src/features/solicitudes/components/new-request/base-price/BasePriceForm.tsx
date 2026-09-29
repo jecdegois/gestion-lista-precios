@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import TablaImpactoActualizacionMasiva from "@/components/newComponents/TablaImpactoActualizacionMasiva";
+import { esHallazgoDeNegocio } from "@/components/Tablas";
 import type { FilaPrecio, FilaResultado } from "@/lib/domain-types";
 import type { SolicitudInput } from "../../../schemas/solicitud-schema";
 import type { ProcessFormProps, UploadedFile } from "../../../types";
@@ -22,7 +23,7 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
   const [simulated, setSimulated] = useState(Boolean(draft?.filas?.length));
   const [file, setFile] = useState<UploadedFile>(draftFile(draft));
 
-  const { exporting, exportRows } = useSimulationExport("mayoreod_masivo", "Precio");
+  const { exporting, exportRows } = useSimulationExport("mayoreod_masivo", "Precio", "precioBase");
   const submission = useRequestSubmission({
     draft,
     onSubmitted,
@@ -33,9 +34,14 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
     },
   });
 
-  const errorCount = rows ? rows.filter((r) => !r.validacion.valido).length : 0;
-  const fieldsComplete = !!rows && rows.every((r) => r.validacion.valido);
-  const canSubmit = simulated && fieldsComplete && !readOnly;
+  // Errores duros: inválidas que NO son hallazgos de margen → se descartan al enviar
+  const hardErrorCount = rows ? rows.filter((r) => !r.validacion.valido && !esHallazgoDeNegocio(r)).length : 0;
+  // Advertencias de margen: inválidas con ALERTA_MARGEN → se incluyen en la solicitud
+  const warningCount = rows ? rows.filter((r) => esHallazgoDeNegocio(r)).length : 0;
+  // Válidas + advertencias de margen son procesables
+  const processableCount = rows ? rows.filter((r) => r.validacion.valido || esHallazgoDeNegocio(r)).length : 0;
+  const hasPartialErrors = hardErrorCount > 0 && processableCount > 0;
+  const canSubmit = simulated && processableCount > 0 && !readOnly;
 
   function buildRequest(): SolicitudInput {
     return {
@@ -64,8 +70,8 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
         disabled={lockInput}
         instructions="Use las columnas Articulo y Precio."
         templateHref="/api/plantilla?proceso=MAYOREOD_MASIVO"
-        errorCount={errorCount}
-        errorMessage="Corrija y cargue nuevamente."
+        errorCount={0}
+        errorMessage=""
         onParsed={(parsed, name, s3Key) => {
           setRows(parsed);
           setFile({ name, s3Key });
@@ -78,13 +84,37 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
         simulateLabel="Precalcular impacto"
         canSimulate={false}
         onSimulate={() => undefined}
-        canSave={fieldsComplete && simulated && !!rows?.length}
+        canSave={processableCount > 0 && simulated && !!rows?.length}
         canSubmit={canSubmit}
         destructive
         submission={submission}
         onSave={() => void submission.saveDraft(buildRequest())}
         onSubmit={() => canSubmit && void submission.submit(buildRequest())}
       />
+
+      {(warningCount > 0 || hasPartialErrors) && (
+        <div className="space-y-2">
+          {warningCount > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
+              <span className="text-amber-500 mt-0.5">⚠</span>
+              <span>
+                <strong>{warningCount} fila(s) por debajo del margen mínimo</strong>: se incluirán en la solicitud.
+                El aprobador verá la advertencia antes de autorizar.
+              </span>
+            </div>
+          )}
+          {hasPartialErrors && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start gap-2">
+              <span className="text-red-500 mt-0.5">✕</span>
+              <span>
+                <strong>{hardErrorCount} fila(s) con error</strong> serán ignoradas
+                (precio cero, código inválido u otro error de formato).
+                Se procesarán únicamente los <strong>{processableCount} registros procesables</strong>.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {rows && rows.length > 0 && (
         <SimulationResult exporting={exporting} onExport={() => void exportRows(() => rows)}>

@@ -307,9 +307,11 @@ async function actualizarPreciosBase(
 
   const companiaNormalizada = compania.trim().toUpperCase();
   const lista = "MAYOREOD";
-  const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && fila.validacion.valido);
+  const filasValidas = filas.filter((fila): fila is FilaPrecio =>
+    !esFilaMargen(fila) && (fila.validacion.valido || fila.validacion.estadoRedondeo === "ALERTA_MARGEN"),
+  );
   if (filasValidas.length === 0) {
-    throw new Error("No existen filas vÃ¡lidas para actualizar precios base.");
+    throw new Error("No existen filas válidas para actualizar precios base.");
   }
 
   const pool = await getPool(companiaNormalizada);
