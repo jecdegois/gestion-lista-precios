@@ -5,6 +5,7 @@ import type { SubmissionState } from "../../../types";
 export default function RequestActions({
   simulateLabel = "Simular impacto",
   canSimulate,
+  simulating = false,
   onSimulate,
   canSave,
   canSubmit,
@@ -15,6 +16,8 @@ export default function RequestActions({
 }: {
   simulateLabel?: string;
   canSimulate: boolean;
+  /** Indica que la simulación está en curso; muestra spinner y deshabilita el botón. */
+  simulating?: boolean;
   onSimulate: () => void;
   canSave: boolean;
   canSubmit: boolean;
@@ -26,8 +29,12 @@ export default function RequestActions({
   const { sending, savingDraft, sent } = submission;
   return (
     <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
-      <button className="btn btn-outline" disabled={!canSimulate} onClick={onSimulate}>
-        <Icon name="search" className="w-3.5 h-3.5" /> {simulateLabel}
+      <button className="btn btn-outline" disabled={!canSimulate || simulating} onClick={onSimulate}>
+        {simulating ? (
+          <><Icon name="loader" className="w-3.5 h-3.5" spin /> Procesando…</>
+        ) : (
+          <><Icon name="search" className="w-3.5 h-3.5" /> {simulateLabel}</>
+        )}
       </button>
       <button
         className="btn btn-outline"
