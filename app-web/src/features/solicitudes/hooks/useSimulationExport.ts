@@ -6,7 +6,7 @@ import { descargarSimulacionExcel } from "@/lib/export-simulation";
 import type { FilaResultado } from "@/lib/domain-types";
 
 /** Exporta a Excel las filas simuladas; `getRows` puede ser asíncrono (p. ej. traer todas las páginas). */
-export function useSimulationExport(fileSlug: string, variationLabel: string) {
+export function useSimulationExport(fileSlug: string, variationLabel: string, modo?: "precioBase") {
   const pushToast = useToast();
   const [exporting, setExporting] = useState(false);
 
@@ -29,6 +29,7 @@ export function useSimulationExport(fileSlug: string, variationLabel: string) {
         `simulacion-${fileSlug}-${new Date().toISOString().slice(0, 10)}.xlsx`,
         variationLabel,
         mensajeListaBase,
+        modo,
       );
     } catch (error) {
       pushToast(error instanceof Error ? error.message : "No fue posible exportar la simulación.", "error");
