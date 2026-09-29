@@ -60,6 +60,11 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
   const showTables = simulation.everSimulated || simulation.simulating;
   const canSubmit = simulation.simulated && fieldsComplete && !readOnly && !simulation.simulating;
 
+  // Mensaje descriptivo para la tabla: informa desde qué lista padre se tomaron los precios.
+  const mensajeListaBase = simulation.nivelPrecioBase
+    ? `Precios calculados en base a la lista padre: ${simulation.nivelPrecioBase}`
+    : undefined;
+
   const levelOptions: SelectOption[] = catalog.lists
     .filter((list) => list.codigo.toUpperCase() !== "MAYOREOD")
     .map((list) => ({ value: list.codigo, label: list.nombre || list.codigo }));
@@ -119,7 +124,7 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
         <SimulationResult
           exporting={exporting}
           exportDisabled={simulation.simulating}
-          onExport={() => void exportRows(simulation.fetchAllRows)}
+          onExport={() => void exportRows(simulation.fetchAllRows, mensajeListaBase)}
         >
           {simulation.page.hasMore && (
             <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-2.5 text-xs text-blue-800 mb-3">
@@ -129,6 +134,7 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
           )}
           <TablaImpactoGestionGlobal
             filas={rows ?? []}
+            mensajeListaBase={mensajeListaBase}
             hallazgos={simulation.findings.rows}
             hallazgosHasMore={simulation.findings.hasMore}
             hallazgosNextOffset={simulation.findings.nextOffset}

@@ -98,6 +98,8 @@ export default function RevisionModal({
   const [articulosCargados, setArticulosCargados] = useState(
     !esGestionGlobal || solicitud.filas.length > 0,
   );
+  // Lista padre resuelta por el API para Gestión Global (para mostrar el banner en la tabla).
+  const [nivelPrecioBaseDetalle, setNivelPrecioBaseDetalle] = useState<string | undefined>(undefined);
   useEffect(() => {
     offsetsDetalleEnCarga.current.clear();
     setHallazgosDetalle([]);
@@ -115,6 +117,7 @@ export default function RevisionModal({
       setArticulosCargados(false);
       setDetalleHasMore(true);
       setDetalleNextOffset(0);
+      setNivelPrecioBaseDetalle(undefined);
     } else {
       setFilasDetalle(solicitud.filas);
       setArticulosCargados(true);
@@ -154,11 +157,14 @@ export default function RevisionModal({
         filas?: Solicitud["filas"];
         hasMore?: boolean;
         nextOffset?: number | null;
+        nivelPrecioBase?: string;
       };
       // One-way: se activa en cuanto la API responde (incluso si viene vacía),
       // garantizando que las tablas permanecen montadas si hallazgos tarda más.
       setArticulosCargados(true);
       if (!response.ok || !Array.isArray(pagina.filas)) return;
+      // Capturar la lista padre en la primera página para el banner descriptivo.
+      if (offset === 0 && pagina.nivelPrecioBase) setNivelPrecioBaseDetalle(pagina.nivelPrecioBase);
       const filasPagina = pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
       setFilasDetalle((actuales) =>
         offset === 0 ? filasPagina : [...actuales, ...filasPagina],
@@ -305,6 +311,37 @@ export default function RevisionModal({
           </div>
         )}
 
+        {/* Advertencia de filas inválidas en Precio Base — aplica cuando la solicitud
+            fue enviada con errores parciales; al aprobar solo se procesan las válidas. */}
+        {esActualizacionListaBase && (() => {
+          const filasConError = filas.filter((f) => !f.validacion.valido && !esHallazgoDeNegocio(f)).length;
+          const filasConAdvertencia = filas.filter((f) => esHallazgoDeNegocio(f)).length;
+          if (filasConError === 0 && filasConAdvertencia === 0) return null;
+          return (
+            <div className="space-y-2 mb-4">
+              {filasConError > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 flex items-start gap-2">
+                  <span className="text-red-500 shrink-0 mt-0.5">✕</span>
+                  <span>
+                    <strong>{filasConError} fila(s) con error</strong> fueron descartadas de esta solicitud
+                    (precio cero, código inválido u otro error de formato) y no serán procesadas.
+                  </span>
+                </div>
+              )}
+              {filasConAdvertencia > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 flex items-start gap-2">
+                  <span className="text-amber-500 shrink-0 mt-0.5">⚠</span>
+                  <span>
+                    <strong>{filasConAdvertencia} fila(s) con advertencia de margen</strong>: el precio propuesto
+                    está por debajo del margen mínimo del artículo. Estas filas <strong>sí serán procesadas</strong> si aprueba.
+                    Revíselas en la tabla antes de autorizar.
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Fase monitoreo */}
         {enProceso && (
           <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-3 mb-4">
@@ -347,6 +384,7 @@ export default function RevisionModal({
           esGestionGlobal ? (
             <TablaImpactoGestionGlobal
               filas={filas as FilaPrecio[]}
+              mensajeListaBase={nivelPrecioBaseDetalle ? `Precios calculados en base a la lista padre: ${nivelPrecioBaseDetalle}` : undefined}
               hallazgos={hallazgosDetalle}
               hallazgosHasMore={hallazgosHasMore}
               hallazgosNextOffset={hallazgosNextOffset}
@@ -359,7 +397,11 @@ export default function RevisionModal({
               onLoadMore={cargarDetalle}
             />
           ) : esActualizacionListaBase ? (
-            <TablaImpactoActualizacionMasiva filas={filas as FilaPrecio[]} soloPrecioSolicitado />
+            <TablaImpactoActualizacionMasiva
+              filas={filas as FilaPrecio[]}
+              soloPrecioSolicitado
+              mostrarErrores={filas.some((f) => !f.validacion.valido)}
+            />
           ) : solicitud.proceso === "MARGEN_UTILIDAD_MASIVO" ? (
             <TablaImpactoMargen
               filas={filas as FilaMargen[]}

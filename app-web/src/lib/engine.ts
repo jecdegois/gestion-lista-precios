@@ -170,25 +170,31 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
     : modo === "precio"
       ? numero
       : round2(numero);
-  if (precioPropuesto <= 0) {
-    return { ...base, precioActual: articulo.precioActual, precioPropuesto, causa: "El precio propuesto resultante debe ser mayor que cero." };
+  if (precioPropuesto === 0) {
+    return { ...base, precioActual: articulo.precioActual, precioPropuesto, causa: "No se permite precio igual a cero." };
+  }
+  if (precioPropuesto < 0) {
+    return { ...base, precioActual: articulo.precioActual, precioPropuesto, causa: "El precio propuesto no puede ser negativo." };
   }
 
   const redondeo = redondearPrecioComercial(precioPropuesto);
   const precioParaValidar = redondeo.precioRedondeado ?? precioPropuesto;
 
   if (costoMinimo != null && precioParaValidar < costoMinimo) {
+    // Advertencia (ALERTA_MARGEN): precio por debajo del margen mínimo del artículo.
+    // La fila es procesable — el aprobador decide si autoriza con conocimiento del riesgo.
     return {
       valido: false,
       precioActual: articulo.precioActual,
       precioPropuesto,
       precioRedondeado: redondeo.precioRedondeado,
-      estadoRedondeo: redondeo.estado === "CALCULADO" ? "ALERTA_MARGEN" : redondeo.estado,
+      estadoRedondeo: "ALERTA_MARGEN",
       bandaRedondeo: redondeo.banda,
       margenMinimo,
       costo,
       costoMinimo,
-      causa: `El precio final (${fmtMonto(precioParaValidar, context.moneda)}) es menor que el Costo Mínimo del Artículo (${fmtMonto(costoMinimo, context.moneda)}).`,
+      precioMin: costoMinimo,
+      causa: `El precio final (${fmtMonto(precioParaValidar, context.moneda)}) está por debajo del margen mínimo del artículo (mínimo: ${fmtMonto(costoMinimo, context.moneda)}).`,
     };
   }
 

@@ -1,3 +1,8 @@
+// Portal (PORTAL_PRECIOS). Generado con `npm run sqlserver:pull` sobre el esquema FEBECA, con 2 ajustes a mano
+// que hay que repetir tras cada pull:
+// 1. @default(now()) -> @default(dbgenerated("getdate()")): now() lo calcula Prisma en UTC y el SQL Server
+//    guarda hora local (UTC-4); con dbgenerated Prisma omite la columna y aplica el DEFAULT GETDATE() de la BD.
+// 2. EJECUCION_LOG.VERSION_FILA (rowversion) opcional: si es requerido y Unsupported, Prisma no genera create().
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/sqlserver"
@@ -11,7 +16,7 @@ datasource db {
 model AUDITORIA_APROBACION {
   ID_APROBACION       BigInt    @id(map: "PK_AUDITORIA_APROBACION") @default(autoincrement())
   ID_SOLICITUD        Int
-  FECHA               DateTime  @default(now(), map: "DF__AUDITORIA__FECHA__17036CC0") @db.DateTime
+  FECHA               DateTime  @default(dbgenerated("getdate()"), map: "DF__AUDITORIA__FECHA__17036CC0") @db.DateTime
   USUARIO_EMAIL       String    @db.VarChar(120)
   USUARIO_NOMBRE      String?   @db.VarChar(120)
   ACCION              String    @db.VarChar(30)
@@ -31,7 +36,7 @@ model AUDITORIA_PRECIOS {
   ROL          String   @db.VarChar(30)
   EVENTO       String   @db.VarChar(50)
   PAYLOAD_JSON String?  @db.NVarChar(Max)
-  FECHA_EVENTO DateTime @default(now(), map: "DF__AUDITORIA__FECHA__1CBC4616") @db.DateTime
+  FECHA_EVENTO DateTime @default(dbgenerated("getdate()"), map: "DF__AUDITORIA__FECHA__1CBC4616") @db.DateTime
 }
 
 model COMPANIA {
@@ -39,7 +44,7 @@ model COMPANIA {
   NOMBRE                                           String           @db.VarChar(80)
   ESQUEMA_SOFTLAND                                 String?          @db.VarChar(30)
   ACTIVO                                           String           @default("S", map: "DF__COMPANIA__ACTIVO__00200768") @db.Char(1)
-  FECHA_CREACION                                   DateTime         @default(now(), map: "DF__COMPANIA__FECHA___01142BA1") @db.DateTime
+  FECHA_CREACION                                   DateTime         @default(dbgenerated("getdate()"), map: "DF__COMPANIA__FECHA___01142BA1") @db.DateTime
   EJECUCION_LOG_EJECUCION_LOG_COMPANIAToCOMPANIA   EJECUCION_LOG[]  @relation("EJECUCION_LOG_COMPANIAToCOMPANIA")
   LISTA_PRECIO_LISTA_PRECIO_COMPANIAToCOMPANIA     LISTA_PRECIO[]   @relation("LISTA_PRECIO_COMPANIAToCOMPANIA")
   SOLICITUD_SOLICITUD_COMPANIAToCOMPANIA           SOLICITUD[]      @relation("SOLICITUD_COMPANIAToCOMPANIA")
@@ -57,7 +62,7 @@ model EJECUCION_LOG {
   ID_PROCESO_SP                             String?                  @db.VarChar(30)
   SP_NOMBRE                                 String?                  @db.VarChar(100)
   ESTADO                                    String                   @default("PENDIENTE", map: "DF_FEBECA_EL_ESTADO") @db.VarChar(25)
-  FECHA_INICIO                              DateTime                 @default(now(), map: "DF_FEBECA_EL_FECHA_INICIO") @db.DateTime
+  FECHA_INICIO                              DateTime                 @default(dbgenerated("getdate()"), map: "DF_FEBECA_EL_FECHA_INICIO") @db.DateTime
   FECHA_FIN                                 DateTime?                @db.DateTime
   TOTAL_ARTICULOS                           Int?
   EXITOSOS                                  Int?
@@ -65,7 +70,7 @@ model EJECUCION_LOG {
   CODIGO_ERROR                              String?                  @db.VarChar(40)
   MENSAJE_ERROR                             String?                  @db.VarChar(1000)
   OBSERVACIONES                             String?                  @db.VarChar(500)
-  VERSION_FILA                              Unsupported("timestamp")
+  VERSION_FILA                              Unsupported("timestamp")?
   COMPANIA_EJECUCION_LOG_COMPANIAToCOMPANIA COMPANIA                 @relation("EJECUCION_LOG_COMPANIAToCOMPANIA", fields: [COMPANIA], references: [COMPANIA], onUpdate: NoAction, map: "FK_FEBECA_EL_COMPANIA")
   USUARIO                                   USUARIO?                 @relation(fields: [ID_USUARIO], references: [ID_USUARIO], onDelete: NoAction, onUpdate: NoAction, map: "FK_FEBECA_EL_USUARIO")
 
@@ -95,8 +100,8 @@ model SOLICITUD {
   MOTIVO_RECHAZO                        String?                @db.Text
   PARAMETROS_JSON                       String                 @db.NVarChar(Max)
   INTENTOS_REINTENTO                    Int                    @default(0, map: "DF__SOLICITUD__INTEN__245D67DE")
-  FECHA_CREACION                        DateTime               @default(now(), map: "DF__SOLICITUD__FECHA__25518C17") @db.DateTime
-  FECHA_MODIFICACION                    DateTime               @default(now(), map: "DF__SOLICITUD__FECHA__2645B050") @db.DateTime
+  FECHA_CREACION                        DateTime               @default(dbgenerated("getdate()"), map: "DF__SOLICITUD__FECHA__25518C17") @db.DateTime
+  FECHA_MODIFICACION                    DateTime               @default(dbgenerated("getdate()"), map: "DF__SOLICITUD__FECHA__2645B050") @db.DateTime
   FECHA_ENVIO                           DateTime?              @db.DateTime
   ARCHIVO_S3_KEY                        String?                @db.VarChar(500)
   ARCHIVO_NOMBRE                        String?                @db.VarChar(8000)
@@ -157,7 +162,7 @@ model SOLICITUD_REINTENTO {
   ID_REINTENTO                 BigInt    @id(map: "PK_SOLICITUD_REINTENTO") @default(autoincrement())
   ID_SOLICITUD                 Int
   INTENTO_NUMERO               Int       @db.TinyInt
-  FECHA_INTENTO                DateTime  @default(now(), map: "DF__SOLICITUD__FECHA__3B40CD36") @db.DateTime
+  FECHA_INTENTO                DateTime  @default(dbgenerated("getdate()"), map: "DF__SOLICITUD__FECHA__3B40CD36") @db.DateTime
   TIPO_ERROR                   String    @db.VarChar(40)
   CODIGO_ERROR                 String?   @db.VarChar(40)
   MENSAJE_ERROR                String?   @db.VarChar(1000)
@@ -174,7 +179,7 @@ model USUARIO {
   NOMBRE         String           @db.VarChar(100)
   ROL_GLOBAL     String           @default("OPERADOR", map: "DF__USUARIO__ROL_GLO__0C85DE4D") @db.VarChar(30)
   ACTIVO         String           @default("S", map: "DF__USUARIO__ACTIVO__0D7A0286") @db.Char(1)
-  FECHA_CREACION DateTime         @default(now(), map: "DF__USUARIO__FECHA_C__0E6E26BF") @db.DateTime
+  FECHA_CREACION DateTime         @default(dbgenerated("getdate()"), map: "DF__USUARIO__FECHA_C__0E6E26BF") @db.DateTime
   ID_USUARIO     Int              @id(map: "PK__USUARIO__91136B90485F0CAD") @default(autoincrement())
   EJECUCION_LOG  EJECUCION_LOG[]
   SOLICITUD      SOLICITUD[]

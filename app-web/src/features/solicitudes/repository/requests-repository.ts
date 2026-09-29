@@ -2,7 +2,7 @@ import "server-only";
 import { Prisma } from "@/generated/sqlserver";
 import type { FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/lib/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
-import { plano, portalDb } from "@/server/db";
+import { ahoraServidor, plano, portalDb } from "@/server/db";
 import {
   agregarSolicitud as demoAgregar,
   actualizarSolicitud as demoActualizar,
@@ -153,7 +153,8 @@ async function actualizarSolicitud(compania: string, codigo: string, patch: Part
     demoActualizar(codigo, patch);
     return;
   }
-  const data: Prisma.SOLICITUDUpdateManyMutationInput = { FECHA_ULT_ESTADO: new Date() };
+  const db = portalDb(compania);
+  const data: Prisma.SOLICITUDUpdateManyMutationInput = { FECHA_ULT_ESTADO: await ahoraServidor(db) };
   if (patch.estado !== undefined) data.ESTADO = patch.estado;
   if (patch.motivoRechazo !== undefined) data.MOTIVO_RECHAZO = patch.motivoRechazo;
   if (patch.idProcesoSP !== undefined) data.ID_PROCESO_SP = patch.idProcesoSP;
@@ -165,7 +166,7 @@ async function actualizarSolicitud(compania: string, codigo: string, patch: Part
     data.FALLIDOS = patch.resultado.fallidos;
     data.LOG_S3_KEY = patch.resultado.logS3Key;
   }
-  await portalDb(compania).sOLICITUD.updateMany({ where: { CODIGO_SOLICITUD: codigo }, data });
+  await db.sOLICITUD.updateMany({ where: { CODIGO_SOLICITUD: codigo }, data });
 }
 
 /** Guarda el error del procesamiento en las líneas de la solicitud. */

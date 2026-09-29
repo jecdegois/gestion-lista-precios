@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { solicitudesService } from "@/features/solicitudes/services/solicitudes-service";
+import { pricingRepository } from "@/features/solicitudes/repository/pricing-repository";
 import { getIdentidadActual } from "@/utils/auth";
 
 function parseNonNegativeInteger(value: string | null, fallback: number): number {
@@ -26,6 +27,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "compania y nivel son parámetros obligatorios." }, { status: 400 });
   }
 
+  // Resolver la lista padre una única vez en el borde de la API.
+  // Si NIVEL_PRECIO_BASE es NULL en la BD, listarGestionGlobal devuelve la propia lista
+  // como base (fallback aplicado con COALESCE en SQL + validación en JS).
+  let nivelPrecioBase: string = nivel;
+  try {
+    const listas = await pricingRepository.listGlobalManagement(compania);
+    const filaLista = listas.find((l) => l.codigo === nivel);
+    if (filaLista) nivelPrecioBase = filaLista.nivelPrecioBase;
+  } catch {
+    // Si falla la consulta del catálogo GG, se usa la propia lista como fallback (comportamiento seguro).
+    nivelPrecioBase = nivel;
+  }
+
   try {
     const resultado = await solicitudesService.simularGestionGlobal(identidad, {
       nivel,
@@ -34,9 +48,11 @@ export async function GET(request: Request) {
       offset,
       maxRecords,
       soloHallazgos,
+      nivelPrecioBase,
     });
     if (!resultado.ok) return NextResponse.json(resultado, { status: 400 });
-    return NextResponse.json(resultado);
+    // Incluir nivelPrecioBase en la respuesta para que el frontend muestre el banner descriptivo.
+    return NextResponse.json({ ...resultado, nivelPrecioBase });
   } catch (error) {
     console.error("No fue posible simular la Gestión Global por página.", error);
     return NextResponse.json({ error: "No fue posible calcular la página de impacto." }, { status: 500 });

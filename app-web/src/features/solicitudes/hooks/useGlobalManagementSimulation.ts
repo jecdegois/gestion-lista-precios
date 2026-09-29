@@ -37,6 +37,10 @@ export function useGlobalManagementSimulation(
   const [loadingFirst, setLoadingFirst] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Lista padre resuelta por el API (GESTION_LISTAS_PRECIOS.NIVEL_PRECIO_BASE).
+  // Se captura en la primera respuesta de loadPage y se mantiene mientras no cambie el nivel.
+  const [nivelPrecioBase, setNivelPrecioBase] = useState<string | undefined>(undefined);
+
   // ── Estado de hallazgos ───────────────────────────────────────────────────
   const [findings, setFindings] = useState<FilaPrecio[]>([]);
   const [findingsHasMore, setFindingsHasMore] = useState(false);
@@ -77,6 +81,7 @@ export function useGlobalManagementSimulation(
     setLoadingFindings(false);
     loadingFindingsRef.current = false;
     setError(null);
+    setNivelPrecioBase(undefined);
     onInvalidate();
   });
 
@@ -104,6 +109,9 @@ export function useGlobalManagementSimulation(
         setNextOffset(page.nextOffset);
         setError(null);
         setSimulated(true);
+        // Capturar la lista padre en la primera página; no se actualiza en páginas siguientes
+        // para no causar re-renders mientras el usuario hace scroll.
+        if (offset === 0 && page.nivelPrecioBase) setNivelPrecioBase(page.nivelPrecioBase);
         // One-way: se activa aquí y nunca se desactiva
         setEverSimulated(true);
       } catch (err) {
@@ -203,6 +211,7 @@ export function useGlobalManagementSimulation(
     everSimulated,
     simulating: loadingFirst || loadingMore,
     error,
+    nivelPrecioBase,
     page: { hasMore, nextOffset, loadingMore, loadPage },
     findings: {
       rows: findings,
