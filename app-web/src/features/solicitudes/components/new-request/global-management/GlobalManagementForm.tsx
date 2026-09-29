@@ -106,6 +106,7 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
 
       <RequestActions
         canSimulate={!lockInput && fieldsComplete && !simulation.simulating}
+        simulating={simulation.simulating}
         onSimulate={() => void simulation.simulate()}
         canSave={fieldsComplete && simulation.simulated && !!rows?.length}
         canSubmit={canSubmit}

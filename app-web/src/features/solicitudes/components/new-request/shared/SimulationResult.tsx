@@ -18,7 +18,9 @@ export default function SimulationResult({
         <Icon name="search" className="w-4 h-4 text-zinc-500" />
         <h3 className="text-sm font-semibold mr-auto">Resultado de la simulación</h3>
         <button className="btn btn-outline btn-sm" disabled={exporting || exportDisabled} onClick={onExport}>
-          <Icon name="download" className="w-3.5 h-3.5" /> {exporting ? "Exportando…" : "Exportar Excel"}
+          {exporting
+            ? <><Icon name="loader" className="w-3.5 h-3.5" spin /> Exportando…</>
+            : <><Icon name="download" className="w-3.5 h-3.5" /> Exportar Excel</>}
         </button>
       </div>
       <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-xs text-green-800 mb-3 flex items-center gap-2">

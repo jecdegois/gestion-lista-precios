@@ -51,6 +51,7 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
   );
   const [rows, setRows] = useState<FilaResultado[] | null>(draft?.filas?.length ? draft.filas : null);
   const [simulated, setSimulated] = useState(Boolean(draft?.filas?.length));
+  const [simulating, setSimulating] = useState(false);
   const [file, setFile] = useState<UploadedFile>(draftFile(draft));
   const [itemError, setItemError] = useState<string | null>(null);
 
@@ -75,7 +76,7 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
   const fieldsComplete = isExcel
     ? !!rows && rows.every((r) => r.validacion.valido) && !!company
     : items.length > 0 && !!level && !levelMissing;
-  const canSubmit = simulated && fieldsComplete && !readOnly;
+  const canSubmit = simulated && fieldsComplete && !readOnly && !simulating;
 
   // Cualquier cambio de parámetros invalida la simulación previa.
   useOnChange(JSON.stringify([level, factor, items]), () => {
@@ -135,6 +136,7 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
       setSimulated(true);
       return;
     }
+    setSimulating(true);
     const res = await simularManual({
       proceso: "DESCUENTO_LISTA_PRECIO",
       nivel: level,
@@ -147,6 +149,7 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
         variacionPorcentaje: it.variacionPorcentaje,
       })),
     });
+    setSimulating(false);
     if (!res.ok) {
       setItemError(res.error);
       setRows([]);
@@ -228,7 +231,8 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
 
       <RequestActions
         simulateLabel={isExcel ? "Precalcular impacto" : "Simular impacto"}
-        canSimulate={!lockInput && fieldsComplete}
+        canSimulate={!lockInput && fieldsComplete && !simulating}
+        simulating={simulating}
         onSimulate={() => void simulate()}
         canSave={fieldsComplete && simulated && !!rows?.length}
         canSubmit={canSubmit}
