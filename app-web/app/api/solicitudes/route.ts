@@ -4,13 +4,17 @@ import { solicitudesService } from "@/features/solicitudes/services/solicitudes-
 
 const INVALID_INPUT = "Datos inválidos";
 
-/** Solicitudes del usuario en sesion; `?proceso=` filtra por tipo. */
+/** Solicitudes del usuario en sesion; `?proceso=` filtra por tipo. Paginadas por cabecera. */
 export const GET = withIdentidad(async (req, identidad) => {
-  const proceso = new URL(req.url).searchParams.get("proceso");
+  const url = new URL(req.url);
+  const proceso = url.searchParams.get("proceso");
   const parsed = ProcesoSchema.optional().safeParse(proceso ?? undefined);
   if (!parsed.success) return apiBadRequest(INVALID_INPUT);
 
-  return apiServiceResult(await solicitudesService.listarMias(identidad, parsed.data));
+  const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 20) || 20, 1), 100);
+
+  return apiServiceResult(await solicitudesService.listarMiasPaginado(identidad, parsed.data, offset, limit));
 });
 
 /** Envia una solicitud nueva a aprobacion. */

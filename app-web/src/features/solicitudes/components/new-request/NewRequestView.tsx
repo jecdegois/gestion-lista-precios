@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ComponentType } from "react";
+import { type ComponentType } from "react";
 import MisSolicitudes from "@/components/MisSolicitudes";
 import RevisionModal from "@/components/RevisionModal";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
@@ -34,20 +34,17 @@ export default function NewRequestView({
   const Form = FORMS[process];
   const user = useCurrentUser();
   const mine = useMyRequests(process, readOnly);
-  const [modalId, setModalId] = useState<string | null>(null);
-  // El auditor solo consulta: sin retomar, enviar ni cancelar.
   const canAct = user.rol !== "AUDITOR";
 
   function resumeDraft(id: string) {
-    mine.setDraft(mine.requests.find((s) => s.id === id));
-    setModalId(null);
+    void mine.retomar(id);
+    mine.closeModal();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   const actions = canAct
     ? { onCancelar: mine.requestCancellation, onEnviarBorrador: mine.submitDraft, onRetomar: resumeDraft }
     : { onCancelar: undefined, onEnviarBorrador: undefined, onRetomar: undefined };
-  const modalRequest = modalId ? mine.requests.find((s) => s.id === modalId) : undefined;
 
   return (
     <>
@@ -66,16 +63,20 @@ export default function NewRequestView({
         solicitudes={mine.requests}
         currentUser={user}
         procesoFiltro={process}
-        onVerDetalle={setModalId}
+        onVerDetalle={(id) => void mine.openWithDetail(id)}
+        hasMore={mine.hasMore}
+        loadingMore={mine.loadingMore}
+        nextOffset={mine.nextOffset}
+        onLoadMore={() => void mine.loadMore()}
         {...actions}
       />
-      {modalRequest && (
+      {mine.modalRequest && (
         <RevisionModal
-          solicitud={modalRequest}
+          solicitud={mine.modalRequest}
           currentUser={user}
           readOnly={readOnly}
-          onClose={() => setModalId(null)}
-          // Aprobar/rechazar se hacen desde la Bandeja; aquí solo es consulta del solicitante.
+          loadingDetail={mine.loadingDetail}
+          onClose={mine.closeModal}
           onRechazar={noop}
           onAprobar={noop}
           {...actions}

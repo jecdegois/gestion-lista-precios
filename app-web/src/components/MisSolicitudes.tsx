@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import Icon from "./Icon";
 import { EstadoBadge } from "./Badges";
 import { PROCESOS } from "@/lib/catalog";
 import type { Identidad, ProcesoKey, Solicitud } from "@/lib/domain-types";
 import ResponsiveDataTable, { type TableColumn, type TableLoadParams } from "./newComponents/ResponsiveDataTable";
-
-const PAGE_SIZE = 10;
 
 interface MisSolicitudesProps {
   solicitudes: Solicitud[];
@@ -17,79 +15,40 @@ interface MisSolicitudesProps {
   onCancelar?: (id: string, motivo: string) => void;
   onEnviarBorrador?: (id: string) => void;
   onRetomar?: (id: string) => void;
+  /** Hay más páginas disponibles en el servidor. */
+  hasMore?: boolean;
+  /** Cargando más registros del servidor. */
+  loadingMore?: boolean;
+  /** Offset de la próxima página (viene del servidor). */
+  nextOffset?: number | null;
+  /** Llama al padre para cargar la siguiente página. */
+  onLoadMore?: () => void;
 }
 
-export default function MisSolicitudes({ solicitudes, currentUser, procesoFiltro, onVerDetalle, onCancelar, onEnviarBorrador, onRetomar }: MisSolicitudesProps) {
-  const solicitudesSeguras = useMemo(
-    () => (Array.isArray(solicitudes) ? solicitudes : []),
-    [solicitudes],
-  );
+export default function MisSolicitudes({
+  solicitudes,
+  currentUser,
+  procesoFiltro,
+  onVerDetalle,
+  onCancelar,
+  onEnviarBorrador,
+  onRetomar,
+  hasMore = false,
+  loadingMore = false,
+  nextOffset = null,
+  onLoadMore,
+}: MisSolicitudesProps) {
+  // El server ya filtra por proceso; filtramos por email en cliente por seguridad.
   const propias = useMemo(
-    () => solicitudesSeguras.filter((s) => s.solicitanteEmail === currentUser.email && s.proceso === procesoFiltro),
-    [solicitudesSeguras, currentUser.email, procesoFiltro],
+    () => (Array.isArray(solicitudes) ? solicitudes : []).filter(
+      (s) => s.solicitanteEmail === currentUser.email,
+    ),
+    [solicitudes, currentUser.email],
   );
-  
-  const [displayedRows, setDisplayedRows] = useState<Solicitud[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const previousCountRef = useRef(0);
-  const previousProcesoRef = useRef(procesoFiltro);
 
-  useEffect(() => {
-    const totalSolicitudes = propias.length;
-
-    // Ordena por fecha descendente (más reciente primero)
-    const porFechaDesc = (a: Solicitud, b: Solicitud) => {
-      const ts = (s: Solicitud) => {
-        if (s.fechaCreacion) return new Date(s.fechaCreacion).getTime();
-        return 0;
-      };
-      return ts(b) - ts(a);
-    };
-
-    if (previousProcesoRef.current !== procesoFiltro) {
-      previousProcesoRef.current = procesoFiltro;
-      previousCountRef.current = totalSolicitudes;
-      setDisplayedRows(propias.slice(0, PAGE_SIZE).sort(porFechaDesc));
-      return;
-    }
-
-    setDisplayedRows((prev) => {
-      // Primera carga real
-      if (prev.length === 0 && totalSolicitudes > 0) {
-        previousCountRef.current = totalSolicitudes;
-        return propias.slice(0, PAGE_SIZE).sort(porFechaDesc);
-      }
-      // Refrescar estados de filas ya visibles
-      const actualizadas = prev.map((fila) => propias.find((s) => s.id === fila.id) ?? fila);
-      // Agregar solicitudes nuevas (que no estaban en pantalla) al inicio
-      const idsActuales = new Set(prev.map((s) => s.id));
-      const nuevas = propias.filter((s) => !idsActuales.has(s.id));
-      previousCountRef.current = totalSolicitudes;
-      const combinadas = nuevas.length > 0 ? [...nuevas, ...actualizadas] : actualizadas;
-      return combinadas.sort(porFechaDesc);
-    });
-  }, [propias]);
-
-  const handleLoadMore = useCallback(async (params: TableLoadParams) => {
-    // Validación: no cargar si ya tenemos todos los registros
-    // Usa los datos crudos sin depender de displayedRows para evitar re-renders
-    if (params.offset >= propias.length) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      // Simular delay de carga
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      
-      const newRows = propias.slice(params.offset, params.offset + params.limit);
-      if (newRows.length > 0) {
-        setDisplayedRows((prev) => [...prev, ...newRows]);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [propias]);
+  function handleLoadMore({ offset: _offset, limit: _limit }: TableLoadParams) {
+    onLoadMore?.();
+  }
 
   const columns: readonly TableColumn<Solicitud>[] = [
     {
@@ -126,7 +85,11 @@ export default function MisSolicitudes({ solicitudes, currentUser, procesoFiltro
       header: "Detalle",
       value: (s) => (
         <span className="text-xs text-zinc-500">
-          {s.estado === "RECHAZADO" ? s.motivoRechazo : s.estado === "EN_PROCESO" ? `Trabajo en segundo plano (${s.idProcesoSP})` : s.idProcesoSP || "—"}
+          {s.estado === "RECHAZADO"
+            ? s.motivoRechazo
+            : s.estado === "EN_PROCESO"
+              ? `Trabajo en segundo plano (${s.idProcesoSP})`
+              : s.idProcesoSP || "—"}
         </span>
       ),
     },
@@ -170,27 +133,36 @@ export default function MisSolicitudes({ solicitudes, currentUser, procesoFiltro
     },
   ];
 
-  const hasMore = displayedRows.length < propias.length;
-  const nextOffset = displayedRows.length;
-  const columnasSinAcciones = columns.filter((column) => column.key !== "accion");
+  const columnasSinAcciones = columns.filter((c) => c.key !== "accion");
 
   return (
     <div className="mt-8">
       <h2 className="text-base font-semibold mb-1">Mis solicitudes enviadas</h2>
       <p className="text-xs text-zinc-500 mb-3">Tipo: {PROCESOS[procesoFiltro]?.label ?? procesoFiltro}</p>
       <ResponsiveDataTable<Solicitud>
-        rows={displayedRows}
+        rows={propias}
         columns={columnasSinAcciones}
         rowKey={(s) => s.id}
         loading={false}
-        loadingMore={isLoading}
+        loadingMore={loadingMore}
         hasMore={hasMore}
-        nextOffset={nextOffset}
+        nextOffset={nextOffset ?? propias.length}
         onLoadMore={handleLoadMore}
         onRowActivate={(s) => onVerDetalle(s.id)}
         emptyTitle="No hay solicitudes"
         emptyDescription="Aún no ha enviado solicitudes en esta sesión."
       />
+      {hasMore && (
+        <div className="mt-2 flex justify-center">
+          <button
+            className="btn btn-outline"
+            disabled={loadingMore}
+            onClick={onLoadMore}
+          >
+            {loadingMore ? "Cargando..." : "Cargar más"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
