@@ -1,8 +1,8 @@
 "use client";
 
-import { fmtMonto } from "@/lib/format";
 import type { FilaResultado } from "@/lib/domain-types";
 import ResponsiveDataTable, { type TableLoadParams } from "./ResponsiveDataTable";
+import { Monto } from "@/shared/components/layout/PortalProviders";
 
 export default function TablaHallazgosMargen({
   filas,
@@ -28,8 +28,8 @@ export default function TablaHallazgosMargen({
           value: (fila) => <span className="block max-w-[280px] truncate whitespace-nowrap" title={fila.descripcion || "—"}>{fila.descripcion || "—"}</span>,
         },
         { key: "causa", header: "Causa", value: (fila) => <span title={fila.validacion.causa ?? "—"}>{fila.validacion.causa ?? "—"}</span> },
-        { key: "precioActual", header: "Precio Actual", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioActual)}</span> },
-        { key: "precioMinimo", header: "Precio Mínimo", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.costoMinimo)}</span> },
+        { key: "precioActual", header: "Precio Actual", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioActual} /></span> },
+        { key: "precioMinimo", header: "Precio Mínimo", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.costoMinimo} /></span> },
       ]}
       rowKey={(fila) => `${fila.fila}-${fila.codigo}-${"listaCodigo" in fila ? fila.listaCodigo ?? fila.lista ?? "" : ""}`}
       limit={50}

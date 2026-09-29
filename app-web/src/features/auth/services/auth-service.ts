@@ -268,6 +268,7 @@ class AuthService {
         companies: record.user.companies.flatMap((companyRecord) =>
           companyRecord.userRoles.map((userRole) => ({
             company: companyRecord.company,
+            currencySymbol: companyRecord.companyInfo.currencySymbol,
             role: userRole.role.code,
           })),
         ),

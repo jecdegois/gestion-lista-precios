@@ -23,6 +23,7 @@ export async function getSessionContext(): Promise<AuthContext | null> {
     mustChangePassword: resolved.user.mustChangePassword,
     companies: resolved.user.companies.map((assignment) => ({
       company: assignment.company,
+      currencySymbol: assignment.currencySymbol,
       role: assignment.role as RoleCode,
     })),
   };

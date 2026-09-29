@@ -1,8 +1,9 @@
 /** Utilidades de formato compartidas por la UI. */
 
-export function fmtMonto(n: number | null | undefined): string {
+export function fmtMonto(n: number | null | undefined, moneda = ""): string {
   if (typeof n !== "number" || Number.isNaN(n)) return "—";
-  return "₡" + n.toLocaleString("es-CR", { maximumFractionDigits: 2 });
+  const monto = n.toLocaleString("es-CR", { maximumFractionDigits: 2 });
+  return moneda ? `${moneda} ${monto}` : monto;
 }
 
 export function fmtPct(x: number | null | undefined): string {

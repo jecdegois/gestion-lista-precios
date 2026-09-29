@@ -16,7 +16,7 @@ export interface AuthContext {
   fullName: string;
   isAdmin: boolean;
   mustChangePassword: boolean;
-  companies: { company: string; role: RoleCode }[];
+  companies: { company: string; currencySymbol: string; role: RoleCode }[];
 }
 
 export interface Identidad {
@@ -25,6 +25,8 @@ export interface Identidad {
   rol: Rol;
   color: string;
   compania: string | null;
+  /** Símbolo de moneda de la compañía activa (configurado en companies.currency_symbol). */
+  moneda?: string;
   /** Administrador global: gestiona usuarios aunque no tenga compañías asignadas. */
   isAdmin?: boolean;
   /** Subject canónico del proveedor de identidad, usado como IDP_OPERADOR. */

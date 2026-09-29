@@ -3,6 +3,8 @@ model Company {
   code      String   @unique
   name      String
   sqlSchema String   @map("sql_schema")
+  /// Símbolo de la moneda en que la empresa expresa sus precios (p. ej. "Bs.", "₡").
+  currencySymbol String @map("currency_symbol") @default("")
   isActive  Boolean  @map("is_active") @default(true)
   createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @map("updated_at") @updatedAt @db.Timestamptz(6)
