@@ -9,7 +9,7 @@ import {
   porcentajeUdfDemo,
   upsertUdfDemo,
 } from "./demo-catalog";
-import { getPool } from "@/server/db";
+import { getPool, softlandDb, softlandDbo } from "@/server/db";
 
 /**
  * Repositorio de precios/margen por compania. Enruta cada operacion a la base
@@ -295,7 +295,7 @@ async function upsertFactoresArticuloLista(
   }
 }
 
-/** Actualiza directamente el precio de los artÃ­culos de MAYOREOD en la versiÃ³n activa. */
+/** Actualiza directamente el precio de los artículos de MAYOREOD en la versión activa. */
 async function actualizarPreciosBase(
   compania: string,
   solicitudId: string,
@@ -309,7 +309,7 @@ async function actualizarPreciosBase(
   const lista = "MAYOREOD";
   const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && fila.validacion.valido);
   if (filasValidas.length === 0) {
-    throw new Error("No existen filas vÃ¡lidas para actualizar precios base.");
+    throw new Error("No existen filas válidas para actualizar precios base.");
   }
 
   const pool = await getPool(companiaNormalizada);
@@ -333,14 +333,14 @@ async function actualizarPreciosBase(
       );
     const version = versionResult.recordset[0]?.version;
     if (version == null || String(version).trim() === "") {
-      throw new Error(`No existe una versiÃ³n activa para la lista '${lista}'.`);
+      throw new Error(`No existe una versión activa para la lista '${lista}'.`);
     }
 
     for (const fila of filasValidas) {
       const precio = Number(fila.validacion.precioPropuesto);
       const articulo = fila.codigo.trim();
       if (!articulo || !Number.isFinite(precio) || precio <= 0) {
-        throw new Error(`La fila ${fila.fila} no tiene un artÃ­culo o precio vÃ¡lido.`);
+        throw new Error(`La fila ${fila.fila} no tiene un artículo o precio válido.`);
       }
 
       const result = await new mssql.Request(transaction)
@@ -359,7 +359,7 @@ async function actualizarPreciosBase(
               AND ARTICULO = @articulo;`,
         );
       if ((result.rowsAffected[0] ?? 0) !== 1) {
-        throw new Error(`No se encontrÃ³ ${ap} para el artÃ­culo '${articulo}', lista '${lista}' y versiÃ³n activa '${version}'.`);
+        throw new Error(`No se encontró ${ap} para el artículo '${articulo}', lista '${lista}' y versión activa '${version}'.`);
       }
       actualizados += result.rowsAffected[0] ?? 0;
     }
@@ -384,47 +384,34 @@ async function actualizarPreciosBase(
 async function listarNivelesPrecio(compania: string): Promise<NivelPrecio[]> {
   if (esModoDemo()) return nivelesPrecioDemo(compania);
 
-  const pool = await getPool(compania);
-  const tabla = objetoCalificado(compania, "tablaNivelPrecio");
-  const versiones = objetoCalificado(compania, "tablaVersionNivel");
-  const q = await pool.request().query(
-    `SELECT DISTINCT NP.NIVEL_PRECIO AS codigo
-       FROM ${tabla} NP WITH(NOLOCK)
-      WHERE NP.NIVEL_PRECIO IS NOT NULL
-        AND EXISTS (
-              SELECT 1
-                FROM ${versiones} VN WITH(NOLOCK)
-               WHERE VN.NIVEL_PRECIO = NP.NIVEL_PRECIO
-                 AND VN.ESTADO = 'A'
-        )
-      ORDER BY NP.NIVEL_PRECIO`,
-  );
-  return q.recordset.map((r: Record<string, unknown>) => {
-    const codigo = String(r.codigo).trim();
+  // Niveles que tienen al menos una versión activa.
+  const db = softlandDb(compania);
+  const activos = await db.vERSION_NIVEL.findMany({ where: { ESTADO: "A" }, distinct: ["NIVEL_PRECIO"], select: { NIVEL_PRECIO: true } });
+  const niveles = await db.nIVEL_PRECIO.findMany({
+    where: { NIVEL_PRECIO: { in: activos.map((v) => v.NIVEL_PRECIO) } },
+    distinct: ["NIVEL_PRECIO"],
+    select: { NIVEL_PRECIO: true },
+    orderBy: { NIVEL_PRECIO: "asc" },
+  });
+  return niveles.map((n) => {
+    const codigo = n.NIVEL_PRECIO.trim();
     return { codigo, nombre: codigo };
   });
 }
 
 async function obtenerVersionActiva(compania: string, nivelPrecio: string): Promise<number> {
   const nivel = nivelPrecio.trim();
-  if (!nivel) throw new Error("Debe indicar una lista de precio para consultar la versiÃ³n activa.");
+  if (!nivel) throw new Error("Debe indicar una lista de precio para consultar la versión activa.");
   if (esModoDemo()) return 1;
 
-  const pool = await getPool(compania);
-  const versiones = objetoCalificado(compania, "tablaVersionNivel");
-  const mssql = await import("mssql");
-  const result = await pool.request()
-    .input("nivelPrecio", mssql.VarChar(50), nivel)
-    .query(
-      `SELECT TOP (1) VN.VERSION AS version
-         FROM ${versiones} VN WITH(NOLOCK)
-        WHERE VN.NIVEL_PRECIO = @nivelPrecio
-          AND VN.ESTADO = 'A'
-        ORDER BY TRY_CONVERT(INT, VN.VERSION) DESC, VN.VERSION DESC;`,
-    );
-  const version = Number(result.recordset[0]?.version);
+  const result = await softlandDb(compania).vERSION_NIVEL.findFirst({
+    where: { NIVEL_PRECIO: nivel, ESTADO: "A" },
+    orderBy: { VERSION: "desc" },
+    select: { VERSION: true },
+  });
+  const version = Number(result?.VERSION);
   if (!Number.isInteger(version)) {
-    throw new Error(`No existe una versiÃ³n activa para la lista '${nivel}'.`);
+    throw new Error(`No existe una versión activa para la lista '${nivel}'.`);
   }
   return version;
 }
@@ -434,23 +421,16 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
   if (esModoDemo()) {
     return nivelesPrecioDemo(compania).map((nivel) => ({ ...nivel, version: "1", variacionPorc: 0 }));
   }
-  const pool = await getPool(compania);
-  const mssql = await import("mssql");
-  const q = await pool.request()
-    .input("compania", mssql.VarChar(20), compania.trim().toUpperCase())
-    .query(
-      `SELECT A.NIVEL_PRECIO AS codigo,
-              A.VERSION AS version,
-              A.VARIACION_PORC AS variacionPorc
-         FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
-        WHERE A.COMPANIA = @compania
-        ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION), A.VERSION;`,
-    );
-  return q.recordset.map((r: Record<string, unknown>) => ({
-    codigo: String(r.codigo ?? "").trim(),
-    nombre: String(r.codigo ?? "").trim(),
-    version: String(r.version ?? "").trim(),
-    variacionPorc: r.variacionPorc == null ? null : Number(r.variacionPorc),
+  const rows = await softlandDbo().gESTION_LISTAS_PRECIOS.findMany({
+    where: { COMPANIA: compania.trim().toUpperCase() },
+    select: { NIVEL_PRECIO: true, VERSION: true, VARIACION_PORC: true },
+    orderBy: [{ NIVEL_PRECIO: "asc" }, { VERSION: "asc" }],
+  });
+  return rows.map((r) => ({
+    codigo: r.NIVEL_PRECIO.trim(),
+    nombre: r.NIVEL_PRECIO.trim(),
+    version: String(r.VERSION),
+    variacionPorc: r.VARIACION_PORC.toNumber(),
   })).filter((nivel) => nivel.codigo && nivel.version);
 }
 

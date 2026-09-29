@@ -7,3 +7,184 @@ datasource db {
   provider = "sqlserver"
   url      = env("SQL_SERVER_URL")
 }
+
+model AUDITORIA_APROBACION {
+  ID_APROBACION       BigInt    @id(map: "PK_AUDITORIA_APROBACION") @default(autoincrement())
+  ID_SOLICITUD        Int
+  FECHA               DateTime  @default(now(), map: "DF__AUDITORIA__FECHA__17036CC0") @db.DateTime
+  USUARIO_EMAIL       String    @db.VarChar(120)
+  USUARIO_NOMBRE      String?   @db.VarChar(120)
+  ACCION              String    @db.VarChar(30)
+  ESTADO_ANTERIOR     String?   @db.VarChar(25)
+  ESTADO_NUEVO        String?   @db.VarChar(25)
+  COMENTARIO_DECISION String?   @db.VarChar(1000)
+  IMPACTO_CONFIRMADO  String?   @db.VarChar(500)
+  RESULTADO_EJECUCION String?   @db.VarChar(15)
+  DETALLE_JSON        String?   @db.NVarChar(Max)
+  SOLICITUD           SOLICITUD @relation(fields: [ID_SOLICITUD], references: [ID_SOLICITUD], onDelete: Cascade, onUpdate: NoAction, map: "FK_AUDITORIA_SOLICITUD")
+}
+
+model AUDITORIA_PRECIOS {
+  ID_AUDITORIA BigInt   @id(map: "PK_PP_AUDITORIA_PRECIOS") @default(autoincrement())
+  ID_PROCESO   String?  @db.VarChar(50)
+  IDP_SUBJECT  String   @db.VarChar(128)
+  ROL          String   @db.VarChar(30)
+  EVENTO       String   @db.VarChar(50)
+  PAYLOAD_JSON String?  @db.NVarChar(Max)
+  FECHA_EVENTO DateTime @default(now(), map: "DF__AUDITORIA__FECHA__1CBC4616") @db.DateTime
+}
+
+model COMPANIA {
+  COMPANIA                                         String           @id(map: "PK_PP_COMPANIA") @db.VarChar(20)
+  NOMBRE                                           String           @db.VarChar(80)
+  ESQUEMA_SOFTLAND                                 String?          @db.VarChar(30)
+  ACTIVO                                           String           @default("S", map: "DF__COMPANIA__ACTIVO__00200768") @db.Char(1)
+  FECHA_CREACION                                   DateTime         @default(now(), map: "DF__COMPANIA__FECHA___01142BA1") @db.DateTime
+  EJECUCION_LOG_EJECUCION_LOG_COMPANIAToCOMPANIA   EJECUCION_LOG[]  @relation("EJECUCION_LOG_COMPANIAToCOMPANIA")
+  LISTA_PRECIO_LISTA_PRECIO_COMPANIAToCOMPANIA     LISTA_PRECIO[]   @relation("LISTA_PRECIO_COMPANIAToCOMPANIA")
+  SOLICITUD_SOLICITUD_COMPANIAToCOMPANIA           SOLICITUD[]      @relation("SOLICITUD_COMPANIAToCOMPANIA")
+  USUARIO_AMBITO_USUARIO_AMBITO_COMPANIAToCOMPANIA USUARIO_AMBITO[] @relation("USUARIO_AMBITO_COMPANIAToCOMPANIA")
+}
+
+model EJECUCION_LOG {
+  ID_EJECUCION                              BigInt                   @id(map: "PK_FEBECA_EJECUCION_LOG") @default(autoincrement())
+  TIPO_EJECUCION                            String                   @db.VarChar(25)
+  COMPANIA                                  String                   @db.VarChar(20)
+  ID_USUARIO                                Int?
+  EJECUTADO_POR_EMAIL                       String                   @db.VarChar(120)
+  EJECUTADO_POR_NOMBRE                      String                   @db.VarChar(120)
+  PARAMETROS_JSON                           String?                  @db.NVarChar(Max)
+  ID_PROCESO_SP                             String?                  @db.VarChar(30)
+  SP_NOMBRE                                 String?                  @db.VarChar(100)
+  ESTADO                                    String                   @default("PENDIENTE", map: "DF_FEBECA_EL_ESTADO") @db.VarChar(25)
+  FECHA_INICIO                              DateTime                 @default(now(), map: "DF_FEBECA_EL_FECHA_INICIO") @db.DateTime
+  FECHA_FIN                                 DateTime?                @db.DateTime
+  TOTAL_ARTICULOS                           Int?
+  EXITOSOS                                  Int?
+  FALLIDOS                                  Int?
+  CODIGO_ERROR                              String?                  @db.VarChar(40)
+  MENSAJE_ERROR                             String?                  @db.VarChar(1000)
+  OBSERVACIONES                             String?                  @db.VarChar(500)
+  VERSION_FILA                              Unsupported("timestamp")
+  COMPANIA_EJECUCION_LOG_COMPANIAToCOMPANIA COMPANIA                 @relation("EJECUCION_LOG_COMPANIAToCOMPANIA", fields: [COMPANIA], references: [COMPANIA], onUpdate: NoAction, map: "FK_FEBECA_EL_COMPANIA")
+  USUARIO                                   USUARIO?                 @relation(fields: [ID_USUARIO], references: [ID_USUARIO], onDelete: NoAction, onUpdate: NoAction, map: "FK_FEBECA_EL_USUARIO")
+
+  @@index([COMPANIA, TIPO_EJECUCION, FECHA_INICIO(sort: Desc)], map: "IX_FEBECA_EL_COMPANIA_TIPO_FECHA")
+  @@index([EJECUTADO_POR_EMAIL, FECHA_INICIO(sort: Desc)], map: "IX_FEBECA_EL_USUARIO_FECHA")
+}
+
+model LISTA_PRECIO {
+  COMPANIA                                 String   @db.VarChar(20)
+  LISTA                                    String   @db.VarChar(30)
+  NOMBRE                                   String   @db.VarChar(80)
+  NIVEL_PRECIO                             String?  @db.VarChar(50)
+  ES_LISTA_BASE                            String   @default("N", map: "DF__LISTA_PRE__ES_LI__04E4BC85") @db.Char(1)
+  ACTIVO                                   String   @default("S", map: "DF__LISTA_PRE__ACTIV__05D8E0BE") @db.Char(1)
+  COMPANIA_LISTA_PRECIO_COMPANIAToCOMPANIA COMPANIA @relation("LISTA_PRECIO_COMPANIAToCOMPANIA", fields: [COMPANIA], references: [COMPANIA], onUpdate: NoAction, map: "FK_PP_LP_COMPANIA")
+
+  @@id([COMPANIA, LISTA], map: "PK_PP_LISTA_PRECIO")
+}
+
+model SOLICITUD {
+  TIPO_PROCESO                          String?                @default("MANUAL", map: "DF__SOLICITUD__TIPO___22751F6C") @db.VarChar(50)
+  COMPANIA                              String                 @db.VarChar(20)
+  LISTA_PRECIO                          String?                @db.VarChar(30)
+  IDP_OPERADOR                          String?                @db.VarChar(128)
+  IDP_APROBADOR                         String?                @db.VarChar(128)
+  ESTADO                                String                 @default("BORRADOR", map: "DF__SOLICITUD__ESTAD__236943A5") @db.VarChar(30)
+  MOTIVO_RECHAZO                        String?                @db.Text
+  PARAMETROS_JSON                       String                 @db.NVarChar(Max)
+  INTENTOS_REINTENTO                    Int                    @default(0, map: "DF__SOLICITUD__INTEN__245D67DE")
+  FECHA_CREACION                        DateTime               @default(now(), map: "DF__SOLICITUD__FECHA__25518C17") @db.DateTime
+  FECHA_MODIFICACION                    DateTime               @default(now(), map: "DF__SOLICITUD__FECHA__2645B050") @db.DateTime
+  FECHA_ENVIO                           DateTime?              @db.DateTime
+  ARCHIVO_S3_KEY                        String?                @db.VarChar(500)
+  ARCHIVO_NOMBRE                        String?                @db.VarChar(8000)
+  SOLICITANTE_NOMBRE                    String?                @db.VarChar(250)
+  SOLICITANTE_EMAIL                     String?                @db.VarChar(250)
+  CODIGO_SOLICITUD                      String?                @db.VarChar(20)
+  MODALIDAD                             String?                @db.VarChar(10)
+  FECHA_ULT_ESTADO                      DateTime?              @db.DateTime
+  ID_PROCESO_SP                         String?                @db.VarChar(30)
+  APROBADOR_EMAIL                       String?                @db.VarChar(120)
+  APROBADOR_NOMBRE                      String?                @db.VarChar(120)
+  TOTAL_REGISTROS                       Int?
+  EXITOSOS                              Int?
+  FALLIDOS                              Int?
+  LOG_S3_KEY                            String?                @db.VarChar(400)
+  PROCESO                               String?                @db.VarChar(100)
+  ID_SOLICITUD                          Int                    @id(map: "PK__SOLICITU__F090D584B404D675") @default(autoincrement())
+  ID_USUARIO_SOLICITANTE                Int?
+  CAUSA                                 String?                @db.VarChar(255)
+  ES_ERROR_TRANSITORIO                  String                 @default("N", map: "DF__SOLICITUD__ES_ER__2739D489") @db.Char(1)
+  CODIGO_ERROR                          String?                @db.VarChar(40)
+  MENSAJE_ERROR                         String?                @db.VarChar(1000)
+  FECHA_REVISION                        DateTime?              @db.DateTime
+  FECHA_INICIO_EJECUCION                DateTime?              @db.DateTime
+  FECHA_FIN_EJECUCION                   DateTime?              @db.DateTime
+  CANCELACION_SOLICITADA                String                 @default("N", map: "DF__SOLICITUD__CANCE__282DF8C2") @db.Char(1)
+  FECHA_SOLICITUD_CANCELACION           DateTime?              @db.DateTime
+  USUARIO_SOLICITA_CANCELACION          String?                @db.VarChar(120)
+  CANCELACION_CONFIRMADA                String                 @default("N", map: "DF__SOLICITUD__CANCE__29221CFB") @db.Char(1)
+  FECHA_CANCELACION                     DateTime?              @db.DateTime
+  USUARIO_DECIDE_CANCELACION            String?                @db.VarChar(120)
+  AUDITORIA_APROBACION                  AUDITORIA_APROBACION[]
+  COMPANIA_SOLICITUD_COMPANIAToCOMPANIA COMPANIA               @relation("SOLICITUD_COMPANIAToCOMPANIA", fields: [COMPANIA], references: [COMPANIA], onUpdate: NoAction, map: "FK_PP_SOL_COMPANIA")
+  USUARIO                               USUARIO?               @relation(fields: [ID_USUARIO_SOLICITANTE], references: [ID_USUARIO], onDelete: NoAction, onUpdate: NoAction, map: "FK_PP_SOL_SOLICITANTE")
+  SOLICITUD_DETALLE                     SOLICITUD_DETALLE[]
+  SOLICITUD_REINTENTO                   SOLICITUD_REINTENTO[]
+}
+
+model SOLICITUD_DETALLE {
+  ID_DETALLE        BigInt    @id(map: "PK_PP_SOLICITUD_DETALLE") @default(autoincrement())
+  SKU               String    @db.VarChar(50)
+  DESCRIPCION       String?   @db.VarChar(255)
+  PRECIO_ACTUAL     Decimal   @db.Decimal(18, 4)
+  COSTO             Decimal   @db.Decimal(18, 4)
+  FACTOR_APLICADO   Decimal   @db.Decimal(8, 4)
+  PRECIO_SIMULADO   Decimal   @db.Decimal(18, 4)
+  PORCENTAJE_MARGEN Decimal?  @default(0, map: "DF__SOLICITUD__PORCE__3587F3E0") @db.Decimal(18, 4)
+  ESTADO_FILA       String    @default("OK", map: "DF__SOLICITUD__ESTAD__367C1819") @db.VarChar(30)
+  MENSAJE_ERROR     String?   @db.VarChar(Max)
+  CAUSA             String?   @db.VarChar(255)
+  ID_SOLICITUD      Int
+  FACTOR_SOLICITADO Decimal?  @db.Decimal(8, 4)
+  LISTA_PRECIO      String?   @db.VarChar(40)
+  SOLICITUD         SOLICITUD @relation(fields: [ID_SOLICITUD], references: [ID_SOLICITUD], onUpdate: NoAction, map: "FK_PP_DET_SOLICITUD")
+}
+
+model SOLICITUD_REINTENTO {
+  ID_REINTENTO                 BigInt    @id(map: "PK_SOLICITUD_REINTENTO") @default(autoincrement())
+  ID_SOLICITUD                 Int
+  INTENTO_NUMERO               Int       @db.TinyInt
+  FECHA_INTENTO                DateTime  @default(now(), map: "DF__SOLICITUD__FECHA__3B40CD36") @db.DateTime
+  TIPO_ERROR                   String    @db.VarChar(40)
+  CODIGO_ERROR                 String?   @db.VarChar(40)
+  MENSAJE_ERROR                String?   @db.VarChar(1000)
+  BACKOFF_SEGUNDOS             Int?
+  PROXIMO_REINTENTO_PROGRAMADO DateTime? @db.DateTime
+  RESULTADO_REINTENTO          String?   @db.VarChar(15)
+  NOTAS                        String?   @db.VarChar(500)
+  SOLICITUD                    SOLICITUD @relation(fields: [ID_SOLICITUD], references: [ID_SOLICITUD], onDelete: Cascade, onUpdate: NoAction, map: "FK_REINTENTO_SOLICITUD")
+}
+
+model USUARIO {
+  IDP_SUBJECT    String           @db.VarChar(128)
+  EMAIL          String           @unique(map: "UQ_PP_USR_EMAIL") @db.VarChar(120)
+  NOMBRE         String           @db.VarChar(100)
+  ROL_GLOBAL     String           @default("OPERADOR", map: "DF__USUARIO__ROL_GLO__0C85DE4D") @db.VarChar(30)
+  ACTIVO         String           @default("S", map: "DF__USUARIO__ACTIVO__0D7A0286") @db.Char(1)
+  FECHA_CREACION DateTime         @default(now(), map: "DF__USUARIO__FECHA_C__0E6E26BF") @db.DateTime
+  ID_USUARIO     Int              @id(map: "PK__USUARIO__91136B90485F0CAD") @default(autoincrement())
+  EJECUCION_LOG  EJECUCION_LOG[]
+  SOLICITUD      SOLICITUD[]
+  USUARIO_AMBITO USUARIO_AMBITO[]
+}
+
+model USUARIO_AMBITO {
+  ID_AMBITO                                  Int      @id(map: "PK_PP_USUARIO_AMBITO") @default(autoincrement())
+  COMPANIA                                   String   @db.VarChar(20)
+  ID_USUARIO                                 Int?
+  USUARIO                                    USUARIO? @relation(fields: [ID_USUARIO], references: [ID_USUARIO], onDelete: NoAction, onUpdate: NoAction, map: "FK_AMBITO_USUARIO")
+  COMPANIA_USUARIO_AMBITO_COMPANIAToCOMPANIA COMPANIA @relation("USUARIO_AMBITO_COMPANIAToCOMPANIA", fields: [COMPANIA], references: [COMPANIA], onUpdate: NoAction, map: "FK_PP_UA_COMPANIA")
+}

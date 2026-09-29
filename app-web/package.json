@@ -5,6 +5,7 @@
   "description": "Portal web full-stack (Next.js) para Gestion Masiva de Precios MV26020",
   "scripts": {
     "dev": "next dev -p 5000",
+    "postinstall": "prisma generate --schema prisma-postgres && prisma generate --schema prisma-sqlserver && prisma generate --schema prisma-softland",
     "build": "next build",
     "start": "next start -p 5000",
     "lint": "next lint",
@@ -15,6 +16,7 @@
     "db:studio": "prisma studio --schema prisma-postgres",
     "sqlserver:pull": "prisma db pull --schema prisma-sqlserver",
     "sqlserver:generate": "prisma generate --schema prisma-sqlserver",
+    "softland:generate": "prisma generate --schema prisma-softland",
     "sqlserver:studio": "prisma studio --schema prisma-sqlserver",
     "seed": "node --env-file=.env prisma-postgres/seed.cjs"
   },
