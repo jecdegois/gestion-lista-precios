@@ -98,6 +98,8 @@ export default function RevisionModal({
   const [articulosCargados, setArticulosCargados] = useState(
     !esGestionGlobal || solicitud.filas.length > 0,
   );
+  // Lista padre resuelta por el API para Gestión Global (para mostrar el banner en la tabla).
+  const [nivelPrecioBaseDetalle, setNivelPrecioBaseDetalle] = useState<string | undefined>(undefined);
   useEffect(() => {
     offsetsDetalleEnCarga.current.clear();
     setHallazgosDetalle([]);
@@ -115,6 +117,7 @@ export default function RevisionModal({
       setArticulosCargados(false);
       setDetalleHasMore(true);
       setDetalleNextOffset(0);
+      setNivelPrecioBaseDetalle(undefined);
     } else {
       setFilasDetalle(solicitud.filas);
       setArticulosCargados(true);
@@ -154,11 +157,14 @@ export default function RevisionModal({
         filas?: Solicitud["filas"];
         hasMore?: boolean;
         nextOffset?: number | null;
+        nivelPrecioBase?: string;
       };
       // One-way: se activa en cuanto la API responde (incluso si viene vacía),
       // garantizando que las tablas permanecen montadas si hallazgos tarda más.
       setArticulosCargados(true);
       if (!response.ok || !Array.isArray(pagina.filas)) return;
+      // Capturar la lista padre en la primera página para el banner descriptivo.
+      if (offset === 0 && pagina.nivelPrecioBase) setNivelPrecioBaseDetalle(pagina.nivelPrecioBase);
       const filasPagina = pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
       setFilasDetalle((actuales) =>
         offset === 0 ? filasPagina : [...actuales, ...filasPagina],
@@ -347,6 +353,7 @@ export default function RevisionModal({
           esGestionGlobal ? (
             <TablaImpactoGestionGlobal
               filas={filas as FilaPrecio[]}
+              mensajeListaBase={nivelPrecioBaseDetalle ? `Precios calculados en base a la lista padre: ${nivelPrecioBaseDetalle}` : undefined}
               hallazgos={hallazgosDetalle}
               hallazgosHasMore={hallazgosHasMore}
               hallazgosNextOffset={hallazgosNextOffset}

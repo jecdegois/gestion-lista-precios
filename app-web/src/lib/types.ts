@@ -32,6 +32,16 @@ export interface NivelPrecio {
 export interface GestionGlobalLista extends NivelPrecio {
   version: string;
   variacionPorc: number | null;
+  /**
+   * Lista padre desde la cual se obtienen los precios base para la simulación.
+   * Corresponde a GESTION_LISTAS_PRECIOS.NIVEL_PRECIO_BASE.
+   * Si es NULL en la BD, se resuelve como el código de la propia lista (se busca a sí misma).
+   */
+  nivelPrecioBase: string;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  factorMultiplicador: number | null;
+  horasAtras: number | null;
 }
 
 /** Resultado de evaluar una fila de la carga masiva de margen. */
