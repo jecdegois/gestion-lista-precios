@@ -63,11 +63,15 @@ export interface PaginaSolicitudes {
 /**
  * Cabeceras de solicitudes paginadas, SIN detalle de filas.
  * Las filas de detalle se obtienen con `obtenerSolicitud` al abrir el modal.
+ * @param email  Si se indica, filtra por SOLICITANTE_EMAIL (mis solicitudes).
+ *               Si es null/undefined, trae todas las de la compañía (bandeja).
  */
 async function listarSolicitudesPaginado(
   compania: string,
   offset: number,
   limit: number,
+  email?: string | null,
+  proceso?: string | null,
 ): Promise<PaginaSolicitudes> {
   const companiaNormalizada = compania.trim().toUpperCase();
   const safeOffset = Math.max(0, offset);
@@ -75,7 +79,10 @@ async function listarSolicitudesPaginado(
 
   if (esModoDemo()) {
     const todas = demoListarSolicitudes().filter(
-      (s) => !companiaNormalizada || s.compania === companiaNormalizada,
+      (s) =>
+        (!companiaNormalizada || s.compania === companiaNormalizada) &&
+        (!email || s.solicitanteEmail === email) &&
+        (!proceso || s.proceso === proceso),
     );
     const pagina = todas.slice(safeOffset, safeOffset + safeLimit);
     const hasMore = safeOffset + pagina.length < todas.length;
@@ -91,28 +98,26 @@ async function listarSolicitudesPaginado(
   const sp = objetoPortal(companiaNormalizada, "SOLICITUD");
   const mssql = await import("mssql");
 
-  // Total sin detalle (COUNT)
-  const countQ = await pool
+  const req = pool
     .request()
-    .input("comp", mssql.VarChar(20), companiaNormalizada)
-    .query(`SELECT COUNT(1) AS total FROM ${sp} WITH(NOLOCK) WHERE COMPANIA = @comp`);
-  const total: number = countQ.recordset[0]?.total ?? 0;
+    .input("comp",    mssql.VarChar(20),  companiaNormalizada)
+    .input("email",   mssql.VarChar(120), email?.trim().toLowerCase() ?? "")
+    .input("proceso", mssql.VarChar(30),  proceso?.trim() ?? "")
+    .input("offset",  mssql.Int,          safeOffset)
+    .input("limit",   mssql.Int,          safeLimit);
 
-  // Cabeceras paginadas — sin JOIN a SOLICITUD_DETALLE
-  const cab = await pool
-    .request()
-    .input("comp", mssql.VarChar(20), companiaNormalizada)
-    .input("offset", mssql.Int, safeOffset)
-    .input("limit", mssql.Int, safeLimit)
-    .query(
-      `SELECT * FROM ${sp} WITH(NOLOCK)
-        WHERE COMPANIA = @comp
-        ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC
-        OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
-    );
+  const result = await req.query(
+    `SELECT *, COUNT(*) OVER() AS _total_count
+       FROM ${sp} WITH(NOLOCK)
+      WHERE COMPANIA = @comp
+        AND (@email   = '' OR LOWER(LTRIM(RTRIM(SOLICITANTE_EMAIL))) = @email)
+        AND (@proceso = '' OR PROCESO = @proceso)
+      ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC
+      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
+  );
 
-  const solicitudes = cab.recordset.map((r: Record<string, unknown>) =>
-    // Sin detalle: filas vacías y parametros sin las filas embedidas
+  const total: number = result.recordset[0]?._total_count ?? 0;
+  const solicitudes = result.recordset.map((r: Record<string, unknown>) =>
     mapSolicitudCabecera(r),
   );
   const hasMore = safeOffset + solicitudes.length < total;
@@ -554,7 +559,8 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
 
 export const requestsRepository = {
   list: listarSolicitudes,
-  listPaged: listarSolicitudesPaginado,
+  listPaged: (compania: string, offset: number, limit: number, email?: string | null, proceso?: string | null) =>
+    listarSolicitudesPaginado(compania, offset, limit, email, proceso),
   find: obtenerSolicitud,
   nextCode: siguienteCodigoSolicitud,
   create: agregarSolicitud,

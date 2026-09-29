@@ -757,6 +757,19 @@ export const solicitudesService = {
     return { ok: true as const, solicitudes };
   },
 
+  async listarMiasPaginado(identidad: Identidad, proceso: ProcesoKey | undefined, offset: number, limit: number) {
+    if (!identidad.compania) return SIN_COMPANIA;
+    // Filtra por email y proceso directamente en SQL — una sola query, sin post-filtrado en Node.js
+    const pagina = await repo.listPaged(identidad.compania, offset, limit, identidad.email, proceso ?? null);
+    return {
+      ok: true as const,
+      solicitudes: pagina.solicitudes,
+      total: pagina.total,
+      hasMore: pagina.hasMore,
+      nextOffset: pagina.nextOffset,
+    };
+  },
+
   async enviar(identidad: Identidad, input: SolicitudInput) {
     if (!identidad.compania) return SIN_COMPANIA;
     return enviarSolicitud(aEnviarInput(identidad, identidad.compania, input));

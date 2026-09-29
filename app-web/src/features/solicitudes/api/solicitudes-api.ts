@@ -30,9 +30,12 @@ export function getCatalogoGestionGlobal() {
   return request<{ listas: GestionGlobalLista[]; niveles: NivelPrecio[] }>("/api/gestion-global/catalogo");
 }
 
-export function getMisSolicitudes(proceso?: ProcesoKey) {
-  const query = proceso ? `?proceso=${proceso}` : "";
-  return request<{ solicitudes: Solicitud[] }>(`/api/solicitudes${query}`);
+export function getMisSolicitudes(proceso?: ProcesoKey, offset = 0, limit = 20) {
+  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  if (proceso) query.set("proceso", proceso);
+  return request<{ solicitudes: Solicitud[]; total: number; hasMore: boolean; nextOffset: number | null }>(
+    `/api/solicitudes?${query.toString()}`,
+  );
 }
 
 export function enviarSolicitud(input: SolicitudInput) {
