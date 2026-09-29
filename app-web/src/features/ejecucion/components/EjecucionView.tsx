@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentType } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
 import type { EjecucionKey, EjecucionLog } from "@/lib/domain-types";
 import { EJECUCION_LABELS } from "../routes";
@@ -9,6 +9,7 @@ import UltimasEjecuciones from "./UltimasEjecuciones";
 import PreciosForm from "./forms/PreciosForm";
 import MargenForm from "./forms/MargenForm";
 import DescuentoForm from "./forms/DescuentoForm";
+import { listarEjecuciones } from "../api/ejecucion-api";
 
 // ─── Mapa de formularios por tipo ────────────────────────────────────────────
 
@@ -33,13 +34,28 @@ const DESCRIPCIONES: Record<EjecucionKey, string> = {
 
 interface EjecucionViewProps {
   tipo: EjecucionKey;
-  /** Registros del log de ejecuciones — se poblará desde la tabla EJECUCION_LOG (PASO 4+). */
+  /** Registros iniciales; la vista los refresca desde EJECUCION_LOG al montarse. */
   registros?: EjecucionLog[];
 }
 
 export default function EjecucionView({ tipo, registros = [] }: EjecucionViewProps) {
   const user = useCurrentUser();
+  const [executionLogs, setExecutionLogs] = useState<EjecucionLog[]>(registros);
   const Form = FORMS[tipo];
+
+  useEffect(() => {
+    let active = true;
+    void listarEjecuciones(tipo).then((result) => {
+      if (active && result.ok) setExecutionLogs(result.data.ejecuciones);
+    });
+    return () => {
+      active = false;
+    };
+  }, [tipo]);
+
+  function handleExecutionLogChange(log: EjecucionLog) {
+    setExecutionLogs((current) => [log, ...current.filter((item) => item.id !== log.id)]);
+  }
 
   return (
     <>
@@ -77,11 +93,15 @@ export default function EjecucionView({ tipo, registros = [] }: EjecucionViewPro
         </div>
 
         {/* Formulario del tipo activo */}
-        <Form />
+        {tipo === "EJECUCION_PRECIOS" ? (
+          <PreciosForm onExecutionLogChange={handleExecutionLogChange} />
+        ) : (
+          <Form />
+        )}
       </div>
 
       {/* ── Tabla de últimas ejecuciones ── */}
-      <UltimasEjecuciones registros={registros} tipoActivo={tipo} />
+      <UltimasEjecuciones registros={executionLogs} tipoActivo={tipo} />
     </>
   );
 }

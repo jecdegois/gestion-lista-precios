@@ -1,6 +1,12 @@
 import type { ArticuloCatalogo, FilaPrecio, TipoVariacion } from "@/lib/domain-types";
 
-export type GlobalManagementPage = { filas: FilaPrecio[]; hasMore: boolean; nextOffset: number | null };
+export type GlobalManagementPage = {
+  filas: FilaPrecio[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  /** Lista padre desde la cual se calcularon los precios (NIVEL_PRECIO_BASE). */
+  nivelPrecioBase?: string;
+};
 
 export type GlobalManagementPageParams = {
   level: string;
@@ -25,7 +31,11 @@ export async function fetchGlobalManagementPage(params: GlobalManagementPagePara
   if (!response.ok) throw new Error("No fue posible calcular la página de impacto de Gestión Global.");
   const page = (await response.json()) as GlobalManagementPage & { ok: boolean; error?: string };
   if (!page.ok || !Array.isArray(page.filas)) throw new Error(page.error ?? "La respuesta de simulación no tiene un formato válido.");
-  return { ...page, filas: page.filas.map((row, index) => ({ ...row, fila: params.offset + index + 1 })) };
+  return {
+    ...page,
+    filas: page.filas.map((row, index) => ({ ...row, fila: params.offset + index + 1 })),
+    nivelPrecioBase: page.nivelPrecioBase,
+  };
 }
 
 export type ArticlesPage = { items: ArticuloCatalogo[]; hasMore: boolean; nextOffset: number | null };
