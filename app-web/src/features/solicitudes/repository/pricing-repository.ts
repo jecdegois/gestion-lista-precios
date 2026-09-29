@@ -438,7 +438,9 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       ...nivel,
       version: "1",
       variacionPorc: 0,
+      moneda: null,
       nivelPrecioBase: nivel.codigo,
+      monedaBase: null,
       fechaInicio: null,
       fechaFin: null,
       factorMultiplicador: null,
@@ -453,12 +455,14 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       `SELECT A.NIVEL_PRECIO AS codigo,
               A.VERSION AS version,
               A.VARIACION_PORC AS variacionPorc,
+              LTRIM(RTRIM(A.MONEDA)) AS moneda,
               CONVERT(varchar(10), A.FECHA_INICIO, 23) AS fechaInicio,
               CONVERT(varchar(10), A.FECHA_CORTE, 23) AS fechaFin,
               CAST(A.FACTOR_MULTIPLICADOR AS FLOAT) AS factorMultiplicador,
               A.HORAS_ATRAS AS horasAtras,
               -- Si NIVEL_PRECIO_BASE es NULL o vacío, la lista se toma como su propia base
-              COALESCE(NULLIF(LTRIM(RTRIM(A.NIVEL_PRECIO_BASE)), ''), A.NIVEL_PRECIO) AS nivelPrecioBase
+              COALESCE(NULLIF(LTRIM(RTRIM(A.NIVEL_PRECIO_BASE)), ''), A.NIVEL_PRECIO) AS nivelPrecioBase,
+              LTRIM(RTRIM(A.MONEDA_BASE)) AS monedaBase
          FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
         WHERE A.COMPANIA = @compania
         ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION), A.VERSION;`,
@@ -470,12 +474,14 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       nombre: codigo,
       version: String(r.version ?? "").trim(),
       variacionPorc: r.variacionPorc == null ? null : Number(r.variacionPorc),
+      moneda: r.moneda == null ? null : String(r.moneda).trim() || null,
       fechaInicio: r.fechaInicio == null ? null : String(r.fechaInicio).trim(),
       fechaFin: r.fechaFin == null ? null : String(r.fechaFin).trim(),
       factorMultiplicador: r.factorMultiplicador == null ? null : Number(r.factorMultiplicador),
       horasAtras: r.horasAtras == null ? null : Number(r.horasAtras),
       // Fallback en TypeScript por si el COALESCE retorna nulo igualmente
       nivelPrecioBase: String(r.nivelPrecioBase ?? codigo).trim() || codigo,
+      monedaBase: r.monedaBase == null ? null : String(r.monedaBase).trim() || null,
     };
   }).filter((nivel) => nivel.codigo && nivel.version);
 }

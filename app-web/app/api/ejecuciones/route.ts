@@ -2,7 +2,7 @@ import { apiBadRequest, apiServiceResult, parseJsonBody, withIdentidad } from "@
 import { listarEjecuciones, crearEjecucion } from "@/features/ejecucion/services/ejecucion-service";
 import type { EjecucionKey } from "@/lib/domain-types";
 
-const tipos: EjecucionKey[] = ["EJECUCION_PRECIOS", "EJECUCION_MARGEN", "EJECUCION_DESCUENTO"];
+const tipos: EjecucionKey[] = ["EJECUCION_PRECIOS", "EJECUCION_MARGEN"];
 
 export const GET = withIdentidad(async (req, identidad) => {
   const tipo = new URL(req.url).searchParams.get("tipo") as EjecucionKey | null;

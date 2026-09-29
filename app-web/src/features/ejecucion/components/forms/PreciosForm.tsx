@@ -21,15 +21,36 @@ function displayValue(value: string | number | null | undefined): string {
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
 
+/**
+ * Construye el EXEC del SP con los parametros en el orden definido:
+ *   @p_nivel_precio, @p_moneda, @p_fecha_inicio, @p_fecha_fin,
+ *   @p_nivel_precio_base, @p_moneda_base, @p_factor_multiplicador,
+ *   @p_horas_atras, @p_version
+ */
 function buildExecute(lista: GestionGlobalLista, schema: string): string {
-  const quote = (value: string) => `'${value.replace(/'/g, "''")}'`;
-  const dateTime = (value: string | null) => value ? `${value.slice(0, 10)} 00:00:00` : "";
-  const decimal = lista.factorMultiplicador == null ? "NULL" : lista.factorMultiplicador.toFixed(8);
-  const integer = lista.horasAtras == null ? "NULL" : String(lista.horasAtras);
+  const quote    = (value: string) => `'${value.replace(/'/g, "''")}'`;
+  const quoteOrNull = (value: string | null | undefined) =>
+    value ? quote(value) : "NULL";
+  const dateTime = (value: string | null) =>
+    value ? quote(`${value.slice(0, 10)} 00:00:00`) : "NULL";
+  const decimal  = lista.factorMultiplicador == null
+    ? "NULL"
+    : lista.factorMultiplicador.toFixed(8);
+  const integer  = lista.horasAtras == null ? "NULL" : String(lista.horasAtras);
+  const version  = Number.isFinite(Number(lista.version)) ? Number(lista.version) : "NULL";
 
-  return [
-    `EXEC [${schema}].[SP_GESTION_LISTAS_PRECIOS_PARCIAL] ${quote(lista.codigo)}, ${lista.fechaInicio ? quote(dateTime(lista.fechaInicio)) : "NULL"}, ${lista.fechaFin ? quote(dateTime(lista.fechaFin)) : "NULL"}, ${quote(lista.nivelPrecioBase)}, ${decimal}, ${integer}, ${Number.isFinite(Number(lista.version)) ? Number(lista.version) : "NULL"};`,
-  ].join("\n");
+  return (
+    `EXEC [${schema}].[SP_GESTION_LISTAS_PRECIOS_PARCIAL]` +
+    ` ${quote(lista.codigo)},` +
+    ` ${quoteOrNull(lista.moneda)},` +
+    ` ${dateTime(lista.fechaInicio)},` +
+    ` ${dateTime(lista.fechaFin)},` +
+    ` ${quote(lista.nivelPrecioBase)},` +
+    ` ${quoteOrNull(lista.monedaBase)},` +
+    ` ${decimal},` +
+    ` ${integer},` +
+    ` ${version};`
+  );
 }
 
 /** Selecciona una lista de GESTION_LISTAS_PRECIOS y prepara el EXEC del SP parcial. */
@@ -46,7 +67,8 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
     [lists],
   );
 
-  const executeReady = selectedList != null &&
+  const executeReady =
+    selectedList != null &&
     selectedList.fechaInicio != null &&
     selectedList.fechaFin != null &&
     selectedList.factorMultiplicador != null &&
@@ -55,7 +77,7 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
 
   async function handleExecute() {
     if (!selectedList || !executeReady) return;
-    const schema = (user.compania ?? "FEBECA").trim().toUpperCase();
+    const schema  = (user.compania ?? "FEBECA").trim().toUpperCase();
     const execute = buildExecute(selectedList, schema);
     console.log(execute);
     setProcessing(true);
@@ -63,17 +85,19 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
     const start = await crearEjecucion({
       tipo: "EJECUCION_PRECIOS",
       parametros: {
-        nivelPrecio: selectedList.codigo,
-        fechaInicio: selectedList.fechaInicio,
-        fechaCorte: selectedList.fechaFin,
-        nivelPrecioBase: selectedList.nivelPrecioBase,
+        nivelPrecio:        selectedList.codigo,
+        moneda:             selectedList.moneda,
+        fechaInicio:        selectedList.fechaInicio,
+        fechaCorte:         selectedList.fechaFin,
+        nivelPrecioBase:    selectedList.nivelPrecioBase,
+        monedaBase:         selectedList.monedaBase,
         factorMultiplicador: selectedList.factorMultiplicador,
-        horasAtras: selectedList.horasAtras,
-        version: selectedList.version,
+        horasAtras:         selectedList.horasAtras,
+        version:            selectedList.version,
         execute,
       },
       spNombre: "SP_GESTION_LISTAS_PRECIOS_PARCIAL",
-      observaciones: `EXEC preparado para prueba; el SP no se invoca todavía.\n${execute}`,
+      observaciones: `EXEC preparado para prueba; el SP no se invoca todavia.\n${execute}`,
     });
     if (!start.ok) {
       setProcessing(false);
@@ -101,8 +125,8 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
   return (
     <div className="flex flex-col gap-5">
       <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-600">
-        Selecciona una lista para consultar sus parámetros vigentes y preparar el `EXEC` de actualización parcial.
-        La ejecución real permanece deshabilitada durante esta prueba.
+        Selecciona una lista para consultar sus parametros vigentes y preparar el EXEC de actualizacion parcial.
+        La ejecucion real permanece deshabilitada durante esta prueba.
       </div>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
@@ -111,11 +135,11 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
       {processing && (
         <div className="flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs text-indigo-800">
           <span className="spin h-4 w-4 rounded-full border-2 border-indigo-200 border-t-indigo-700" />
-          <span>Procesando ejecución de Precios…</span>
+          <span>Procesando ejecucion de Precios...</span>
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Dropdown
           id="ejecucion-precios-lista"
           modelValue={listaCodigo}
@@ -127,23 +151,24 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
           disabled={processing}
           loading={loading}
         />
-        <ReadOnlyField label="Nivel_Precio" value={displayValue(selectedList?.codigo)} />
-        <ReadOnlyField label="Fecha_Inicio" value={displayValue(selectedList?.fechaInicio)} />
-        <ReadOnlyField label="Fecha_Fin" value={displayValue(selectedList?.fechaFin)} />
         <ReadOnlyField label="Nivel_PrecioBase" value={displayValue(selectedList?.nivelPrecioBase)} />
         <ReadOnlyField
           label="Factor_Multiplicador"
           value={selectedList?.factorMultiplicador == null ? "—" : selectedList.factorMultiplicador.toFixed(8)}
         />
-        <ReadOnlyField label="Version" value={displayValue(selectedList?.version)} />
-        <ReadOnlyField label="Horas_Atras" value={displayValue(selectedList?.horasAtras)} />
       </div>
 
       <div className="flex items-center gap-3 border-t border-zinc-100 pt-4">
-        <button className="btn btn-default" disabled={!executeReady || processing} onClick={handleExecute}>
-          {processing ? "Procesando…" : "Ejecutar simulación"}
+        <button
+          className="btn btn-default"
+          disabled={!executeReady || processing}
+          onClick={handleExecute}
+        >
+          {processing ? "Procesando..." : "Ejecutar simulacion"}
         </button>
-        <span className="text-[11px] text-zinc-400">Se registra en el log local y se escribe en la consola.</span>
+        <span className="text-[11px] text-zinc-400">
+          Se registra en el log local y se escribe en la consola.
+        </span>
       </div>
     </div>
   );

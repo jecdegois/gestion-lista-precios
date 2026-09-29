@@ -8,15 +8,13 @@ import EjecucionTabs from "./EjecucionTabs";
 import UltimasEjecuciones from "./UltimasEjecuciones";
 import PreciosForm from "./forms/PreciosForm";
 import MargenForm from "./forms/MargenForm";
-import DescuentoForm from "./forms/DescuentoForm";
 import { listarEjecuciones } from "../api/ejecucion-api";
 
 // ─── Mapa de formularios por tipo ────────────────────────────────────────────
 
 const FORMS: Record<EjecucionKey, ComponentType> = {
-  EJECUCION_PRECIOS:   PreciosForm,
-  EJECUCION_MARGEN:    MargenForm,
-  EJECUCION_DESCUENTO: DescuentoForm,
+  EJECUCION_PRECIOS: PreciosForm,
+  EJECUCION_MARGEN:  MargenForm,
 };
 
 // ─── Descripciones por tipo ───────────────────────────────────────────────────
@@ -26,8 +24,6 @@ const DESCRIPCIONES: Record<EjecucionKey, string> = {
     "Actualización de precios mediante factor multiplicador sobre la lista seleccionada.",
   EJECUCION_MARGEN:
     "Recalculo masivo del Margen Mínimo de Utilidad (Regla de Mayoreo) por porcentaje de reducción.",
-  EJECUCION_DESCUENTO:
-    "Aplicación de descuento puntual por artículo y lista de precio en Softland.",
 };
 
 // ─── Vista principal ──────────────────────────────────────────────────────────
