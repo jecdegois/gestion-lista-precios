@@ -307,7 +307,9 @@ async function actualizarPreciosBase(
 
   const companiaNormalizada = compania.trim().toUpperCase();
   const lista = "MAYOREOD";
-  const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && fila.validacion.valido);
+  const filasValidas = filas.filter((fila): fila is FilaPrecio =>
+    !esFilaMargen(fila) && (fila.validacion.valido || fila.validacion.estadoRedondeo === "ALERTA_MARGEN"),
+  );
   if (filasValidas.length === 0) {
     throw new Error("No existen filas válidas para actualizar precios base.");
   }
@@ -419,19 +421,42 @@ async function obtenerVersionActiva(compania: string, nivelPrecio: string): Prom
 /** Lista y parámetros vigentes usados exclusivamente por Gestión Global. */
 async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista[]> {
   if (esModoDemo()) {
-    return nivelesPrecioDemo(compania).map((nivel) => ({ ...nivel, version: "1", variacionPorc: 0 }));
+    return nivelesPrecioDemo(compania).map((nivel) => ({
+      ...nivel,
+      version: "1",
+      variacionPorc: 0,
+      nivelPrecioBase: nivel.codigo,
+      fechaInicio: null,
+      fechaFin: null,
+      factorMultiplicador: null,
+      horasAtras: null,
+    }));
   }
   const rows = await softlandDbo().gESTION_LISTAS_PRECIOS.findMany({
     where: { COMPANIA: compania.trim().toUpperCase() },
-    select: { NIVEL_PRECIO: true, VERSION: true, VARIACION_PORC: true },
+    select: {
+      NIVEL_PRECIO: true, VERSION: true, VARIACION_PORC: true, FECHA_INICIO: true, FECHA_CORTE: true,
+      FACTOR_MULTIPLICADOR: true, HORAS_ATRAS: true, NIVEL_PRECIO_BASE: true,
+    },
     orderBy: [{ NIVEL_PRECIO: "asc" }, { VERSION: "asc" }],
   });
-  return rows.map((r) => ({
-    codigo: r.NIVEL_PRECIO.trim(),
-    nombre: r.NIVEL_PRECIO.trim(),
-    version: String(r.VERSION),
-    variacionPorc: r.VARIACION_PORC.toNumber(),
-  })).filter((nivel) => nivel.codigo && nivel.version);
+  // Fechas: Prisma lee el datetime como UTC, así que toISOString() devuelve la fecha tal como está guardada.
+  const fecha = (d: Date) => d.toISOString().slice(0, 10);
+  return rows.map((r) => {
+    const codigo = r.NIVEL_PRECIO.trim();
+    return {
+      codigo,
+      nombre: codigo,
+      version: String(r.VERSION),
+      variacionPorc: r.VARIACION_PORC.toNumber(),
+      fechaInicio: fecha(r.FECHA_INICIO),
+      fechaFin: fecha(r.FECHA_CORTE),
+      factorMultiplicador: r.FACTOR_MULTIPLICADOR.toNumber(),
+      horasAtras: r.HORAS_ATRAS,
+      // Si NIVEL_PRECIO_BASE está vacío, la lista se toma como su propia base.
+      nivelPrecioBase: r.NIVEL_PRECIO_BASE.trim() || codigo,
+    };
+  }).filter((nivel) => nivel.codigo && nivel.version);
 }
 
 async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Articulo[]> {
@@ -521,9 +546,14 @@ async function listarCatalogoPaginado(
   search = "",
   offset = 0,
   maxRecords = 50,
+  /** Lista padre desde la cual se leen los precios. Si se omite, se usa nivelPrecio (comportamiento legacy). */
+  nivelPrecioPadre?: string,
 ): Promise<PaginaCatalogo> {
   const nivel = nivelPrecio.trim();
   if (!nivel) throw new Error("Debe indicar una lista de precio para consultar el catálogo.");
+  // Nivel que se consulta en ARTICULO_PRECIO: si se provee un padre, se usan SUS precios.
+  // Si no (o si el padre es igual a la lista), se usa la lista directamente.
+  const nivelConsulta = nivelPrecioPadre?.trim() || nivel;
   const pagina = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const limite = Number.isInteger(maxRecords) ? Math.min(Math.max(maxRecords, 1), 200) : 50;
   const termino = search.trim();
@@ -531,7 +561,7 @@ async function listarCatalogoPaginado(
   if (esModoDemo()) {
     const terminoNormalizado = termino.toLowerCase();
     const catalogo = catalogoDemo(compania)
-      .map((articulo) => ({ ...articulo, nivelPrecio: nivel, version: 1 }))
+      .map((articulo) => ({ ...articulo, nivelPrecio: nivelConsulta, version: 1 }))
       .filter((articulo) =>
         !terminoNormalizado
         || articulo.codigo.toLowerCase().includes(terminoNormalizado)
@@ -556,7 +586,7 @@ async function listarCatalogoPaginado(
   const mssql = await import("mssql");
   const q = await pool
     .request()
-    .input("nivelPrecio", mssql.VarChar(50), nivel)
+    .input("nivelPrecio", mssql.VarChar(50), nivelConsulta)
     .input("search", mssql.VarChar(200), termino)
     .input("searchLike", mssql.VarChar(202), `%${termino}%`)
     .input("offset", mssql.Int, pagina)
@@ -854,11 +884,15 @@ async function listarHallazgosGestionGlobal(
   magnitud: number,
   offset = 0,
   limit = 100,
+  /** Lista padre desde la cual se leen los precios para calcular hallazgos. Si se omite, se usa nivelPrecio. */
+  nivelPrecioPadre?: string,
 ): Promise<PaginaHallazgos> {
   if (esModoDemo()) {
     return { items: [], total: 0, hasMore: false, nextOffset: null };
   }
 
+  // Nivel que se consulta en ARTICULO_PRECIO: precio de la lista padre (o la propia si no tiene padre).
+  const nivelConsulta = nivelPrecioPadre?.trim() || nivelPrecio.trim();
   const nivel = nivelPrecio.trim();
   const safeOffset = Math.max(0, offset);
   const safeLimit = Math.min(Math.max(limit, 1), 200);
@@ -888,6 +922,8 @@ async function listarHallazgosGestionGlobal(
   //                 = 0.20 (fallback global)       si es NULL o 0
   //
   // El fallback de 0.20 replica MARGEN_MINIMO_GLOBAL del engine JS.
+  // @nivelPrecio se resuelve contra la lista padre (nivelConsulta) para que los precios
+  // base sean los de MAYOREOD (u otra lista padre), no los de la lista hija.
   const baseQuery = `
     WITH VersionActiva AS (
       SELECT VN.NIVEL_PRECIO, MAX(VN.VERSION) AS VERSION
@@ -936,14 +972,14 @@ async function listarHallazgosGestionGlobal(
 
   const countQ = await pool
     .request()
-    .input("nivelPrecio", mssql.VarChar(50), nivel)
+    .input("nivelPrecio", mssql.VarChar(50), nivelConsulta)
     .input("factor", mssql.Float, factor)
     .query(`${baseQuery} SELECT COUNT(1) AS total FROM Hallazgos`);
   const total: number = countQ.recordset[0]?.total ?? 0;
 
   const dataQ = await pool
     .request()
-    .input("nivelPrecio", mssql.VarChar(50), nivel)
+    .input("nivelPrecio", mssql.VarChar(50), nivelConsulta)
     .input("factor", mssql.Float, factor)
     .input("offset", mssql.Int, safeOffset)
     .input("limit", mssql.Int, safeLimit)
@@ -962,7 +998,7 @@ async function listarHallazgosGestionGlobal(
     margenUtilidadMin: Number(r.margenUtilidadMin ?? 0),
     precioMinimo: Number(r.precioMinimo ?? 0),
     precioPropuesto: Number(r.precioPropuesto ?? 0),
-    nivelPrecio: String(r.nivelPrecio ?? nivel),
+    nivelPrecio: String(r.nivelPrecio ?? nivelConsulta),
     version: Number(r.version ?? 0),
   }));
 

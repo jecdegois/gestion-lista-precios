@@ -19,7 +19,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Lista, versión y variación actual (solo lectura), tipo de variación y variación %. */
+/** Lista, versión, lista base y variación actual (solo lectura), tipo de variación y variación %. */
 export default function GlobalManagementFields({
   level,
   levelOptions,
@@ -51,8 +51,14 @@ export default function GlobalManagementFields({
       <>Multiplicador: <b className="mono">{fmtFactor(conversion.factor)}</b></>
     ) : undefined;
 
+  // Determina si la lista seleccionada tiene una lista padre distinta de sí misma.
+  const tienePadre =
+    selectedList != null &&
+    selectedList.nivelPrecioBase !== "" &&
+    selectedList.nivelPrecioBase !== selectedList.codigo;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 max-w-6xl mb-4">
+    <div className="grid grid-cols-1 md:grid-cols-6 gap-4 max-w-7xl mb-4">
       <Dropdown
         id="nivel-gg"
         modelValue={level}
@@ -63,6 +69,18 @@ export default function GlobalManagementFields({
         searchable={false}
         disabled={disabled}
         loading={loadingCatalog}
+      />
+      {/* Lista base: solo lectura — muestra el padre desde GESTION_LISTAS_PRECIOS.NIVEL_PRECIO_BASE.
+          Si la lista no tiene padre, muestra la propia lista indicando que es autorreferenciada. */}
+      <ReadOnlyField
+        label="Lista base (precios)"
+        value={
+          selectedList == null
+            ? "—"
+            : tienePadre
+              ? selectedList.nivelPrecioBase
+              : `${selectedList.nivelPrecioBase} (propia)`
+        }
       />
       <ReadOnlyField label="Versión" value={selectedList?.version ?? "—"} />
       <ReadOnlyField

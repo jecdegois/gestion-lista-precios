@@ -36,6 +36,8 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
 interface TablaImpactoDescuentoManualProps {
   filas: FilaPrecio[];
   modo?: "descuento" | "precioBase" | "precioBaseRevision";
+  /** Cuando se recibe, oculta la columna "Lista" y muestra este texto descriptivo en su lugar. */
+  mensajeListaBase?: string;
   hallazgos?: FilaPrecio[];
   hallazgosHasMore?: boolean;
   hallazgosNextOffset?: number | null;
@@ -51,6 +53,7 @@ interface TablaImpactoDescuentoManualProps {
 export default function TablaImpactoDescuentoManual({
   filas,
   modo = "descuento",
+  mensajeListaBase,
   hallazgos,
   hallazgosHasMore = false,
   hallazgosNextOffset = null,
@@ -71,6 +74,8 @@ export default function TablaImpactoDescuentoManual({
       if (modo === "precioBaseRevision") {
         return !["lista", "factor", "multiplicador", "factorAplicado", "mensajeError", "precioActual", "precioRedondeado", "costoMinimo"].includes(key);
       }
+      // Si hay mensajeListaBase, la columna "lista" se reemplaza por el banner — no se muestra en la tabla.
+      if (mensajeListaBase && key === "lista") return false;
       return modo !== "precioBase" || !["lista", "factor", "multiplicador", "factorAplicado", "mensajeError"].includes(key);
     })
     .map((column) => {
@@ -80,6 +85,14 @@ export default function TablaImpactoDescuentoManual({
 
   return (
     <div>
+      {mensajeListaBase && (
+        <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-2 text-xs text-blue-800 mb-3 flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
+          </svg>
+          <span>{mensajeListaBase}</span>
+        </div>
+      )}
       <p className="mb-2 text-xs text-zinc-500">
         {filas.length} fila(s) evaluada(s)
         {totalHallazgosVisibles > 0 ? ` · ${totalHallazgosVisibles} con hallazgo` : ""}

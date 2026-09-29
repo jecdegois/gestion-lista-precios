@@ -37,4 +37,9 @@ model GESTION_LISTAS_PRECIOS {
   NIVEL_PRECIO   String  @db.VarChar(12)
   VERSION        Int     @db.SmallInt
   VARIACION_PORC Decimal @db.Decimal(28, 8)
+  FECHA_INICIO         DateTime @db.DateTime
+  FECHA_CORTE          DateTime @db.DateTime
+  FACTOR_MULTIPLICADOR Decimal  @db.Decimal(28, 8)
+  HORAS_ATRAS          Int      @db.SmallInt
+  NIVEL_PRECIO_BASE    String   @db.VarChar(12)
 }

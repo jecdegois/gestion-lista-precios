@@ -249,6 +249,11 @@ export interface SimularGestionGlobalPaginadoInput {
   offset?: number;
   maxRecords?: number;
   soloHallazgos?: boolean;
+  /**
+   * Lista padre desde la cual se leen los precios (GESTION_LISTAS_PRECIOS.NIVEL_PRECIO_BASE).
+   * Si se omite o es igual a `nivel`, los precios se leen de la propia lista.
+   */
+  nivelPrecioBase?: string;
 }
 
 export interface PaginaSimulacionGestionGlobal {
@@ -282,6 +287,7 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
       magnitud,
       offset,
       maxRecords,
+      input.nivelPrecioBase,
     );
     const nombreLista = nivel;
     const moneda = await monedaDe(input.compania);
@@ -322,7 +328,7 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
       nextOffset: pagina.nextOffset,
     };
   }
-  const pagina = await pricingRepository.listCatalogPage(input.compania, nivel, "", offset, maxRecords);
+  const pagina = await pricingRepository.listCatalogPage(input.compania, nivel, "", offset, maxRecords, input.nivelPrecioBase);
   const contexto = crearContextoCatalogo(niveles, pagina.items, nivel, await monedaDe(input.compania));
   const filas = construirFilasGestionGlobal(
     nivel,

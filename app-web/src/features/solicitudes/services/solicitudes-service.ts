@@ -136,18 +136,27 @@ async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boole
       (articulo) => articulo.codigo.trim().toUpperCase() === codigoNormalizado,
     );
   };
-  const hayArticuloFueraDeLista = input.filas.some((fila) => {
+
+  // Para MAYOREOD_MASIVO se permite carga parcial: se descartan solo las filas con
+  // error duro (código inválido, precio cero, formato incorrecto). Las filas con
+  // advertencia de margen mínimo (ALERTA_MARGEN) sí se incluyen — el aprobador
+  // es quien decide si autoriza el riesgo.
+  const filasParaProcesar = input.proceso === "MAYOREOD_MASIVO"
+    ? input.filas.filter((fila) => fila.validacion.valido || fila.validacion.estadoRedondeo === "ALERTA_MARGEN")
+    : input.filas;
+
+  const hayArticuloFueraDeLista = filasParaProcesar.some((fila) => {
     const listaFila = "listaCodigo" in fila && fila.listaCodigo
       ? resolverNivelPrecio(niveles, fila.listaCodigo)
       : listaPredeterminada;
     return !listaFila || !contieneArticulo(listaFila, fila.codigo);
   });
-  if (input.filas.length === 0 || hayArticuloFueraDeLista) {
+  if (filasParaProcesar.length === 0 || hayArticuloFueraDeLista) {
     return { ok: false, error: "La solicitud contiene un artículo que no existe en la lista de precio seleccionada en Softland." };
   }
 
   // Enriquecer filas con la lista/nivel correspondiente
-  const filasConLista: FilaResultado[] = input.filas.map((fila) => {
+  const filasConLista: FilaResultado[] = filasParaProcesar.map((fila) => {
     const listaFila = "listaCodigo" in fila && fila.listaCodigo
       ? resolverNivelPrecio(niveles, fila.listaCodigo)
       : listaPredeterminada;
@@ -365,7 +374,7 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
         s.filas,
         input.aprobadorNombre,
       );
-      const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
+      const fallidos = s.filas.filter((fila) => !fila.validacion.valido && fila.validacion.estadoRedondeo !== "ALERTA_MARGEN").length;
       console.info("[PRECIO_BASE] Precios de MAYOREOD persistidos", {
         solicitudId: s.id,
         actualizados: resultadoPrecios.actualizados,

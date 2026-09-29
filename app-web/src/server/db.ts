@@ -89,6 +89,22 @@ export function softlandDbo(): SoftlandClient {
   return cliente(SoftlandClient, process.env.SOFTLAND_DB_NAME ?? "SOFTLANDQA", "dbo");
 }
 
+/**
+ * "Ahora" en la hora local del SQL Server (equivale a GETDATE()). Prisma escribe los Date como UTC
+ * y la BD guarda hora local, así que se desplaza por el desfase real del servidor.
+ */
+let desfaseMin: Promise<number> | undefined;
+export async function ahoraServidor(db: PortalClient): Promise<Date> {
+  // ponytail: desfase cacheado por proceso; si el servidor cambiara de huso (sin DST en VE), reiniciar la app.
+  desfaseMin ??= db.$queryRaw<{ m: number }[]>`SELECT DATEDIFF(minute, GETUTCDATE(), GETDATE()) AS m`
+    .then((r) => r[0].m)
+    .catch((err) => {
+      desfaseMin = undefined;
+      throw err;
+    });
+  return new Date(Date.now() + (await desfaseMin) * 60_000);
+}
+
 /** Convierte Decimal/BigInt de Prisma a number para los mapeadores de dominio. */
 export function plano(fila: object): Record<string, unknown> {
   return Object.fromEntries(
