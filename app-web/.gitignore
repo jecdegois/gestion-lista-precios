@@ -43,3 +43,5 @@ next-env.d.ts
 
 # Datos locales de PostgreSQL (bind mount docker-compose)
 /postgres/
+.vercel
+.env*
