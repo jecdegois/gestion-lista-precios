@@ -5,7 +5,6 @@ import {
   construirFilaDescuentoMasivo,
   construirFilaMargenMasivo,
   construirFilasGestionGlobal,
-  construirFilasMayoreodMasivo,
   construirFilaDesdeVariacion,
   textoFactorCalculado,
 } from "@/lib/engine";
@@ -219,29 +218,6 @@ export async function simularManual(input: SimularManualParams): Promise<{ ok: b
   const nivelAplicable = resolverNivelPrecio(niveles, input.nivel);
   const nivelBaseAplicable = resolverNivelPrecio(niveles, input.nivelBase ?? input.nivel);
 
-  if (input.proceso === "MAYOREOD_MASIVO" && input.codigosArticulos) {
-    if (input.codigosArticulos.length === 0) return { ok: false, filas: [] };
-    const contexto = nivelBaseAplicable ? contextosPorLista.get(nivelBaseAplicable) ?? contextoVacio : contextoVacio;
-    const grupoCriterios = Object.values(input.criteriosArticulo ?? {}).filter(Boolean).join(" / ") || "Criterios seleccionados";
-    const filas = input.codigosArticulos.map((codigo, idx) => {
-      const fila = construirFilaDesdeVariacion(
-        { fila: idx + 1, codigo, tipoVariacion: tv, variacionPorcentaje: magnitud },
-        "factor",
-        contexto,
-      );
-      return {
-        ...fila,
-        lista: `${contexto.listaBase.nombre} / ${contexto.listaBase.nivelPrecio}`,
-        listaCodigo: contexto.listaBase.codigo || nivelBaseAplicable || "",
-        grupoArticulo: grupoCriterios,
-      };
-    });
-    return { ok: true, filas };
-  }
-  if (input.proceso === "MAYOREOD_MASIVO" && input.grupoArticulos) {
-    const contexto = nivelBaseAplicable ? contextosPorLista.get(nivelBaseAplicable) ?? contextoVacio : contextoVacio;
-    return { ok: true, filas: construirFilasMayoreodMasivo(input.grupoArticulos, tv, magnitud, contexto) };
-  }
   if (input.proceso === "DESCUENTO_LISTA_PRECIO" && input.items) {
     const filas = input.items.map((it, idx) => {
       const listaCodigo = resolverNivelPrecio(niveles, it.listaCodigo);
