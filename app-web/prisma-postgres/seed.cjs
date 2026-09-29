@@ -11,9 +11,9 @@ const ROLES = [
 ];
 
 const COMPANIES = [
-  { code: "FEBECA", name: "FEBECA C.A.", sqlSchema: "FEBECA" },
-  { code: "BEVAL", name: "BEVAL C.A.", sqlSchema: "BEVAL" },
-  { code: "SILLACA", name: "SILLACA C.A.", sqlSchema: "SILLACA" },
+  { code: "FEBECA", name: "FEBECA C.A.", sqlSchema: "FEBECA", currencySymbol: "Bs." },
+  { code: "BEVAL", name: "BEVAL C.A.", sqlSchema: "BEVAL", currencySymbol: "Bs." },
+  { code: "SILLACA", name: "SILLACA C.A.", sqlSchema: "SILLACA", currencySymbol: "Bs." },
 ];
 
 async function main() {

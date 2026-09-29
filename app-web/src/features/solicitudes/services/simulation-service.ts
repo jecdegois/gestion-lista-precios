@@ -9,6 +9,7 @@ import {
   textoFactorCalculado,
 } from "@/lib/engine";
 import type { CriteriosArticulo, FilaPrecio, FilaResultado, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
+import { fmtMonto } from "@/lib/format";
 import { nombreArchivoS3 } from "@/lib/ids";
 import { pricingRepository, type HallazgoGestionGlobal } from "../repository/pricing-repository";
 import type { CatalogoSolicitud } from "../types";
@@ -16,6 +17,7 @@ import {
   cargarContextosPorLista,
   convertirArticuloMaestro,
   crearContextoCatalogo,
+  monedaDe,
   nivelesSolicitadosCanonicos,
   resolverNivelPrecio,
 } from "./catalog-context";
@@ -45,7 +47,7 @@ export async function obtenerCatalogoSolicitud(
   const niveles = await pricingRepository.listPriceLevels(compania);
   const nivelSeleccionado = resolverNivelPrecio(niveles, nivelPrecio) ?? null;
   const maestros = incluirArticulos && nivelSeleccionado ? await pricingRepository.listCatalog(compania, nivelSeleccionado) : [];
-  const contexto = crearContextoCatalogo(niveles, maestros);
+  const contexto = crearContextoCatalogo(niveles, maestros, undefined, await monedaDe(compania));
   return {
     niveles,
     nivelSeleccionado,
@@ -99,7 +101,7 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
       ?? resolverNivelPrecio(niveles, "MAYOREOD")
       ?? niveles[0]?.codigo;
     const maestros = nivelConsulta ? await pricingRepository.listCatalog(compania, nivelConsulta) : [];
-    const contexto = crearContextoCatalogo(niveles, maestros);
+    const contexto = crearContextoCatalogo(niveles, maestros, undefined, await monedaDe(compania));
     const dataRows = rows.slice(1).filter((r) => Array.isArray(r) && r.length > 0);
     const filas = dataRows.map((r, idx) =>
       construirFilaMargenMasivo({
@@ -282,6 +284,7 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
       maxRecords,
     );
     const nombreLista = nivel;
+    const moneda = await monedaDe(input.compania);
     const filas: FilaPrecio[] = pagina.items.map((h: HallazgoGestionGlobal, index: number) => ({
       fila: offset + index + 1,
       codigo: h.codigo,
@@ -307,7 +310,7 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
         costo: h.costoPromedio,
         costoMinimo: h.precioMinimo,
         precioMin: h.precioMinimo,
-        causa: `El precio propuesto (${h.precioPropuesto.toFixed(2)}) es menor que el precio mínimo del artículo (${h.precioMinimo.toFixed(2)}).`,
+        causa: `El precio propuesto (${fmtMonto(h.precioPropuesto, moneda)}) es menor que el precio mínimo del artículo (${fmtMonto(h.precioMinimo, moneda)}).`,
       },
     }));
     return {
@@ -320,7 +323,7 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
     };
   }
   const pagina = await pricingRepository.listCatalogPage(input.compania, nivel, "", offset, maxRecords);
-  const contexto = crearContextoCatalogo(niveles, pagina.items, nivel);
+  const contexto = crearContextoCatalogo(niveles, pagina.items, nivel, await monedaDe(input.compania));
   const filas = construirFilasGestionGlobal(
     nivel,
     input.tipoVariacion ?? "AUMENTO",

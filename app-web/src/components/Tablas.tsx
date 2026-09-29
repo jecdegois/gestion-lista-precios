@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import Icon from "./Icon";
 import { EstadoRedondeoBadge } from "./Badges";
-import { fmtMonto, fmtPct, fmtFactor, fmtPorcentajeCapturado } from "@/lib/format";
+import { fmtPct, fmtFactor, fmtPorcentajeCapturado } from "@/lib/format";
 import { TIPOS_VARIACION } from "@/lib/catalog";
 import { esFilaMargen } from "@/lib/domain-types";
 import TablaHallazgosMargen from "./newComponents/TablaHallazgosMargen";
 import type { FilaMargen, FilaPrecio, FilaResultado } from "@/lib/domain-types";
 import type { TableLoadParams } from "./newComponents/ResponsiveDataTable";
+import { Monto } from "@/shared/components/layout/PortalProviders";
 
 export function esHallazgoDeNegocio(fila: FilaResultado): boolean {
   const validacion = fila.validacion;
@@ -117,11 +118,11 @@ export function TablaMargenMinimo({ filas }: { filas: FilaMargen[] }) {
                   <td className="px-3 py-2">{fila.descripcion || "—"}</td>
                   <td className="px-3 py-2 text-right mono">{validacion.porcentajeReduccion != null ? `${validacion.porcentajeReduccion.toFixed(2)}%` : "—"}</td>
                   <td className="px-3 py-2 text-right mono">{fmtFactor(validacion.factorReduccion)}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioActual)}</td>
+                  <td className="px-3 py-2 text-right mono"><Monto n={validacion.precioActual} /></td>
                   <td className="px-3 py-2"><EstadoRedondeoBadge estado={validacion.estadoRedondeo} banda={validacion.bandaRedondeo} /></td>
                   <td className="px-3 py-2 text-right mono">{fmtPct(validacion.margenPromedio)}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.costoMinimoBase)}</td>
-                  <td className="px-3 py-2 text-right mono">{validacion.costoMinimo != null ? <b>{fmtMonto(validacion.costoMinimo)}</b> : <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-3 py-2 text-right mono"><Monto n={validacion.costoMinimoBase} /></td>
+                  <td className="px-3 py-2 text-right mono">{validacion.costoMinimo != null ? <b><Monto n={validacion.costoMinimo} /></b> : <span className="text-zinc-400">—</span>}</td>
                   <td className="px-3 py-2"><EtiquetaValidacion fila={fila} /></td>
                 </tr>
               );
@@ -186,13 +187,13 @@ export function TablaPrevisualizacion({ filas }: { filas: FilaPrecio[] }) {
                   <td className="px-3 py-2 mono">{fila.codigo}</td>
                   <td className="px-3 py-2">{fila.lista ?? "—"}</td>
                   <td className="px-3 py-2">{fila.descripcion}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioActual)}</td>
+                  <td className="px-3 py-2 text-right mono"><Monto n={validacion.precioActual} /></td>
                   <td className="px-3 py-2"><span className={`badge ${fila.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok"}`}>{tipoVariacion}</span></td>
                   <td className="px-3 py-2 text-right mono">{fmtPorcentajeCapturado(fila.variacionPorcentaje)}</td>
                   <td className="px-3 py-2 text-right mono">{fmtFactor(fila.multiplicador ?? fila.factorPropuesto)}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.precioPropuesto)}</td>
-                  <td className="px-3 py-2 text-right mono">{validacion.precioRedondeado != null ? <b>{fmtMonto(validacion.precioRedondeado)}</b> : <span className="text-zinc-400">—</span>}</td>
-                  <td className="px-3 py-2 text-right mono">{fmtMonto(validacion.costoMinimo)}</td>
+                  <td className="px-3 py-2 text-right mono"><Monto n={validacion.precioPropuesto} /></td>
+                  <td className="px-3 py-2 text-right mono">{validacion.precioRedondeado != null ? <b><Monto n={validacion.precioRedondeado} /></b> : <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-3 py-2 text-right mono"><Monto n={validacion.costoMinimo} /></td>
                   <td className="px-3 py-2"><EstadoRedondeoBadge estado={validacion.estadoRedondeo} banda={validacion.bandaRedondeo} /></td>
                   <td className="px-3 py-2"><EtiquetaValidacion fila={fila} /></td>
                 </tr>

@@ -387,14 +387,14 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
       const lista = "MAYOREOD";
       const filasValidas = s.filas.filter((fila): fila is FilaMargen => esFilaMargen(fila) && fila.validacion.valido);
       if (filasValidas.length === 0) {
-        throw new Error("No existen filas vÃ¡lidas para actualizar el margen de utilidad.");
+        throw new Error("No existen filas válidas para actualizar el margen de utilidad.");
       }
 
       for (const fila of filasValidas) {
         const porcentaje = Number(fila.porcentajeReduccion);
         const factorNormalizado = Number(fila.factorReduccion ?? (porcentaje / 100));
         if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje >= 100 || !Number.isFinite(factorNormalizado) || factorNormalizado < 0 || factorNormalizado >= 1) {
-          throw new Error(`El porcentaje de reducciÃ³n del artÃ­culo '${fila.codigo}' no es vÃ¡lido.`);
+          throw new Error(`El porcentaje de reducción del artículo '${fila.codigo}' no es válido.`);
         }
         console.info("[MARGEN_UTILIDAD] Factor U_FACTOR_REDUCCION a persistir", {
           solicitudId: s.id,
@@ -413,7 +413,7 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
 
       await repo.markDetailsApplied(s.compania, s.id);
       const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
-      console.info("[MARGEN_UTILIDAD] Margen mÃ­nimo persistido", {
+      console.info("[MARGEN_UTILIDAD] Margen mínimo persistido", {
         solicitudId: s.id,
         compania: s.compania,
         lista,
