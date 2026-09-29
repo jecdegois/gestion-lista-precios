@@ -11,7 +11,8 @@ type NavItem = { key: string; label: string; href: string; visible: (user: Ident
 const NAV_ITEMS: NavItem[] = [
   { key: "nueva", label: "Nueva Solicitud", href: "/solicitudes/nueva", visible: (u) => u.rol !== "AUDITOR" && u.rol !== "SIN_PERMISO" },
   { key: "bandeja", label: "Bandeja de Aprobación", href: "/solicitudes/bandeja", visible: (u) => u.rol !== "SIN_PERMISO" },
-  { key: "ejecucion", label: "Ejecución", href: "/ejecucion", visible: (u) => u.rol === "APROBADOR" || u.rol === "AUDITOR" || !!u.isAdmin },
+  // TODO: cuando el cliente defina el rol EJECUTOR, agregar aquí: u.rol === "EJECUTOR"
+  { key: "ejecucion", label: "Ejecución", href: "/ejecucion", visible: (u) => u.rol === "APROBADOR" || !!u.isAdmin },
   { key: "auditoria", label: "Auditoría", href: "/auditoria", visible: (u) => u.rol !== "SIN_PERMISO" },
   { key: "users", label: "Usuarios", href: "/usuarios", visible: (u) => !!u.isAdmin },
 ];
