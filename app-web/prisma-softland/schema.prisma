@@ -1,0 +1,40 @@
+// Softland (SOFTLAND_DB_NAME): solo las tablas que el portal lee con Prisma.
+// Escrito a mano (cada esquema tiene ~900 tablas; NO usar `db pull`, `db push` ni `migrate`).
+// El esquema (FEBECA, BEVAL, ... o dbo) lo pone la URL de cada cliente: ver src/server/db.ts.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/softland"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("SOFTLAND_URL")
+}
+
+/// [<empresa>].NIVEL_PRECIO
+model NIVEL_PRECIO {
+  NIVEL_PRECIO String @db.VarChar(12)
+  MONEDA       String @db.VarChar(1)
+
+  @@id([NIVEL_PRECIO, MONEDA])
+}
+
+/// [<empresa>].VERSION_NIVEL
+model VERSION_NIVEL {
+  NIVEL_PRECIO String @db.VarChar(12)
+  MONEDA       String @db.VarChar(1)
+  VERSION      Int
+  ESTADO       String @db.VarChar(1)
+
+  @@id([NIVEL_PRECIO, MONEDA, VERSION])
+}
+
+/// [dbo].GESTION_LISTAS_PRECIOS (compartida por todas las empresas)
+model GESTION_LISTAS_PRECIOS {
+  RowPointer     String  @id @db.UniqueIdentifier
+  COMPANIA       String  @db.VarChar(12)
+  NIVEL_PRECIO   String  @db.VarChar(12)
+  VERSION        Int     @db.SmallInt
+  VARIACION_PORC Decimal @db.Decimal(28, 8)
+}

@@ -1,7 +1,8 @@
 import "server-only";
+import { Prisma } from "@/generated/sqlserver";
 import type { FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/lib/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
-import { getPortalPool } from "@/server/db";
+import { plano, portalDb } from "@/server/db";
 import {
   agregarSolicitud as demoAgregar,
   actualizarSolicitud as demoActualizar,
@@ -16,9 +17,16 @@ import {
  * auditoría vive en `features/auditoria/repository/audit-repository.ts`.
  *
  * En DEMO_MODE usa el store en memoria (demo-store); en modo real persiste
- * en las tablas del esquema del portal. Toda la API es async para servir a
- * ambos modos de forma uniforme.
+ * con Prisma en las tablas del esquema de la empresa (ver portalDb). Toda la
+ * API es async para servir a ambos modos de forma uniforme.
  */
+
+const conDetalle = { SOLICITUD_DETALLE: { orderBy: { ID_DETALLE: "asc" } } } satisfies Prisma.SOLICITUDInclude;
+
+function mapConDetalle(r: Prisma.SOLICITUDGetPayload<{ include: typeof conDetalle }>): Solicitud {
+  const { SOLICITUD_DETALLE, ...cabecera } = r;
+  return mapSolicitud(plano(cabecera), SOLICITUD_DETALLE.map(plano));
+}
 
 async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
   const companiaNormalizada = compania.trim().toUpperCase();
@@ -26,31 +34,12 @@ async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
     return demoListarSolicitudes().filter((solicitud) => !companiaNormalizada || solicitud.compania === companiaNormalizada);
   }
 
-  const pool = await getPortalPool();
-  const sp = objetoPortal(companiaNormalizada, "SOLICITUD");
-  const spd = objetoPortal(companiaNormalizada, "SOLICITUD_DETALLE");
-  const mssql = await import("mssql");
-  
-  // Obtener cabeceras de solicitudes
-  const cab = companiaNormalizada
-    ? await pool
-      .request()
-      .input("comp", mssql.VarChar(20), companiaNormalizada)
-      .query(`SELECT * FROM ${sp} WITH(NOLOCK) WHERE COMPANIA = @comp ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC`)
-    : await pool.request().query(`SELECT * FROM ${sp} WITH(NOLOCK) ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC`);
-  
-  // Obtener detalles - join siempre necesario para mapear filas a solicitudes
-  const detRequest = pool.request();
-  const detQuery = companiaNormalizada
-    ? (detRequest.input("comp", mssql.VarChar(20), companiaNormalizada),
-       `SELECT D.* FROM ${spd} D WITH(NOLOCK) INNER JOIN ${sp} S WITH(NOLOCK) ON S.ID_SOLICITUD = D.ID_SOLICITUD WHERE S.COMPANIA = @comp`)
-    : `SELECT D.* FROM ${spd} D WITH(NOLOCK) ORDER BY D.ID_SOLICITUD, D.ID_DETALLE`;
-  
-  const det = await detRequest.query(detQuery);
-
-  return cab.recordset.map((r: Record<string, unknown>) =>
-    mapSolicitud(r, det.recordset.filter((d: Record<string, unknown>) => d.ID_SOLICITUD === r.ID_SOLICITUD)),    
-  );
+  const rows = await portalDb(companiaNormalizada).sOLICITUD.findMany({
+    where: { COMPANIA: companiaNormalizada },
+    include: conDetalle,
+    orderBy: { FECHA_CREACION: "desc" },
+  });
+  return rows.map(mapConDetalle);
 }
 
 export interface PaginaSolicitudes {
@@ -94,32 +83,19 @@ async function listarSolicitudesPaginado(
     };
   }
 
-  const pool = await getPortalPool();
-  const sp = objetoPortal(companiaNormalizada, "SOLICITUD");
-  const mssql = await import("mssql");
+  const db = portalDb(companiaNormalizada);
+  // La collation del portal es case-insensitive: igualdad simple equivale al LOWER() anterior.
+  const where: Prisma.SOLICITUDWhereInput = {
+    COMPANIA: companiaNormalizada,
+    ...(email?.trim() ? { SOLICITANTE_EMAIL: email.trim() } : {}),
+    ...(proceso?.trim() ? { PROCESO: proceso.trim() } : {}),
+  };
+  const [rows, total] = await Promise.all([
+    db.sOLICITUD.findMany({ where, orderBy: { FECHA_CREACION: "desc" }, skip: safeOffset, take: safeLimit }),
+    db.sOLICITUD.count({ where }),
+  ]);
 
-  const req = pool
-    .request()
-    .input("comp",    mssql.VarChar(20),  companiaNormalizada)
-    .input("email",   mssql.VarChar(120), email?.trim().toLowerCase() ?? "")
-    .input("proceso", mssql.VarChar(30),  proceso?.trim() ?? "")
-    .input("offset",  mssql.Int,          safeOffset)
-    .input("limit",   mssql.Int,          safeLimit);
-
-  const result = await req.query(
-    `SELECT *, COUNT(*) OVER() AS _total_count
-       FROM ${sp} WITH(NOLOCK)
-      WHERE COMPANIA = @comp
-        AND (@email   = '' OR LOWER(LTRIM(RTRIM(SOLICITANTE_EMAIL))) = @email)
-        AND (@proceso = '' OR PROCESO = @proceso)
-      ORDER BY COALESCE(FECHA_CREACION, FECHA_ENVIO) DESC
-      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
-  );
-
-  const total: number = result.recordset[0]?._total_count ?? 0;
-  const solicitudes = result.recordset.map((r: Record<string, unknown>) =>
-    mapSolicitudCabecera(r),
-  );
+  const solicitudes = rows.map((r) => mapSolicitudCabecera(plano(r)));
   const hasMore = safeOffset + solicitudes.length < total;
   return {
     solicitudes,
@@ -131,27 +107,16 @@ async function listarSolicitudesPaginado(
 
 async function obtenerSolicitud(compania: string, codigo: string): Promise<Solicitud | undefined> {
   if (esModoDemo()) return demoObtener(codigo);
-  const pool = await getPortalPool();
-  const sp = objetoPortal(compania, "SOLICITUD");
-  const spd = objetoPortal(compania, "SOLICITUD_DETALLE");
-  const mssql = await import("mssql");
-  const cab = await pool.request().input("cod", mssql.VarChar(20), codigo).query(`SELECT * FROM ${sp} WITH(NOLOCK) WHERE CODIGO_SOLICITUD = @cod`);
-  const r = cab.recordset[0];
-  if (!r) return undefined;
-  const idSolicitud = enteroSeguro(r.ID_SOLICITUD, "ID_SOLICITUD de la solicitud");
-  const det = await pool
-    .request()
-    .input("idSolicitud", mssql.Int, idSolicitud)
-    .query(`SELECT D.* FROM ${spd} D WITH(NOLOCK) WHERE D.ID_SOLICITUD = @idSolicitud ORDER BY D.ID_DETALLE`);
-  return mapSolicitud(r, det.recordset);
+  const r = await portalDb(compania).sOLICITUD.findFirst({ where: { CODIGO_SOLICITUD: codigo }, include: conDetalle });
+  return r ? mapConDetalle(r) : undefined;
 }
 
 async function siguienteCodigoSolicitud(compania: string): Promise<string> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return "SOL-" + (10450 + demoSeq());
-  const pool = await getPortalPool();
-  const q = await pool.request().query(`SELECT NEXT VALUE FOR ${objetoPortal(compania, "SEQ_SOLICITUD")} AS n`);
-  return "SOL-" + q.recordset[0].n;
+  // Prisma no modela secuencias; el SQL crudo no toma el schema de la URL, por eso se califica.
+  const [q] = await portalDb(compania).$queryRaw<{ n: number }[]>`SELECT NEXT VALUE FOR ${Prisma.raw(objetoPortal(compania, "SEQ_SOLICITUD"))} AS n`;
+  return "SOL-" + q.n;
 }
 
 async function agregarSolicitud(s: Solicitud): Promise<void> {
@@ -160,39 +125,26 @@ async function agregarSolicitud(s: Solicitud): Promise<void> {
     demoAgregar(s);
     return;
   }
-  const pool = await getPortalPool();
-  const sp = objetoPortal(s.compania, "SOLICITUD");
-  const spd = objetoPortal(s.compania, "SOLICITUD_DETALLE");
-  const mssql = await import("mssql");
-  const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();  
-  const req = pool
-    .request()
-    .input("cod", mssql.VarChar(20), s.id)
-    .input("comp", mssql.VarChar(20), s.compania)
-    .input("factor", mssql.VarChar(20), s.parametros.factor)
-    .input("proceso", mssql.VarChar(30), s.proceso)
-    .input("mod", mssql.VarChar(10), s.modalidad)
-    .input("lista", mssql.VarChar(30), lista || null)
-    // Los usuarios viven en Postgres; la FK nullable a USUARIO (tabla heredada) queda en NULL.
-    .input("idUsuarioSolicitante", mssql.Int, null)
-    .input("email", mssql.VarChar(120), s.solicitanteEmail)
-    .input("nombre", mssql.VarChar(120), s.solicitanteNombre)
-    .input("params", mssql.NVarChar(mssql.MAX), JSON.stringify({ ...s.parametros, filas: s.filas }))
-    .input("archNom", mssql.VarChar(260), s.archivoNombre)
-    .input("archS3", mssql.VarChar(400), s.archivoS3Key)
-    .input("estado", mssql.VarChar(25), s.estado ?? "PENDIENTE");
-  const ins = await req.query(
-    `INSERT INTO ${sp} (CODIGO_SOLICITUD, COMPANIA, PROCESO, TIPO_PROCESO, MODALIDAD, LISTA_PRECIO, ID_USUARIO_SOLICITANTE,
-                        SOLICITANTE_EMAIL, SOLICITANTE_NOMBRE, ESTADO, PARAMETROS_JSON,
-                        ARCHIVO_NOMBRE, ARCHIVO_S3_KEY)
-     OUTPUT INSERTED.ID_SOLICITUD
-     VALUES (@cod,@comp,@proceso,@proceso,@mod,@lista,@idUsuarioSolicitante,@email,@nombre,@estado,@params,
-             @archNom,@archS3);`,
-  );
-  const idSolicitud = enteroSeguro(ins.recordset[0]?.ID_SOLICITUD, "ID_SOLICITUD generado");
-  for (const f of s.filas) {
-    await insertarDetalle(pool, spd, idSolicitud, f, s.proceso);
-  }
+  const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
+  // Cabecera + detalle en una sola transacción. La FK nullable a USUARIO (tabla
+  // heredada) queda en NULL: los usuarios viven en Postgres.
+  await portalDb(s.compania).sOLICITUD.create({
+    data: {
+      CODIGO_SOLICITUD: s.id,
+      COMPANIA: s.compania,
+      PROCESO: s.proceso,
+      TIPO_PROCESO: s.proceso,
+      MODALIDAD: s.modalidad,
+      LISTA_PRECIO: lista || null,
+      SOLICITANTE_EMAIL: s.solicitanteEmail,
+      SOLICITANTE_NOMBRE: s.solicitanteNombre,
+      ESTADO: s.estado ?? "PENDIENTE",
+      PARAMETROS_JSON: JSON.stringify({ ...s.parametros, filas: s.filas }),
+      ARCHIVO_NOMBRE: s.archivoNombre,
+      ARCHIVO_S3_KEY: s.archivoS3Key,
+      SOLICITUD_DETALLE: { createMany: { data: s.filas.map((f) => detalleData(f, s.proceso)) } },
+    },
+  });
 }
 
 async function actualizarSolicitud(compania: string, codigo: string, patch: Partial<Solicitud>): Promise<void> {
@@ -201,145 +153,81 @@ async function actualizarSolicitud(compania: string, codigo: string, patch: Part
     demoActualizar(codigo, patch);
     return;
   }
-  const pool = await getPortalPool();
-  const sp = objetoPortal(compania, "SOLICITUD");
-  const mssql = await import("mssql");
-  const sets: string[] = ["FECHA_ULT_ESTADO = GETDATE()"];
-  const req = pool.request().input("cod", mssql.VarChar(20), codigo);
-  if (patch.estado !== undefined) { sets.push("ESTADO = @estado"); req.input("estado", mssql.VarChar(25), patch.estado); }
-  if (patch.motivoRechazo !== undefined) { sets.push("MOTIVO_RECHAZO = @motivo"); req.input("motivo", mssql.VarChar(500), patch.motivoRechazo); }
-  if (patch.idProcesoSP !== undefined) { sets.push("ID_PROCESO_SP = @proc"); req.input("proc", mssql.VarChar(30), patch.idProcesoSP); }
-  if (patch.autorizadoPor !== undefined) { sets.push("APROBADOR_NOMBRE = @apn"); req.input("apn", mssql.VarChar(120), patch.autorizadoPor); }
-  if (patch.autorizadoPorEmail !== undefined) { sets.push("APROBADOR_EMAIL = @ape"); req.input("ape", mssql.VarChar(120), patch.autorizadoPorEmail); }
-  if (patch.resultado !== undefined && patch.resultado) {
-    sets.push("TOTAL_REGISTROS = @tot", "EXITOSOS = @ex", "FALLIDOS = @fa", "LOG_S3_KEY = @log");
-    req.input("tot", mssql.Int, patch.resultado.totalLote);
-    req.input("ex", mssql.Int, patch.resultado.exitosos);
-    req.input("fa", mssql.Int, patch.resultado.fallidos);
-    req.input("log", mssql.VarChar(400), patch.resultado.logS3Key);
+  const data: Prisma.SOLICITUDUpdateManyMutationInput = { FECHA_ULT_ESTADO: new Date() };
+  if (patch.estado !== undefined) data.ESTADO = patch.estado;
+  if (patch.motivoRechazo !== undefined) data.MOTIVO_RECHAZO = patch.motivoRechazo;
+  if (patch.idProcesoSP !== undefined) data.ID_PROCESO_SP = patch.idProcesoSP;
+  if (patch.autorizadoPor !== undefined) data.APROBADOR_NOMBRE = patch.autorizadoPor;
+  if (patch.autorizadoPorEmail !== undefined) data.APROBADOR_EMAIL = patch.autorizadoPorEmail;
+  if (patch.resultado) {
+    data.TOTAL_REGISTROS = patch.resultado.totalLote;
+    data.EXITOSOS = patch.resultado.exitosos;
+    data.FALLIDOS = patch.resultado.fallidos;
+    data.LOG_S3_KEY = patch.resultado.logS3Key;
   }
-  await req.query(`UPDATE ${sp} SET ${sets.join(", ")} WHERE CODIGO_SOLICITUD = @cod;`);
+  await portalDb(compania).sOLICITUD.updateMany({ where: { CODIGO_SOLICITUD: codigo }, data });
 }
 
 /** Guarda el error del procesamiento en las líneas de la solicitud. */
 async function actualizarMensajeErrorDetalles(compania: string, codigo: string, mensaje: string): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return;
-  const pool = await getPortalPool();
-  const sp = objetoPortal(compania, "SOLICITUD");
-  const spd = objetoPortal(compania, "SOLICITUD_DETALLE");
-  const mssql = await import("mssql");
-  const solicitud = await pool.request()
-    .input("cod", mssql.VarChar(20), codigo)
-    .query(`SELECT ID_SOLICITUD FROM ${sp} WITH(NOLOCK) WHERE CODIGO_SOLICITUD = @cod`);
-  const idSolicitud = solicitud.recordset[0]?.ID_SOLICITUD;
-  if (idSolicitud == null) return;
-  await pool.request()
-    .input("idSolicitud", mssql.Int, idSolicitud)
-    .input("mensaje", mssql.VarChar(400), mensaje.slice(0, 400))
-    .query(`UPDATE ${spd} SET MENSAJE_ERROR = @mensaje WHERE ID_SOLICITUD = @idSolicitud`);
+  await portalDb(compania).sOLICITUD_DETALLE.updateMany({
+    where: { SOLICITUD: { CODIGO_SOLICITUD: codigo } },
+    data: { MENSAJE_ERROR: mensaje.slice(0, 400) },
+  });
 }
 
 /** Marca como aplicado el factor solicitado únicamente en filas exitosas. */
 async function actualizarFactorAplicadoDetalles(compania: string, codigo: string): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return;
-  const pool = await getPortalPool();
-  const sp = objetoPortal(compania, "SOLICITUD");
-  const spd = objetoPortal(compania, "SOLICITUD_DETALLE");
-  const mssql = await import("mssql");
-  const solicitud = await pool.request()
-    .input("cod", mssql.VarChar(20), codigo)
-    .query(`SELECT ID_SOLICITUD FROM ${sp} WITH(NOLOCK) WHERE CODIGO_SOLICITUD = @cod`);
-  const idSolicitud = solicitud.recordset[0]?.ID_SOLICITUD;
-  if (idSolicitud == null) return;
-  await pool.request()
-    .input("idSolicitud", mssql.Int, idSolicitud)
-    .query(`
-      UPDATE D
-         SET D.FACTOR_APLICADO = D.FACTOR_SOLICITADO
-        FROM ${spd} D
-       WHERE D.ID_SOLICITUD = @idSolicitud
-         AND UPPER(LTRIM(RTRIM(COALESCE(D.ESTADO_FILA, '')))) IN ('VALIDO','OK','S','SI','1')
-         AND NULLIF(LTRIM(RTRIM(COALESCE(D.MENSAJE_ERROR, ''))), '') IS NULL;
-    `);
+  // Asignación columna-a-columna: Prisma no la soporta, queda en SQL (calificado por esquema).
+  const spd = Prisma.raw(objetoPortal(compania, "SOLICITUD_DETALLE"));
+  const sp = Prisma.raw(objetoPortal(compania, "SOLICITUD"));
+  await portalDb(compania).$executeRaw`
+    UPDATE D
+       SET D.FACTOR_APLICADO = D.FACTOR_SOLICITADO
+      FROM ${spd} D
+      INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
+     WHERE S.CODIGO_SOLICITUD = ${codigo}
+       AND UPPER(LTRIM(RTRIM(COALESCE(D.ESTADO_FILA, '')))) IN ('VALIDO','OK','S','SI','1')
+       AND NULLIF(LTRIM(RTRIM(COALESCE(D.MENSAJE_ERROR, ''))), '') IS NULL;`;
 }
 // ---------------------------------------------------------------------------
-// Helpers de mapeo (SQL real)
+// Helpers de mapeo
 // ---------------------------------------------------------------------------
-type SqlPool = Awaited<ReturnType<typeof getPortalPool>>;
 
-async function insertarDetalle(
-  pool: SqlPool,
-  spd: string,
-  idSolicitud: number,
-  f: FilaResultado,
-  proceso: Solicitud["proceso"],
-): Promise<void> {
-  const mssql = await import("mssql");
+function detalleData(f: FilaResultado, proceso: Solicitud["proceso"]): Prisma.SOLICITUD_DETALLECreateManySOLICITUDInput {
   const v = f.validacion;
   const numero = (valor: unknown): number | null =>
     typeof valor === "number" && Number.isFinite(valor) ? valor : null;
   const esMargen = Object.prototype.hasOwnProperty.call(v, "factorReduccion");
-  const validacion = v as FilaMargen["validacion"] | FilaPrecio["validacion"];
-  const banda = validacion.bandaRedondeo;
   const filaMargen = esMargen ? f as FilaMargen : null;
-  const filaPrecio = !esMargen ? f as FilaPrecio : null;
-  const vMargen = esMargen ? filaMargen!.validacion : null;
-  const vPrecio = !esMargen ? filaPrecio!.validacion : null;
 
-  await pool
-    .request()
-    .input("sku", mssql.VarChar(20), f.codigo || "SIN_CODIGO")
-    .input("descripcion", mssql.VarChar(200), f.descripcion || "")
-    .input("precioActual", mssql.Decimal(28, 8), numero(v.precioActual) ?? 0)
-    .input("costo", mssql.Decimal(28, 8), numero(v.costo) ?? 0)
+  return {
+    SKU: f.codigo || "SIN_CODIGO",
+    DESCRIPCION: f.descripcion || "",
+    PRECIO_ACTUAL: numero(v.precioActual) ?? 0,
+    COSTO: numero(v.costo) ?? 0,
     // El procesador externo todavía no aplica el precio por fila en este
-    // flujo; por eso el valor inicial y el valor visible al cerrar queda en 0.
-    // El esquema real de SOLICITUD_DETALLE exige FACTOR_APLICADO. Para
+    // flujo. El esquema real de SOLICITUD_DETALLE exige FACTOR_APLICADO. Para
     // Precio Base no aplica un factor, por lo que 1.000000 representa el
     // multiplicador neutro; el precio absoluto viaja en PRECIO_SIMULADO.
-    .input("factorAplicado", mssql.Decimal(9, 6), numero((f as FilaPrecio | FilaMargen).factorAplicado) ?? 1)
-    .input(
-      "precioSimulado",
-      mssql.Decimal(28, 8),
-      numero(proceso === "MAYOREOD_MASIVO" ? v.precioPropuesto : v.precioRedondeado ?? v.precioPropuesto) ?? 0,
-    )
-    .input(
-      "porcentajeMargen",
-      mssql.Decimal(9, 6),
-      esMargen ? filaMargen?.porcentajeReduccion ?? 0 : v.margenMinimo ?? 0,
-    )
+    FACTOR_APLICADO: numero((f as FilaPrecio | FilaMargen).factorAplicado) ?? 1,
+    PRECIO_SIMULADO: numero(proceso === "MAYOREOD_MASIVO" ? v.precioPropuesto : v.precioRedondeado ?? v.precioPropuesto) ?? 0,
+    PORCENTAJE_MARGEN: esMargen ? filaMargen?.porcentajeReduccion ?? 0 : v.margenMinimo ?? 0,
     // CK_PP_SOLDET_ESTADO admite OK | ERROR | BAJO_COSTO | MARGEN_NEGATIVO; el motivo va en CAUSA.
-    .input("estadoFila", mssql.VarChar(20), v.valido ? "OK" : "ERROR")
-    .input("mensajeError", mssql.VarChar(400), (f as FilaPrecio | FilaMargen).mensajeError ?? (!v.valido ? v.causa ?? "Error no identificado" : null))
-    .input("idSolicitud", mssql.Int, idSolicitud)
+    ESTADO_FILA: v.valido ? "OK" : "ERROR",
+    MENSAJE_ERROR: (f as FilaPrecio | FilaMargen).mensajeError ?? (!v.valido ? v.causa ?? "Error no identificado" : null),
     // FACTOR_SOLICITADO representa el multiplicador persistido, no el
     // porcentaje capturado. El porcentaje queda en PARAMETROS_JSON.
-    .input("factorSolicitado", mssql.Decimal(9, 6), numero("multiplicador" in f ? f.multiplicador : null) ?? numero(v.factorPropuesto) ?? 1)
+    FACTOR_SOLICITADO: numero("multiplicador" in f ? f.multiplicador : null) ?? numero(v.factorPropuesto) ?? 1,
     // LISTA_PRECIO es el origen del valor que se muestra en el detalle. Para
     // descuento por artículo se guarda el código de lista de la fila.
-    .input("listaPrecio", mssql.VarChar(400), ("listaCodigo" in f ? f.listaCodigo : null) ?? f.lista ?? "")
-    .input("causa", mssql.VarChar(400), v.causa ?? "")
-    .query(
-      `INSERT INTO ${spd} (
-         SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO, FACTOR_APLICADO,
-         PRECIO_SIMULADO, PORCENTAJE_MARGEN, ESTADO_FILA, MENSAJE_ERROR,
-         ID_SOLICITUD, FACTOR_SOLICITADO, LISTA_PRECIO, CAUSA
-       ) VALUES (
-         @sku, @descripcion, @precioActual, @costo, @factorAplicado,
-         @precioSimulado, @porcentajeMargen, @estadoFila, @mensajeError,
-         @idSolicitud, @factorSolicitado, @listaPrecio, @causa
-       );`,
-    );
-}
-
-function enteroSeguro(valor: unknown, etiqueta: string): number {
-  const id = typeof valor === "number" ? valor : Number.parseInt(String(valor), 10);
-  if (!Number.isSafeInteger(id) || id < 1) {
-    throw new Error(`${etiqueta} debe ser un entero positivo.`);
-  }
-  return id;
+    LISTA_PRECIO: ("listaCodigo" in f ? f.listaCodigo : null) ?? f.lista ?? "",
+    CAUSA: v.causa ?? "",
+  };
 }
 
 function textoPrimero(...valores: unknown[]): string | undefined {

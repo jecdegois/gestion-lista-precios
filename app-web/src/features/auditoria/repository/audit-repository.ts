@@ -1,7 +1,8 @@
 import "server-only";
+import { Prisma } from "@/generated/sqlserver";
 import type { EventoAuditoria, EventoTipo, Rol } from "@/lib/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
-import { getPortalPool } from "@/server/db";
+import { portalDb } from "@/server/db";
 import {
   listarEventos as demoListarEventos,
   registrarEvento as demoRegistrarEvento,
@@ -28,43 +29,29 @@ async function record(input: AuditEventInput): Promise<void> {
     demoRegistrarEvento(event, user, role, company, requestId, processId);
     return;
   }
-  const pool = await getPortalPool();
-  const ae = objetoPortal(company, "AUDITORIA_PRECIOS");
-  const mssql = await import("mssql");
-  const payload = JSON.stringify({ usuario: user, compania: company, solicitudId: requestId });
-  await pool
-    .request()
-    .input("proceso", mssql.VarChar(30), processId ?? requestId ?? event)
-    .input("subject", mssql.VarChar(120), userEmail || user)
-    .input("rol", mssql.VarChar(15), role)
-    .input("evento", mssql.VarChar(50), event)
-    .input("payload", mssql.NVarChar(mssql.MAX), payload)
-    .query(
-      `INSERT INTO ${ae} (ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO)
-       VALUES (@proceso,@subject,@rol,@evento,@payload,GETDATE());`,
-    );
+  await portalDb(company).aUDITORIA_PRECIOS.create({
+    data: {
+      ID_PROCESO: processId ?? requestId ?? event,
+      IDP_SUBJECT: userEmail || user,
+      ROL: role,
+      EVENTO: event,
+      PAYLOAD_JSON: JSON.stringify({ usuario: user, compania: company, solicitudId: requestId }),
+    },
+  });
 }
 
 async function list(compania: string): Promise<EventoAuditoria[]> {
   if (esModoDemo()) return demoListarEventos(compania);
-  const pool = await getPortalPool();
-  const ae = objetoPortal(compania, "AUDITORIA_PRECIOS");
-  const mssql = await import("mssql");
-  const columnas = "ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO";
-  const q = compania
-    ? await pool
-      .request()
-      .input("comp", mssql.VarChar(20), compania)
-      .query(
-        `SELECT TOP (200) ${columnas}
-           FROM ${ae} WITH(NOLOCK)
-          WHERE ISJSON(PAYLOAD_JSON) = 1
-            AND JSON_VALUE(PAYLOAD_JSON, '$.compania') = @comp
-          ORDER BY FECHA_EVENTO DESC`,
-      )
-    : await pool.request().query(`SELECT TOP (200) ${columnas} FROM ${ae} WITH(NOLOCK) ORDER BY FECHA_EVENTO DESC`);
+  // Filtro sobre el JSON: Prisma no lo soporta en SQL Server, queda en SQL (calificado por esquema).
+  const ae = Prisma.raw(objetoPortal(compania, "AUDITORIA_PRECIOS"));
+  const rows = await portalDb(compania).$queryRaw<Record<string, unknown>[]>`
+    SELECT TOP (200) ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO
+      FROM ${ae} WITH(NOLOCK)
+     WHERE ISJSON(PAYLOAD_JSON) = 1
+       AND JSON_VALUE(PAYLOAD_JSON, '$.compania') = ${compania}
+     ORDER BY FECHA_EVENTO DESC`;
 
-  return q.recordset.map((r: Record<string, unknown>) => {
+  return rows.map((r) => {
     let payload: Record<string, unknown> = {};
     try {
       const parsed = JSON.parse(String(r.PAYLOAD_JSON ?? "{}"));
