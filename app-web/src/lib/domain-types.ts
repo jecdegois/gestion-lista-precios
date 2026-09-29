@@ -251,6 +251,39 @@ export interface EventoAuditoria {
   compania: string;
 }
 
+// ─────────────────────────────────────────────
+// Módulo de Ejecución directa de SPs
+// ─────────────────────────────────────────────
+
+export type EjecucionKey =
+  | "EJECUCION_PRECIOS"
+  | "EJECUCION_MARGEN"
+  | "EJECUCION_DESCUENTO";
+
+export type EstadoEjecucion =
+  | "PENDIENTE"
+  | "EN_PROCESO"
+  | "COMPLETADO"
+  | "COMPLETADO_CON_ERRORES"
+  | "ERROR";
+
+export interface EjecucionLog {
+  id: string;
+  tipo: EjecucionKey;
+  compania: string;
+  ejecutadoPor: string;
+  ejecutadoPorEmail: string;
+  fechaInicio: string;
+  fechaFin: string | null;
+  estado: EstadoEjecucion;
+  totalArticulos: number;
+  exitosos: number;
+  fallidos: number;
+  /** Identificador correlacionable del proceso en Softland. */
+  idProcesoSP: string | null;
+  observaciones: string | null;
+}
+
 export function esFilaMargen(fila: FilaResultado): fila is FilaMargen {
   return (
     !!fila &&

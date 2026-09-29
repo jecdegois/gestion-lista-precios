@@ -11,6 +11,7 @@ type NavItem = { key: string; label: string; href: string; visible: (user: Ident
 const NAV_ITEMS: NavItem[] = [
   { key: "nueva", label: "Nueva Solicitud", href: "/solicitudes/nueva", visible: (u) => u.rol !== "AUDITOR" && u.rol !== "SIN_PERMISO" },
   { key: "bandeja", label: "Bandeja de Aprobación", href: "/solicitudes/bandeja", visible: (u) => u.rol !== "SIN_PERMISO" },
+  { key: "ejecucion", label: "Ejecución", href: "/ejecucion", visible: (u) => u.rol === "APROBADOR" || u.rol === "AUDITOR" || !!u.isAdmin },
   { key: "auditoria", label: "Auditoría", href: "/auditoria", visible: (u) => u.rol !== "SIN_PERMISO" },
   { key: "users", label: "Usuarios", href: "/usuarios", visible: (u) => !!u.isAdmin },
 ];
@@ -18,6 +19,7 @@ const NAV_ITEMS: NavItem[] = [
 function navActiva(pathname: string): string | null {
   if (pathname.startsWith("/solicitudes/nueva")) return "nueva";
   if (pathname.startsWith("/solicitudes/bandeja")) return "bandeja";
+  if (pathname.startsWith("/ejecucion")) return "ejecucion";
   if (pathname.startsWith("/auditoria")) return "auditoria";
   if (pathname.startsWith("/usuarios")) return "users";
   return null;
