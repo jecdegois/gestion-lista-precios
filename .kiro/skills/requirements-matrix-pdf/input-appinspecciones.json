@@ -1,0 +1,285 @@
+{
+  "header": {
+    "ramo_cliente": "Inmobiliario / Inspecciones",
+    "lider_proyecto": "Anderson Cova",
+    "codigo": "IV26004",
+    "proyecto": "Aplicación para la Inspección de Inmuebles (AppInspecciones)",
+    "fecha_actualizacion": "2026-08-05",
+    "estado_proyecto": "En Definición",
+    "categoria": "Aplicaciones"
+  },
+  "requirements": [
+    {
+      "entregable": "Autenticación y Control de Acceso",
+      "codigo": "R1",
+      "requerimiento": "Autenticación OAuth2/OIDC via Amazon Cognito con 4 roles (Admin, Inspector, Gestión, Comercial).",
+      "criterios_aceptacion": "El sistema valida tokens JWT en cada request API.\nCada rol solo ve funcionalidades asignadas.\nSoporta OAuth2/OIDC con PKCE.",
+      "fuente": "Alcance Inicial",
+      "estado": "En Progreso"
+    },
+    {
+      "entregable": "Autenticación y Control de Acceso",
+      "codigo": "R2",
+      "requerimiento": "Sesión persistente con refresh tokens automáticos y preservación de datos offline durante renovación.",
+      "criterios_aceptacion": "El usuario no pierde trabajo en progreso al renovar token.\nManejo graceful de errores de renovación.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Autenticación y Control de Acceso",
+      "codigo": "R3",
+      "requerimiento": "Cognito Triggers Pre-Token Generation (inyectar custom:rol) y Post-Confirmation (crear usuario en RDS).",
+      "criterios_aceptacion": "JWT contiene claim custom:rol.\nUsuario se crea automáticamente en RDS al registrarse.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Maestros Geográficos",
+      "codigo": "R4",
+      "requerimiento": "CRUD Maestro de Países con restricción a países del Grupo IRO.",
+      "criterios_aceptacion": "Lista países con código, nombre, n° ciudades, n° inmuebles, estado.\nBotón Ciudades[N] por país.\nPrevención eliminación con dependientes.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Maestros Geográficos",
+      "codigo": "R5",
+      "requerimiento": "CRUD Maestro de Ciudades con relación 1:N obligatoria dentro de un País.",
+      "criterios_aceptacion": "No existen ciudades sin país padre.\nCarga reactiva <500ms.\nPrevención eliminación con inmuebles asociados.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Inmuebles",
+      "codigo": "R6",
+      "requerimiento": "CRUD Inmuebles con selectores País/Ciudad reactivos y jerarquía 4 niveles (Módulo→Nivel→Zona→Área).",
+      "criterios_aceptacion": "Formulario con País/Ciudad opcionales.\nCarga reactiva.\nIntegridad referencial PAIS→CIUDAD→INMUEBLE 100%.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Catálogos Técnicos",
+      "codigo": "R7",
+      "requerimiento": "CRUD Categorías de Inspección con orden de seguridad (Estructuras→Gas→Electricidad).",
+      "criterios_aceptacion": "6 categorías base con prioridad de seguridad.\nAsociación componentes a categorías.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Catálogos Técnicos",
+      "codigo": "R8",
+      "requerimiento": "CRUD Componentes con Puntos Clave de Inspección asociados.",
+      "criterios_aceptacion": "Componentes asociados a categorías.\nPuntos clave configurables por componente.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Catálogos Técnicos",
+      "codigo": "R9",
+      "requerimiento": "CRUD Checklists configurables con drag-and-drop prioridad y flag permiteDesmarcar.",
+      "criterios_aceptacion": "Checklist Base no inhibible.\nCategorías Pre-Inspección bloqueadas.\npermiteDesmarcar por checklist.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Empresas y Usuarios",
+      "codigo": "R10",
+      "requerimiento": "CRUD Empresas Inspectoras con inspectores 1:N e inactivación lógica (toggle sin eliminar historial).",
+      "criterios_aceptacion": "Badge Activo/Inactivo.\nConteo N activo(s) / M total.\nHistorial preservado.\nLog auditoría.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Empresas y Usuarios",
+      "codigo": "R11",
+      "requerimiento": "CRUD Usuarios con 4 roles y sincronización bidireccional con Amazon Cognito.",
+      "criterios_aceptacion": "No eliminar último Admin activo.\nPermisos granulares por rol.\nSync bidireccional con Cognito.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Importador y Auditoría",
+      "codigo": "R12",
+      "requerimiento": "Importador masivo de datos (13 tablas target) con validación previa y reporte de errores.",
+      "criterios_aceptacion": "Import bloqueado hasta 0 errores.\nTasa éxito >90%.\nIntegridad referencial mantenida.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración - Importador y Auditoría",
+      "codigo": "R13",
+      "requerimiento": "Log de Auditoría transversal con registro automático de cambios y export CSV/JSON.",
+      "criterios_aceptacion": "Cada CRUD registra en audit_log.\nFiltros por entidad/usuario/fecha.\nExport con filtro activo.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Inspección - Órdenes",
+      "codigo": "R14",
+      "requerimiento": "Crear Orden de Inspección como nodo padre con código ORD-XXXX-XXXX y regla máx 1 activa por inmueble.",
+      "criterios_aceptacion": "Genera código único.\nValida unicidad (1 activa/inmueble).\nHereda datos inmueble.\nEstatus inicial Abierta.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Inspección - Órdenes",
+      "codigo": "R15",
+      "requerimiento": "Gestión de Órdenes con vista dedicada, contadores, filtros y función inactivar/reactivar.",
+      "criterios_aceptacion": "Tabla con ID, Inmueble, Detonante, Fecha, Estado.\nContadores activas/inactivas.\nInactivación libera inmueble.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Inspección - Exploratoria",
+      "codigo": "R16",
+      "requerimiento": "Inspección Exploratoria con flujo unitario 3 pasos: Inmueble → CheckList → Levantamiento.",
+      "criterios_aceptacion": "Paso 1: datalist inmueble existente/nuevo.\nPaso 2: selector plantilla + categorías.\nPaso 3: carrusel 1 comp/pantalla.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Inspección - Exploratoria",
+      "codigo": "R17",
+      "requerimiento": "Selección de inmueble existente sin duplicación + Alta rápida en campo con Módulo Base automático.",
+      "criterios_aceptacion": "Búsqueda incremental datalist.\nRN-EX-10 sin duplicar.\nAlta: Nombre*, Dirección*, GPS opcionales.\nMódulo Base auto.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Inspección - Hallazgos",
+      "codigo": "R18",
+      "requerimiento": "Levantamiento con múltiples hallazgos 1:N por componente, indexados por clave Nivel|Categoría|Componente.",
+      "criterios_aceptacion": "N hallazgos por componente.\nEstado independiente P/R/B/NA/NI.\nPhoto-first P/R obligatorio.\nConsulta <100ms.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Inspección - Hallazgos",
+      "codigo": "R19",
+      "requerimiento": "Contexto visible durante inspección: #inspección, orden padre, rol especialista, detonante, inmueble.",
+      "criterios_aceptacion": "Información solo lectura.\nConsistente orden→inspección.\nSin afectar alcance técnico.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Features v1.1 - Captura",
+      "codigo": "R20",
+      "requerimiento": "Photo-First con metadata automática (GPS, timestamp, inspector) y anotaciones gráficas.",
+      "criterios_aceptacion": "90% fotos con metadata completa.\n50% con anotaciones para P/R.\nAlmacenamiento S3.\nSync offline→online.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Features v1.1 - Captura",
+      "codigo": "R21",
+      "requerimiento": "Input de voz con AWS Transcribe y cache offline (accuracy >85% español técnico).",
+      "criterios_aceptacion": "Cache grabación local.\nEnvío tras reconexión.\nAccuracy >85%.\n24h retención offline.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Features v1.1 - IA y GPS",
+      "codigo": "R22",
+      "requerimiento": "AI optimization via Amazon Bedrock Claude para transformar notas informales en reportes técnicos.",
+      "criterios_aceptacion": "Calidad 4/5 subjetiva.\nReducción 30-50% tiempo documentación.\nRevisión y edición manual.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Features v1.1 - IA y GPS",
+      "codigo": "R23",
+      "requerimiento": "GPS mejorado con geocodificación inversa que autocompleta País/Ciudad.",
+      "criterios_aceptacion": "<10m precisión 80% capturas.\nAutocomplete País/Ciudad.\nModo manual si GPS falla.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Features v1.1 - Cobertura",
+      "codigo": "R24",
+      "requerimiento": "Validación de cobertura de pisos (<100% permitido Post-Sismo con justificación textual).",
+      "criterios_aceptacion": "95% precisión cálculo cobertura.\nNo bloquea guardado.\nRequiere justificación.\nMatriz visual.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Plan de Acciones y Seguimiento",
+      "codigo": "R25",
+      "requerimiento": "Generar Plan de Acciones desde hallazgos P/R con priorización por criticidad y presupuesto.",
+      "criterios_aceptacion": "Pre-carga acciones sugeridas.\nPriorización P>R.\nAsignación responsables y timelines.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Plan de Acciones y Seguimiento",
+      "codigo": "R26",
+      "requerimiento": "Dashboard de seguimiento con consolidación por criticidad (P/R/B/N) y tendencias.",
+      "criterios_aceptacion": "Conteo por estado.\nAgrupación categoría/componente.\nEstado derivado peor hallazgo.\nDrill-down.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Dashboard y Reportes",
+      "codigo": "R27",
+      "requerimiento": "Dashboard de costos vs criticidad técnica para Responsable Comercial.",
+      "criterios_aceptacion": "Correlación costos/criticidad.\nMárgenes por especialidad.\nAnálisis por origen.\nTasa USD/VES.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Dashboard y Reportes",
+      "codigo": "R28",
+      "requerimiento": "Reportes ejecutivos PDF/Excel con metadata de origen y reconciliación.",
+      "criterios_aceptacion": "Incluye origen BACKOFFICE/EXPLORATORIA.\nEstatus reconciliación.\nTrazabilidad.\nAlerta pendientes.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Infraestructura - Offline y Sync",
+      "codigo": "R29",
+      "requerimiento": "Offline-first con IndexedDB + Service Worker + cola de mutaciones con retry exponencial.",
+      "criterios_aceptacion": "Funciona sin conexión.\nSync tras reconexión.\nBadge pendientes.\nDetección navigator.onLine.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Infraestructura - Offline y Sync",
+      "codigo": "R30",
+      "requerimiento": "Sync bidireccional con resolución de conflictos last-write-wins y chunked upload para imágenes.",
+      "criterios_aceptacion": "Comparación updated_at.\nMerge hallazgos.\nRetry con backoff.\nCompresión client-side.\nPresigned URLs.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Infraestructura - Seguridad",
+      "codigo": "R31",
+      "requerimiento": "WAF OWASP (CommonRuleSet + KnownBadInputs + SQLi) + VPC + RDS Proxy + Secrets Manager.",
+      "criterios_aceptacion": "WAF asociado a API Gateway.\nRDS no público.\nCredenciales en Secrets Manager.\nTLS obligatorio.",
+      "fuente": "Alcance Inicial",
+      "estado": "En Progreso"
+    },
+    {
+      "entregable": "Frontend PWA",
+      "codigo": "R32",
+      "requerimiento": "Responsive mobile-first con React Native/Capacitor, carga <3s en dispositivos móviles.",
+      "criterios_aceptacion": "Mismo comportamiento web/mobile.\nOptimización conexiones móviles.\nCarga <3s.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Frontend PWA",
+      "codigo": "R33",
+      "requerimiento": "Navegación móvil con menú hamburguesa, historial interno (50 entradas), interceptar Back.",
+      "criterios_aceptacion": "Menú cierra al seleccionar.\nBotón ← Volver con historial >1.\nNo pierde datos formulario.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Features v1.1 - Colaboración",
+      "codigo": "R34",
+      "requerimiento": "Comment feed con @menciones entre roles y sincronización offline→online.",
+      "criterios_aceptacion": "<4h tiempo respuesta 80% consultas.\n95% entrega offline→online.\nPush cuando mencionado.",
+      "fuente": "Gestión de Cambio 1",
+      "estado": "Sin Iniciar"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+model SecurityAudit {
+  id           BigInt   @id @default(autoincrement())
+  occurredAt   DateTime @map("occurred_at") @default(now()) @db.Timestamptz(6)
+  event        String
+  actorId      String?  @map("actor_id") @db.Uuid
+  actorEmail   String?  @map("actor_email") @db.Citext
+  targetUserId String?  @map("target_user_id") @db.Uuid
+  company      String?
+  ipAddress    String?  @map("ip_address") @db.Inet
+  userAgent    String?  @map("user_agent")
+  details      Json?    @db.JsonB
+
+  actor      User? @relation("AuditActor", fields: [actorId], references: [id])
+  targetUser User? @relation("AuditTarget", fields: [targetUserId], references: [id])
+
+  @@index([occurredAt(sort: Desc)])
+  @@index([targetUserId, occurredAt(sort: Desc)])
+  @@map("security_audit")
+}

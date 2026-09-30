@@ -1,0 +1,47 @@
+﻿# Dependencies and package-manager artifacts
+/node_modules/
+.pnp
+.pnp.*
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Next.js and build outputs
+/.next/
+/out/
+/build/
+.turbo/
+.vercel/
+
+# Local environment files and secrets
+.env
+.env.local
+.env*.local
+!.env.example
+*.pem
+*.key
+
+# Logs and diagnostics
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# TypeScript generated files
+*.tsbuildinfo
+next-env.d.ts
+
+# Prisma generated clients
+/src/generated/
+
+# Datos locales de PostgreSQL (bind mount docker-compose)
+/postgres/
+.vercel
+.env*

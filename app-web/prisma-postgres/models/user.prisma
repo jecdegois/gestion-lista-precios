@@ -1,0 +1,31 @@
+enum UserStatus {
+  pending
+  active
+  inactive
+}
+
+model User {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email              String     @unique @db.Citext
+  fullName           String     @map("full_name")
+  status             UserStatus @default(pending)
+  isAdmin            Boolean    @map("is_admin") @default(false)
+  passwordHash       String?    @map("password_hash")
+  passwordUpdatedAt  DateTime?  @map("password_updated_at") @db.Timestamptz(6)
+  mustChangePassword Boolean    @map("must_change_password") @default(false)
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  approvedAt         DateTime?  @map("approved_at") @db.Timestamptz(6)
+  approvedById       String?    @map("approved_by") @db.Uuid
+  lastLoginAt        DateTime?  @map("last_login_at") @db.Timestamptz(6)
+
+  approvedBy   User?           @relation("UserApprovedBy", fields: [approvedById], references: [id])
+  approvals    User[]          @relation("UserApprovedBy")
+  companies    UserCompany[]
+  sessions     Session[]
+  tokens       SecurityToken[] @relation("TokenHolder")
+  issuedTokens SecurityToken[] @relation("TokenIssuer")
+  auditEvents  SecurityAudit[] @relation("AuditActor")
+  auditTargets SecurityAudit[] @relation("AuditTarget")
+
+  @@map("users")
+}

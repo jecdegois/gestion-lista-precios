@@ -1,92 +1,157 @@
-# MV26020-Calculo-de-listas-de-precio
+# MV26020 — Gestión y Cálculo de Listas de Precio
 
+Portal interno para controlar cambios en listas de precio de Softland. La solución aplica un flujo **maker-checker**: un usuario prepara y simula un cambio; otro usuario autorizado lo revisa y aprueba; solo entonces se ejecuta el procedimiento almacenado correspondiente y se conserva la trazabilidad del resultado.
 
+El proyecto busca reducir el riesgo de actualizaciones directas de precio al incorporar simulación previa, segregación de funciones, validaciones comerciales, auditoría y ejecución controlada por compañía.
 
-## Getting started
+## Qué hace la solución
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+- Gestiona solicitudes de cambio de precio por compañía y lista.
+- Permite simulación antes de enviar una solicitud a aprobación.
+- Soporta gestión global por lista, actualización/carga masiva, cambios por artículo y carga masiva de margen mínimo.
+- Implementa roles de **Operador** y **Aprobador**, con bloqueo de autoaprobación.
+- Ejecuta cambios productivos únicamente después de una aprobación válida.
+- Conserva solicitudes, resultados de ejecución y eventos de auditoría.
+- Calcula y valida redondeo comercial mediante 12 bandas, incluyendo terminales comerciales y desempate al valor superior.
+- Opera en modo demostración sin base de datos o contra SQL Server/Softland por compañía.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Estado actual y cambio de alcance analizado
 
-## Add your files
+La aplicación web está en construcción y el flujo maker-checker ya está implementado. El cálculo actual en TypeScript usa factores multiplicadores y redondeo comercial; la integración real ejecuta procedimientos almacenados de Softland solo al aprobar.
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+Se analizó un cambio de alcance para conservar un **precio técnico/original** antes del redondeo comercial y reconstruir los precios publicados desde dicho valor. El cambio incorpora descuento porcentual encadenado a 8 decimales, listas dependientes, idempotencia y un job diario.
 
+Existe una implementación SQL de referencia en `docs/implementacion_redondeo_articulo_precio_v2/` con:
+
+- Columna `U_PRECIO_TECNICO` en `COFER.ARTICULO_PRECIO` y migración inicial.
+- Función `COFER.FN_REDONDEAR_PRECIO` con 12 bandas, terminales por bloque y pruebas de aceptación.
+- Procedimiento `COFER.SP_GESTION_LISTAS_PRECIOS_FULL_QA_V2` con simulación, validaciones de costo/margen, transacción e idempotencia.
+
+Ese motor SQL está preparado para QA, pero la aplicación todavía debe alinearse con su contrato y el job diario/orquestador por dependencia de listas sigue pendiente. Consulte los informes de impacto antes de implementar ese cambio.
+
+## Arquitectura
+
+```text
+Usuario interno
+  → Portal web Next.js (React + Server Actions)
+    → Solicitud, simulación, revisión y auditoría
+      → SQL Server / Softland por compañía
+        → Procedimientos almacenados y ARTICULO_PRECIO
 ```
-cd existing_repo
-git remote add origin https://git.intelix.biz/grupomayoreo/mv26020-calculo-de-listas-de-precio.git
-git branch -M master
-git push -uf origin master
+
+### Componentes principales
+
+| Componente | Responsabilidad |
+|---|---|
+| `app-web/` | Aplicación full-stack Next.js: interfaz React, Server Actions y Route Handlers. |
+| `app-web/src/lib/` | Reglas de dominio: factores, validaciones de margen y redondeo comercial. |
+| `app-web/src/server/` | Persistencia del portal, modo demo, conexiones `mssql` y ejecución de SPs. |
+| `docs/` | Especificaciones funcionales, análisis de datos y paquete SQL de redondeo v2. |
+| `aidlc-docs/` | Requisitos, planes e informes de análisis e impacto IA-DLC. |
+
+### Persistencia y ejecución
+
+La solución separa los datos de gobernanza de la operación de precios:
+
+- **Portal de precios:** solicitudes, detalle simulado, estados, aprobaciones y auditoría.
+- **Softland por compañía:** artículos, listas, precios, márgenes, UDF y procedimientos almacenados operativos.
+
+En modo real, la aplicación no actualiza precios directamente. Al aprobar una solicitud, invoca el SP configurado para la compañía activa. Para margen puede actualizar primero la UDF `U_FACTOR_REDUCCION_MARGEN` y luego ejecutar el SP de cálculo de margen.
+
+## Flujos funcionales
+
+1. **Crear y simular:** el Operador selecciona compañía/proceso, ingresa factores o carga un archivo Excel y revisa el resultado de la simulación.
+2. **Enviar a aprobación:** la solicitud queda pendiente con su evidencia de simulación.
+3. **Revisar:** el Aprobador consulta impacto, registros válidos/no válidos y datos relevantes del cambio.
+4. **Aprobar o rechazar:** se bloquea que el solicitante apruebe su propia solicitud; un rechazo exige motivo.
+5. **Ejecutar:** la solicitud pasa a proceso y, fuera de modo demo, se ejecuta el SP de Softland autorizado.
+6. **Auditar:** se registra envío, revisión, aprobación/rechazo, ejecución y resultado final.
+
+## Reglas de negocio implementadas
+
+- Factores de precio permitidos en el rango `(0, 2]` para los procesos actuales de la app.
+- Porcentaje de reducción de margen en `[0, 100)`: por ejemplo, `10` representa 10 % y se normaliza a `0.10`.
+- Margen mínimo validado contra el precio comercial redondeado.
+- Redondeo comercial en 12 bandas entre `0,01` y `100.000,00`, con estado calculado, fuera de rango o alerta de margen.
+- Las solicitudes pendientes no ejecutan cambios productivos.
+- La ejecución productiva se habilita exclusivamente tras la aprobación de un usuario con rol Aprobador.
+
+## Requisitos
+
+- Node.js 18.18+ o 20+.
+- npm.
+- Opcional para modo real: SQL Server accesible y objetos Softland configurados por compañía.
+
+> En Windows, si PowerShell bloquea `npm`, ejecute `npm.cmd` en lugar de `npm`.
+
+## Inicio rápido
+
+```powershell
+Set-Location app-web
+npm install
+Copy-Item .env.example .env.local
+npm run dev
 ```
 
-## Integrate with your tools
+Abra `http://localhost:5000`.
 
-- [ ] [Set up project integrations](https://git.intelix.biz/grupomayoreo/mv26020-calculo-de-listas-de-precio/-/settings/integrations)
+Scripts disponibles dentro de `app-web/`:
 
-## Collaborate with your team
+| Comando | Propósito |
+|---|---|
+| `npm run dev` | Ejecuta el entorno de desarrollo. |
+| `npm run build` | Genera la compilación de producción. |
+| `npm start` | Sirve la compilación de producción. |
+| `npm run typecheck` | Ejecuta TypeScript sin emitir archivos. |
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+## Configuración de ejecución
 
-## Test and Deploy
+### Modo demostración
 
-Use the built-in continuous integration in GitLab.
+`DEMO_MODE=true` es el modo predeterminado. No requiere SQL Server: usa datos y solicitudes en memoria para probar el flujo completo sin modificar sistemas productivos.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+### Modo SQL Server
 
-***
+Para operar contra Softland, configure `DEMO_MODE=false` y `COMPANIES_CONFIG` en `app-web/.env.local`. La configuración define la conexión, esquema, objetos SQL y parámetros de cada compañía. Use `.env.example` como referencia y no incluya credenciales en el repositorio.
 
-# Editing this README
+## Documentación relevante
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+| Documento | Contenido |
+|---|---|
+| `app-web/README.md` | Configuración técnica detallada de la aplicación, modo demo/real y objetos SQL configurables. |
+| `docs/Requerimiento_ precio original y redondeo de listas 2026-09-10.md` | Requerimiento de precio técnico/original, redondeo e idempotencia. |
+| `docs/implementacion_redondeo_articulo_precio_v2/` | DDL, función, SP y análisis de referencia para QA. |
+| `aidlc-docs/inception/requirements/requirements.md` | Requisitos funcionales y no funcionales aprobados para el portal. |
+| `aidlc-docs/inception/reverse-engineering/impacto-precio-original-y-redondeo.md` | Informe general de impacto del cambio de precio técnico y redondeo. |
+| `aidlc-docs/inception/reverse-engineering/impacto-bd-precio-original-y-redondeo.md` | Impacto específico en base de datos y Softland. |
+| `aidlc-docs/inception/reverse-engineering/impacto-app-precio-original-y-redondeo.md` | Impacto específico en la aplicación Next.js. |
 
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## Documentación de persistencia por artículo y lista
 
-## Name
-Choose a self-explaining name for your project.
+- `docs/especificacion-factor-articulo-lista.md`: mapeo, validaciones y upsert de `DESCUENTO_LISTA_PRECIO`.
+- `backend/sql/FACTOR_ARTICULO_LISTA.sql`: DDL de `FACTOR_ARTICULO_LISTA` por esquema de compañía.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+## Estructura del repositorio
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+```text
+MV26020-Calculo-de-listas-de-precio/
+├── app-web/                         # Portal Next.js
+│   ├── src/app/                     # Rutas, acciones de servidor y API
+│   ├── src/components/              # Interfaz del portal
+│   ├── src/lib/                     # Cálculo, redondeo y tipos de dominio
+│   └── src/server/                  # SQL Server, repositorios y modo demo
+├── docs/                            # Requerimientos y paquete SQL v2
+├── aidlc-docs/                      # Requisitos, planes e informes IA-DLC
+└── README.md
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+## Alcance pendiente del cambio de precio técnico
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Antes de integrar el cambio de precio original/técnico en producción se deben resolver, entre otros, los siguientes puntos:
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- Unificar el nombre `U_PRECIO_ORIGINAL` vs. `U_PRECIO_TECNICO`.
+- Confirmar la llave real de `ARTICULO_PRECIO`, el tipo de `ESQUEMA_TRABAJO` y la moneda utilizada para validar costos/márgenes.
+- Aprobar la política para precios superiores a 100.000 y la extensión opcional de terminales `50/90`.
+- Definir el tratamiento de EPA y `MARGEN_MULR`.
+- Implementar el job diario/orquestador que respete la dependencia entre listas y no se ejecute simultáneamente con el proceso actual.
+- Alinear la simulación TypeScript y el contrato de integración con `SP_GESTION_LISTAS_PRECIOS_FULL_QA_V2`.

@@ -1,0 +1,17 @@
+enum AttemptType {
+  login
+  signup
+  password_reset
+}
+
+model AccessCounter {
+  key           String      @db.Citext
+  attemptType   AttemptType @map("attempt_type")
+  windowStart   DateTime    @map("window_start") @default(now()) @db.Timestamptz(6)
+  attempts      Int         @default(0)
+  lastAttemptAt DateTime    @map("last_attempt_at") @default(now()) @db.Timestamptz(6)
+  blockedUntil  DateTime?   @map("blocked_until") @db.Timestamptz(6)
+
+  @@id([key, attemptType])
+  @@map("access_counters")
+}

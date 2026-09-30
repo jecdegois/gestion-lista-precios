@@ -1,0 +1,245 @@
+{
+  "header": {
+    "ramo_cliente": "Financiero",
+    "lider_proyecto": "Caridad Manaure",
+    "codigo": "FI-CRE-07",
+    "proyecto": "Registro de CredixPay",
+    "fecha_actualizacion": "2020-04-14",
+    "estado_proyecto": "En Definición",
+    "categoria": "Aplicaciones"
+  },
+  "requirements": [
+    {
+      "entregable": "Registro inicial",
+      "codigo": "R1",
+      "requerimiento": "Agregar botón \"Registrese Aquí\" en el login de CredixPay.",
+      "criterios_aceptacion": "Permitir solo el registro a personas que no existan previamente en la aplicación.",
+      "fuente": "Alcance Inicial",
+      "estado": "En Progreso"
+    },
+    {
+      "entregable": "Registro inicial",
+      "codigo": "R2",
+      "requerimiento": "Crear formulario que permita que el usuario pueda registrarse e indicar sus datos principales (Datos del Perfil, Documento de Identidad y Datos de Contacto).",
+      "criterios_aceptacion": "Validar que el formato de los campos ingresados por el prospecto corresponde con el esperado para cada uno.",
+      "fuente": "Alcance Inicial",
+      "estado": "En Progreso"
+    },
+    {
+      "entregable": "Registro inicial",
+      "codigo": "R3",
+      "requerimiento": "Extraer, si es posible, el nombre del prospecto a partir del documento de identidad.",
+      "criterios_aceptacion": "El campo solo debe ser editable cuando el servicio de extracción no arroje resultados.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Registro inicial",
+      "codigo": "R4",
+      "requerimiento": "Permitir la carga de la imagen del documento de identidad (ambas caras).",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Registro inicial",
+      "codigo": "R5",
+      "requerimiento": "Aplicar la evaluación de riesgo utilizando el Sistema de Precalificación y validar la continuidad de la solicitud de registro.",
+      "criterios_aceptacion": "Solo permitir continuar con el flujo de registro a personas que no represente un riesgo financiero para Credix.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Registro inicial",
+      "codigo": "R6",
+      "requerimiento": "Generar Credenciales del usuario aprobado.",
+      "criterios_aceptacion": "Las credenciales deben ser únicas para cada usuario.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Registro inicial",
+      "codigo": "R7",
+      "requerimiento": "Enviar credenciales del usuario por correo electrónico.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Registro inicial",
+      "codigo": "R8",
+      "requerimiento": "Notificar por correo electrónico y por notificación push sobre el uso del Código de Invitación al usuario anfitrión.",
+      "criterios_aceptacion": "",
+      "fuente": "Gestión de Cambio 1",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Formulario según perfil para Registro Completo",
+      "codigo": "R9",
+      "requerimiento": "Crear formulario de actualización de contraseña.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Formulario según perfil para Registro Completo",
+      "codigo": "R10",
+      "requerimiento": "Redireccionar, según el perfil del usuario, al formulario de completación de registro.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Formulario según perfil para Registro Completo",
+      "codigo": "R11",
+      "requerimiento": "Crear formulario que permita recolectar los datos necesarios según cada perfil.",
+      "criterios_aceptacion": "Solo debe aplicar para los usuarios con perfiles Datáfono o Ambos.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Formulario según perfil para Registro Completo",
+      "codigo": "R12",
+      "requerimiento": "Enviar contrato precargado por correo electrónico según cada tipo de perfil.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Formulario según perfil para Registro Completo",
+      "codigo": "R13",
+      "requerimiento": "Enviar usuarios adicionales por cada punto de venta adicional solicitado.",
+      "criterios_aceptacion": "",
+      "fuente": "Gestión de Cambio 1",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Activación del nuevo cliente",
+      "codigo": "R14",
+      "requerimiento": "Crear proceso que identifique si el contrato fue aprobado o no.",
+      "criterios_aceptacion": "Evitar que se envíen caracteres especiales en los archivos ABM.\nSolo registrar en VASA los usuarios con perfil Datáfono o Ambos, en estado inactivo, con documentación aprobada y sin registro previo.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Activación del nuevo cliente",
+      "codigo": "R15",
+      "requerimiento": "Notificar por correo electrónico en el caso que el contrato posee errores.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Activación del nuevo cliente",
+      "codigo": "R16",
+      "requerimiento": "Solicitar la creación del punto de Venta y comercio a través un archivo ABM para Vasa.",
+      "criterios_aceptacion": "Activar a los usuarios con la documentación completa, contrato aprobado y afiliación en VASA.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Activación del nuevo cliente",
+      "codigo": "R17",
+      "requerimiento": "Crear los nuevos usuarios en función a los puntos de venta solicitados.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Activación del nuevo cliente",
+      "codigo": "R18",
+      "requerimiento": "Crear servicio que active el usuario según la respuesta recibida por VASA.",
+      "criterios_aceptacion": "Todos los usuarios relacionados por el mismo usuario principal deben tener el mismo código de invitación.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Activación del nuevo cliente",
+      "codigo": "R19",
+      "requerimiento": "Enviar por correo electrónico la notificación de la activación y documentación con videos instructivos de uso.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración del Invite Code",
+      "codigo": "R20",
+      "requerimiento": "Administrar la generación de los código de invitación.",
+      "criterios_aceptacion": "Garantizar la veracidad del código de invitado usado por el nuevo cliente en su registro.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración del Invite Code",
+      "codigo": "R21",
+      "requerimiento": "Crear nueva pantalla en CredixPay que permita a los usuarios conocer su propio código de invitación.",
+      "criterios_aceptacion": "Permitir que se efectúe el cobro de la comisión una única vez por cada usuario invitado aprobado y operativo.",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración del Invite Code",
+      "codigo": "R22",
+      "requerimiento": "Crear una relación entre los usuarios invitados y los anfitriones.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Administración del Invite Code",
+      "codigo": "R23",
+      "requerimiento": "Crear un proceso que efectúe el pago de las comisiones a los usuarios anfitriones.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Suspendido"
+    },
+    {
+      "entregable": "Todo el Proyecto",
+      "codigo": "R24",
+      "requerimiento": "La aplicación debe almacenar los datos ingresados de forma continua.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Todo el Proyecto",
+      "codigo": "R25",
+      "requerimiento": "Los documentos adjuntos se deben almacenar en los servicios de AWS.",
+      "criterios_aceptacion": "",
+      "fuente": "Gestión de Cambio 1",
+      "estado": "Suspendido"
+    },
+    {
+      "entregable": "Todo el Proyecto",
+      "codigo": "R26",
+      "requerimiento": "Las contraseñas deben ser encriptadas con el método que actualmente se usa en la aplicación.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Todo el Proyecto",
+      "codigo": "R27",
+      "requerimiento": "El sistema debe validar los campos del formulario según las reglas de negocio de cada uno.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Todo el Proyecto",
+      "codigo": "R28",
+      "requerimiento": "Los correos electrónicos para el cliente serán enviados desde credixpay@credix.com. Este correo debe poder ser modificable.",
+      "criterios_aceptacion": "",
+      "fuente": "Alcance Inicial",
+      "estado": "Sin Iniciar"
+    },
+    {
+      "entregable": "Todo el Proyecto",
+      "codigo": "R29",
+      "requerimiento": "Todos los mensajes y plantillas de correo deben ser administrados por la Base de Datos.",
+      "criterios_aceptacion": "",
+      "fuente": "Gestión de Cambio 2",
+      "estado": "Sin Iniciar"
+    }
+  ]
+}

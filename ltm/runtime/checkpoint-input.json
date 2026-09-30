@@ -1,0 +1,18 @@
+{
+  "summary": "Se aclaro al usuario el origen de la nomenclatura de los 3 procesos del prototipo (FACTOR_PRECIO/Factor por Nivel, MAYOREOD_MASIVO/Actualizacion Lista Base, DESCUENTO_LISTA_PRECIO/Descuento por Articulo): NO provienen de aidlc-docs/inception/requirements/requirements.md (que usa nomenclatura funcional generica: RF-01 'gestion global por lista', 'actualizacion masiva por archivo Excel', 'gestion individual por articulo/lista/factor', sin esos identificadores). Los identificadores tecnicos originales (FACTOR_PRECIO, MAYOREOD_MASIVO, UDF_FACTOR_ARTICULO) vienen de docs/propuesta_interfaz.md (documento pre-existente del usuario). El renombre del proceso 3 a DESCUENTO_LISTA_PRECIO y los 3 nombres amigables de negocio (Factor por Nivel, Actualizacion Lista Base, Descuento por Articulo) fueron instrucciones explicitas del usuario en turnos anteriores de esta conversacion, transcritas literalmente al mockup. No hay codigo modificado en este turno; se re-verifico la sintaxis del prototipo existente (gestion-masiva-precios.html) como confirmacion de estabilidad tras el checkpoint anterior (chk_000003).",
+  "changed_files": [],
+  "decisions": [
+    "Se documento formalmente la trazabilidad de origen de los nombres de proceso (propuesta_interfaz.md + instrucciones directas del usuario en chat) para evitar ambiguedad futura sobre si forman parte de los requisitos formales IA-DLC (requirements.md/stories.md) o no.",
+    "Se confirma que requirements.md usa nomenclatura funcional distinta y mas generica (RF-01 a RF-16) que coexiste con la nomenclatura tecnica/de negocio del prototipo mediante la tabla de reconciliacion terminologica ya documentada en docs/especificacion-visual-gestion-masiva-precios.md (seccion 0)."
+  ],
+  "open_threads": [
+    "Pendiente: usuario debe confirmar/aprobar el estado actual del mockup para crear la primera linea base en Product-Definition/mockups/.versions/ segun la directiva de checkpoints.",
+    "Pendiente: definir si la plantilla Excel descargable y el motor de validacion deben ampliarse a un catalogo de articulos mas completo o conectarse a datos reales de Softland en una fase posterior de diseno funcional/infraestructura.",
+    "Pendiente: si el usuario desea, formalizar la nomenclatura de negocio (Factor por Nivel, Actualizacion Lista Base, Descuento por Articulo) dentro de aidlc-docs/inception/requirements/requirements.md para que quede trazada como requisito oficial IA-DLC, no solo como decision de diseno visual."
+  ],
+  "next_actions": [
+    "Esperar confirmacion o feedback del usuario sobre el prototipo actual (gestion-masiva-precios.html).",
+    "Si el usuario lo solicita, actualizar requirements.md para incorporar formalmente los 3 nombres de proceso de negocio.",
+    "Si se aprueba el mockup, crear checkpoint de mockup (.versions/) segun 02-mockup-workflow."
+  ]
+}
