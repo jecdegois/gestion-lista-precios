@@ -22,7 +22,7 @@ export default async function EjecucionLayout({
 
   return (
     <>
-      <h1 className="text-xl font-bold text-zinc-900 mb-4">Ejecución de SPs</h1>
+      <h1 className="text-xl font-bold text-zinc-900 mb-4">Ejecución Manual de Actualizciones</h1>
       {children}
     </>
   );

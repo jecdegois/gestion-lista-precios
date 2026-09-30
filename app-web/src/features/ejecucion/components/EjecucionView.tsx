@@ -21,7 +21,7 @@ const FORMS: Record<EjecucionKey, ComponentType> = {
 
 const DESCRIPCIONES: Record<EjecucionKey, string> = {
   EJECUCION_PRECIOS:
-    "Actualización de precios mediante factor multiplicador sobre la lista seleccionada.",
+    "Actualización de precios sobre la lista seleccionada según su lista base y factor configurado.",
   EJECUCION_MARGEN:
     "Recalculo masivo del Margen Mínimo de Utilidad (Regla de Mayoreo) por porcentaje de reducción.",
 };
@@ -75,16 +75,6 @@ export default function EjecucionView({ tipo, registros = [] }: EjecucionViewPro
           <span>
             Usuario:{" "}
             <span className="font-semibold text-zinc-700">{user.nombre}</span>
-          </span>
-        </div>
-
-        {/* Aviso de integración pendiente */}
-        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs text-amber-800 mb-4 flex items-start gap-2">
-          <span className="mt-0.5 text-amber-500">⚠</span>
-          <span>
-            Este módulo está en construcción. Los formularios son el cuerpo visual;
-            la ejecución real de SPs estará disponible al completar el{" "}
-            <span className="font-semibold">PASO 4</span> de integración con Softland.
           </span>
         </div>
 

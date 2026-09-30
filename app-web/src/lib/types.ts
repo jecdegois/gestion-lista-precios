@@ -46,6 +46,14 @@ export interface GestionGlobalLista extends NivelPrecio {
   fechaFin: string | null;
   factorMultiplicador: number | null;
   horasAtras: number | null;
+  /** GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_COSTO */
+  validarPrecioBajoCosto: boolean;
+  /** GESTION_LISTAS_PRECIOS.EXIGIR_FACTOR_CONFIGURADO */
+  exigirFactorConfigurado: boolean;
+  /** GESTION_LISTAS_PRECIOS.EXCEPCIONES_ARTICULOS — VARCHAR(MAX) nullable, lista de articulos */
+  excepcionesArticulos: string | null;
+  /** GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN */
+  validarPrecioBajoMargenMin: boolean;
 }
 
 /** Resultado de evaluar una fila de la carga masiva de margen. */

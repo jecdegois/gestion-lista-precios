@@ -65,9 +65,9 @@ function TablaEjecuciones({
                   <td className="px-3 py-2">
                     <EstadoEjecucionBadge estado={r.estado} />
                   </td>
-                  <td className="px-3 py-2 text-right">{r.totalArticulos}</td>
-                  <td className="px-3 py-2 text-right text-green-700 font-medium">{r.exitosos}</td>
-                  <td className="px-3 py-2 text-right text-red-600 font-medium">{r.fallidos}</td>
+                  <td className="px-3 py-2 text-right">{r.totalArticulos > 0 ? r.totalArticulos : "—"}</td>
+                  <td className="px-3 py-2 text-right text-green-700 font-medium">{r.exitosos > 0 ? r.exitosos : "—"}</td>
+                  <td className="px-3 py-2 text-right text-red-600 font-medium">{r.fallidos > 0 ? r.fallidos : "—"}</td>
                   <td className="px-3 py-2 mono text-zinc-400">{r.idProcesoSP ?? "—"}</td>
                 </tr>
               ))}

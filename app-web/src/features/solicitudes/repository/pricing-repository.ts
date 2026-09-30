@@ -445,6 +445,10 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       fechaFin: null,
       factorMultiplicador: null,
       horasAtras: null,
+      exigirFactorConfigurado:    false,
+      validarPrecioBajoCosto:     false,
+      excepcionesArticulos:       null,
+      validarPrecioBajoMargenMin: false,
     }));
   }
   const pool = await getPool(compania);
@@ -462,7 +466,11 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
               A.HORAS_ATRAS AS horasAtras,
               -- Si NIVEL_PRECIO_BASE es NULL o vacío, la lista se toma como su propia base
               COALESCE(NULLIF(LTRIM(RTRIM(A.NIVEL_PRECIO_BASE)), ''), A.NIVEL_PRECIO) AS nivelPrecioBase,
-              LTRIM(RTRIM(A.MONEDA_BASE)) AS monedaBase
+              LTRIM(RTRIM(A.MONEDA_BASE)) AS monedaBase,
+              ISNULL(A.EXIGIR_FACTOR_CONFIGURADO, 0)    AS exigirFactorConfigurado,
+              ISNULL(A.VALIDAR_PRECIO_BAJO_COSTO, 0)    AS validarPrecioBajoCosto,
+              ISNULL(A.EXCEPCIONES_ARTICULOS, 0)        AS excepcionesArticulos,
+              ISNULL(A.VALIDAR_PRECIO_BAJO_MARGEN_MIN, 0) AS validarPrecioBajoMargenMin
          FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
         WHERE A.COMPANIA = @compania
         ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION), A.VERSION;`,
@@ -482,6 +490,10 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       // Fallback en TypeScript por si el COALESCE retorna nulo igualmente
       nivelPrecioBase: String(r.nivelPrecioBase ?? codigo).trim() || codigo,
       monedaBase: r.monedaBase == null ? null : String(r.monedaBase).trim() || null,
+      exigirFactorConfigurado:    Boolean(r.exigirFactorConfigurado),
+      validarPrecioBajoCosto:     Boolean(r.validarPrecioBajoCosto),
+      excepcionesArticulos:       r.excepcionesArticulos == null ? null : String(r.excepcionesArticulos),
+      validarPrecioBajoMargenMin: Boolean(r.validarPrecioBajoMargenMin),
     };
   }).filter((nivel) => nivel.codigo && nivel.version);
 }
