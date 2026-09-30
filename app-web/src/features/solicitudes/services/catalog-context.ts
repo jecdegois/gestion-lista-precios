@@ -2,6 +2,7 @@ import "server-only";
 import type { CatalogoContext } from "@/lib/engine";
 import type { ArticuloCatalogo } from "@/lib/domain-types";
 import type { Articulo, NivelPrecio } from "@/lib/types";
+import { prisma } from "@/lib/prisma";
 import { pricingRepository } from "../repository/pricing-repository";
 
 /** Contexto de catálogo (artículos, listas y grupos) que consume el motor de cálculo. */
@@ -48,6 +49,7 @@ export function crearContextoCatalogo(
   niveles: NivelPrecio[],
   articulosMaestros: Articulo[],
   listaBaseCodigo?: string,
+  moneda = "",
 ): CatalogoContext {
   const articulos = articulosMaestros.map(convertirArticuloMaestro);
   const grupos: CatalogoContext["grupos"] = {};
@@ -68,7 +70,14 @@ export function crearContextoCatalogo(
     nombresLista,
     grupos,
     listaBase: { codigo: base.codigo, nombre: base.nombre, nivelPrecio: base.codigo },
+    moneda,
   };
+}
+
+/** Símbolo de moneda configurado para la compañía en companies.currency_symbol. */
+export async function monedaDe(compania: string): Promise<string> {
+  const company = await prisma.company.findUnique({ where: { code: compania.trim().toUpperCase() }, select: { currencySymbol: true } });
+  return company?.currencySymbol ?? "";
 }
 
 export async function cargarContextosPorLista(
@@ -76,10 +85,11 @@ export async function cargarContextosPorLista(
   niveles: NivelPrecio[],
   listas: string[],
 ): Promise<Map<string, CatalogoContext>> {
+  const moneda = await monedaDe(compania);
   const contextos = await Promise.all(
     listas.map(async (lista) => [
       lista,
-      crearContextoCatalogo(niveles, await pricingRepository.listCatalog(compania, lista), lista),
+      crearContextoCatalogo(niveles, await pricingRepository.listCatalog(compania, lista), lista, moneda),
     ] as const),
   );
   return new Map(contextos);

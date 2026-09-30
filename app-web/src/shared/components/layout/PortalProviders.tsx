@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useState } from "react";
 import type { Identidad } from "@/lib/domain-types";
+import { fmtMonto } from "@/lib/format";
 
 type ToastVariant = "success" | "error";
 type Toast = { id: number; message: string; variant?: ToastVariant };
@@ -15,6 +16,11 @@ export function useCurrentUser(): Identidad {
   const user = useContext(UserContext);
   if (!user) throw new Error("useCurrentUser debe usarse dentro de PortalProviders");
   return user;
+}
+
+/** Monto formateado con la moneda de la compañía activa. */
+export function Monto({ n }: { n: number | null | undefined }) {
+  return <>{fmtMonto(n, useContext(UserContext)?.moneda)}</>;
 }
 
 export function useToast(): PushToast {

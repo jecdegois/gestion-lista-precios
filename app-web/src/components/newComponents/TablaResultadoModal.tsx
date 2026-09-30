@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { esHallazgoDeNegocio, ResumenValidaciones } from "../Tablas";
 import { TIPOS_VARIACION } from "@/lib/catalog";
 import { esFilaMargen, type FilaResultado } from "@/lib/domain-types";
-import { fmtFactor, fmtMonto, fmtPct, fmtPorcentajeCapturado, fmtPorcentajeMultiplicador } from "@/lib/format";
+import { fmtFactor, fmtPct, fmtPorcentajeCapturado, fmtPorcentajeMultiplicador } from "@/lib/format";
 import ResponsiveDataTable, { type TableColumn } from "./ResponsiveDataTable";
+import { Monto } from "@/shared/components/layout/PortalProviders";
 
 const PAGE_SIZE = 200;
 
@@ -57,19 +58,19 @@ const columns: readonly TableColumn<FilaResultado>[] = [
     key: "precioActual",
     header: "Precio Actual",
     align: "right",
-    value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioActual)}</span>,
+    value: (fila) => <span className="mono"><Monto n={fila.validacion.precioActual} /></span>,
   },
   {
     key: "precioCalculado",
     header: "Precio Calc.",
     align: "right",
-    value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioPropuesto)}</span>,
+    value: (fila) => <span className="mono"><Monto n={fila.validacion.precioPropuesto} /></span>,
   },
   {
     key: "precioMinimo",
     header: "Precio Mínimo",
     align: "right",
-    value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioMin)}</span>,
+    value: (fila) => <span className="mono"><Monto n={fila.validacion.precioMin} /></span>,
   },
   {
     key: "margen",
@@ -102,7 +103,7 @@ export default function TablaResultadoModal({
     if (modo === "descuentoArticuloLista" && column.key === "variacion") {
       return {
         ...column,
-        header: "VariaciÃ³n %",
+        header: "Variación %",
         value: (fila: FilaResultado) => fmtPorcentajeCapturado(!esFilaMargen(fila) ? fila.variacionPorcentaje : null),
       };
     }

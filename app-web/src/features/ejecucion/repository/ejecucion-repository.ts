@@ -39,28 +39,23 @@ function toEjecucionLog(row: Record<string, unknown>): EjecucionLog {
   };
 }
 
+const ESTADOS_FINALES: EstadoEjecucion[] = ["COMPLETADO", "COMPLETADO_CON_ERRORES", "ERROR"];
+
 async function crear(compania: string, email: string, nombre: string, input: CrearEjecucionInput): Promise<EjecucionLog> {
   assertEscrituraPortalHabilitada();
-  const pool = await getPortalPool();
-  const tabla = objetoPortal(compania, "EJECUCION_LOG");
-  const mssql = await import("mssql");
-  const q = await pool.request()
-    .input("tipo", mssql.VarChar(25), input.tipo)
-    .input("compania", mssql.VarChar(20), compania)
-    .input("email", mssql.VarChar(120), email)
-    .input("nombre", mssql.VarChar(120), nombre)
-    .input("parametros", mssql.NVarChar(mssql.MAX), JSON.stringify(input.parametros))
-    .input("spNombre", mssql.VarChar(100), input.spNombre)
-    .input("estado", mssql.VarChar(25), "EN_PROCESO")
-    .input("observaciones", mssql.VarChar(500), input.observaciones ?? null)
-    .query(
-      `INSERT INTO ${tabla}
-        (TIPO_EJECUCION, COMPANIA, EJECUTADO_POR_EMAIL, EJECUTADO_POR_NOMBRE,
-         PARAMETROS_JSON, SP_NOMBRE, ESTADO, OBSERVACIONES)
-       OUTPUT INSERTED.*
-       VALUES (@tipo, @compania, @email, @nombre, @parametros, @spNombre, @estado, @observaciones);`,
-    );
-  return toEjecucionLog(q.recordset[0] as Record<string, unknown>);
+  const row = await portalDb(compania).eJECUCION_LOG.create({
+    data: {
+      TIPO_EJECUCION: input.tipo,
+      COMPANIA: compania,
+      EJECUTADO_POR_EMAIL: email,
+      EJECUTADO_POR_NOMBRE: nombre,
+      PARAMETROS_JSON: JSON.stringify(input.parametros),
+      SP_NOMBRE: input.spNombre,
+      ESTADO: "EN_PROCESO",
+      OBSERVACIONES: input.observaciones ?? null,
+    },
+  });
+  return toEjecucionLog(plano(row));
 }
 
 async function actualizar(compania: string, id: string, input: ActualizarEjecucionInput): Promise<EjecucionLog> {
@@ -151,14 +146,12 @@ async function ejecutarSpPrecios(compania: string, input: EjecucionSpPreciosInpu
 }
 
 async function listar(compania: string, tipo: EjecucionKey): Promise<EjecucionLog[]> {
-  const pool = await getPortalPool();
-  const tabla = objetoPortal(compania, "EJECUCION_LOG");
-  const mssql = await import("mssql");
-  const q = await pool.request()
-    .input("compania", mssql.VarChar(20), compania)
-    .input("tipo", mssql.VarChar(25), tipo)
-    .query(`SELECT TOP (50) * FROM ${tabla} WITH(NOLOCK) WHERE COMPANIA = @compania AND TIPO_EJECUCION = @tipo ORDER BY FECHA_INICIO DESC;`);
-  return q.recordset.map((row) => toEjecucionLog(row as Record<string, unknown>));
+  const rows = await portalDb(compania).eJECUCION_LOG.findMany({
+    where: { COMPANIA: compania, TIPO_EJECUCION: tipo },
+    orderBy: { FECHA_INICIO: "desc" },
+    take: 50,
+  });
+  return rows.map((row) => toEjecucionLog(plano(row)));
 }
 
 // ── Tipos para la vista de auditoría ─────────────────────────────────────────
@@ -187,44 +180,20 @@ export type EjecucionAuditResult = {
 async function listarAudit(params: EjecucionAuditParams): Promise<EjecucionAuditResult> {
   const { compania, offset = 0, limit = 50, tipo, estado, search } = params;
 
-  const pool = await getPortalPool();
-  const tabla = objetoPortal(compania, "EJECUCION_LOG");
-  const mssql = await import("mssql");
-
-  // ── WHERE dinámico ────────────────────────────────────────────────────────
-  const conditions: string[] = ["COMPANIA = @compania"];
-  if (tipo)   conditions.push("TIPO_EJECUCION = @tipo");
-  if (estado) conditions.push("ESTADO = @estado");
-  if (search) conditions.push(
-    "(EJECUTADO_POR_EMAIL LIKE @search OR EJECUTADO_POR_NOMBRE LIKE @search OR ID_PROCESO_SP LIKE @search)",
-  );
-  const where = conditions.join(" AND ");
-
-  function bindFilters(req: ReturnType<typeof pool.request>) {
-    req.input("compania", mssql.VarChar(20), compania);
-    if (tipo)   req.input("tipo",   mssql.VarChar(25),  tipo);
-    if (estado) req.input("estado", mssql.VarChar(25),  estado);
-    if (search) req.input("search", mssql.VarChar(120), `%${search}%`);
-    return req;
-  }
-
-  // ── COUNT ─────────────────────────────────────────────────────────────────
-  const countRes = await bindFilters(pool.request())
-    .query(`SELECT COUNT(1) AS total FROM ${tabla} WITH(NOLOCK) WHERE ${where}`);
-  const total: number = (countRes.recordset[0] as { total: number }).total;
-
-  // ── Datos paginados ───────────────────────────────────────────────────────
-  const dataRes = await bindFilters(pool.request())
-    .input("offset", mssql.Int, offset)
-    .input("limit",  mssql.Int, limit)
-    .query(
-      `SELECT * FROM ${tabla} WITH(NOLOCK)
-        WHERE ${where}
-        ORDER BY FECHA_INICIO DESC
-       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
-    );
-
-  const ejecuciones = dataRes.recordset.map((row) => toEjecucionLog(row as Record<string, unknown>));
+  const where: Prisma.EJECUCION_LOGWhereInput = {
+    COMPANIA: compania,
+    ...(tipo ? { TIPO_EJECUCION: tipo } : {}),
+    ...(estado ? { ESTADO: estado } : {}),
+    ...(search
+      ? { OR: [{ EJECUTADO_POR_EMAIL: { contains: search } }, { EJECUTADO_POR_NOMBRE: { contains: search } }, { ID_PROCESO_SP: { contains: search } }] }
+      : {}),
+  };
+  const db = portalDb(compania);
+  const [total, rows] = await Promise.all([
+    db.eJECUCION_LOG.count({ where }),
+    db.eJECUCION_LOG.findMany({ where, orderBy: { FECHA_INICIO: "desc" }, skip: offset, take: limit }),
+  ]);
+  const ejecuciones = rows.map((row) => toEjecucionLog(plano(row)));
   const nextOff = offset + ejecuciones.length;
 
   return {

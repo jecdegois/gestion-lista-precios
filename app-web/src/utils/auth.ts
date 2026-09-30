@@ -28,6 +28,7 @@ export function getIdentidad(session: AuthContext): Identidad {
     rol: asignacion ? ROL_POR_CODIGO[asignacion.role] : "SIN_PERMISO",
     color: "#52525b",
     compania: asignacion?.company ?? null,
+    moneda: asignacion?.currencySymbol ?? "",
     isAdmin: session.isAdmin,
   };
 }

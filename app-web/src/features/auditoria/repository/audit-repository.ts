@@ -1,7 +1,8 @@
 import "server-only";
+import { Prisma } from "@/generated/sqlserver";
 import type { EventoAuditoria, EventoTipo, Rol } from "@/lib/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
-import { getPortalPool } from "@/server/db";
+import { portalDb } from "@/server/db";
 import {
   listarEventos as demoListarEventos,
   registrarEvento as demoRegistrarEvento,
@@ -47,21 +48,15 @@ async function record(input: AuditEventInput): Promise<void> {
     demoRegistrarEvento(event, user, role, company, requestId, processId);
     return;
   }
-  const pool = await getPortalPool();
-  const ae = objetoPortal(company, "AUDITORIA_PRECIOS");
-  const mssql = await import("mssql");
-  const payload = JSON.stringify({ usuario: user, compania: company, solicitudId: requestId });
-  await pool
-    .request()
-    .input("proceso", mssql.VarChar(30), processId ?? requestId ?? event)
-    .input("subject", mssql.VarChar(120), userEmail || user)
-    .input("rol", mssql.VarChar(15), role)
-    .input("evento", mssql.VarChar(50), event)
-    .input("payload", mssql.NVarChar(mssql.MAX), payload)
-    .query(
-      `INSERT INTO ${ae} (ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO)
-       VALUES (@proceso,@subject,@rol,@evento,@payload,GETDATE());`,
-    );
+  await portalDb(company).aUDITORIA_PRECIOS.create({
+    data: {
+      ID_PROCESO: processId ?? requestId ?? event,
+      IDP_SUBJECT: userEmail || user,
+      ROL: role,
+      EVENTO: event,
+      PAYLOAD_JSON: JSON.stringify({ usuario: user, compania: company, solicitudId: requestId }),
+    },
+  });
 }
 
 function mapRow(r: Record<string, unknown>, fallbackCompania: string): EventoAuditoria {
@@ -113,55 +108,34 @@ async function list(params: AuditListParams): Promise<AuditListResult> {
     };
   }
 
-  const pool = await getPortalPool();
-  const ae = objetoPortal(compania, "AUDITORIA_PRECIOS");
-  const mssql = await import("mssql");
-
-  const columnas = "ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO";
-
-  // ── Condiciones WHERE dinámicas ────────────────────────────────────────────
-  const conditions: string[] = [
-    "ISJSON(PAYLOAD_JSON) = 1",
-    "JSON_VALUE(PAYLOAD_JSON, '$.compania') = @comp",
-  ];
-  if (rol) conditions.push("ROL = @rol");
-  if (evento) conditions.push("EVENTO = @evento");
-  if (search) conditions.push(
-    "(IDP_SUBJECT LIKE @search OR JSON_VALUE(PAYLOAD_JSON, '$.usuario') LIKE @search OR JSON_VALUE(PAYLOAD_JSON, '$.solicitudId') LIKE @search OR ID_PROCESO LIKE @search)",
+  // Filtros sobre el JSON: Prisma no los soporta en SQL Server, queda en SQL (calificado por esquema).
+  const ae = Prisma.raw(objetoPortal(compania, "AUDITORIA_PRECIOS"));
+  const like = `%${search}%`;
+  const where = Prisma.join(
+    [
+      Prisma.sql`ISJSON(PAYLOAD_JSON) = 1`,
+      Prisma.sql`JSON_VALUE(PAYLOAD_JSON, '$.compania') = ${compania}`,
+      rol ? Prisma.sql`ROL = ${rol}` : null,
+      evento ? Prisma.sql`EVENTO = ${evento}` : null,
+      search
+        ? Prisma.sql`(IDP_SUBJECT LIKE ${like} OR JSON_VALUE(PAYLOAD_JSON, '$.usuario') LIKE ${like} OR JSON_VALUE(PAYLOAD_JSON, '$.solicitudId') LIKE ${like} OR ID_PROCESO LIKE ${like})`
+        : null,
+    ].filter((c): c is Prisma.Sql => c !== null),
+    " AND ",
   );
 
-  const where = conditions.join(" AND ");
+  const db = portalDb(compania);
+  const [[{ total }], rows] = await Promise.all([
+    db.$queryRaw<{ total: number }[]>`SELECT COUNT(1) AS total FROM ${ae} WITH(NOLOCK) WHERE ${where}`,
+    db.$queryRaw<Record<string, unknown>[]>`
+      SELECT ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO
+        FROM ${ae} WITH(NOLOCK)
+       WHERE ${where}
+       ORDER BY FECHA_EVENTO DESC
+      OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`,
+  ]);
 
-  // ── COUNT para saber el total ──────────────────────────────────────────────
-  const countReq = pool
-    .request()
-    .input("comp", mssql.VarChar(20), compania);
-  if (rol) countReq.input("rol", mssql.VarChar(15), rol);
-  if (evento) countReq.input("evento", mssql.VarChar(50), evento);
-  if (search) countReq.input("search", mssql.VarChar(120), `%${search}%`);
-
-  const countRes = await countReq.query(`SELECT COUNT(1) AS total FROM ${ae} WITH(NOLOCK) WHERE ${where}`);
-  const total: number = (countRes.recordset[0] as { total: number }).total;
-
-  // ── Página de datos ────────────────────────────────────────────────────────
-  const dataReq = pool
-    .request()
-    .input("comp", mssql.VarChar(20), compania)
-    .input("offset", mssql.Int, offset)
-    .input("limit", mssql.Int, limit);
-  if (rol) dataReq.input("rol", mssql.VarChar(15), rol);
-  if (evento) dataReq.input("evento", mssql.VarChar(50), evento);
-  if (search) dataReq.input("search", mssql.VarChar(120), `%${search}%`);
-
-  const dataRes = await dataReq.query(
-    `SELECT ${columnas}
-       FROM ${ae} WITH(NOLOCK)
-      WHERE ${where}
-      ORDER BY FECHA_EVENTO DESC
-     OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
-  );
-
-  const eventos = dataRes.recordset.map((r: Record<string, unknown>) => mapRow(r, compania));
+  const eventos = rows.map((r) => mapRow(r, compania));
   const nextOff = offset + eventos.length;
 
   return {

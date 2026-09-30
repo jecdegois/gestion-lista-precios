@@ -25,6 +25,8 @@ export interface CatalogoContext {
   nombresLista: Record<string, string>;
   grupos: Record<string, { label: string; articulos: string[] }>;
   listaBase: { codigo: string; nombre: string; nivelPrecio: string };
+  /** Símbolo de moneda de la compañía, para los mensajes de validación. */
+  moneda?: string;
 }
 
 const CATALOGO_POR_DEFECTO: CatalogoContext = {
@@ -192,7 +194,7 @@ export function validarFila(row: FilaInput, modo: ModoProceso, context: Catalogo
       costo,
       costoMinimo,
       precioMin: costoMinimo,
-      causa: `El precio final (${fmtMonto(precioParaValidar)}) está por debajo del margen mínimo del artículo (mínimo: ${fmtMonto(costoMinimo)}).`,
+      causa: `El precio final (${fmtMonto(precioParaValidar, context.moneda)}) está por debajo del margen mínimo del artículo (mínimo: ${fmtMonto(costoMinimo, context.moneda)}).`,
     };
   }
 

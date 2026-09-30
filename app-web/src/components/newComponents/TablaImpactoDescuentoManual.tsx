@@ -2,15 +2,16 @@
 
 import { esHallazgoDeNegocio, ResumenValidaciones } from "../Tablas";
 import { TIPOS_VARIACION } from "@/lib/catalog";
-import { fmtFactor, fmtMonto, fmtPorcentajeCapturado } from "@/lib/format";
+import { fmtFactor, fmtPorcentajeCapturado } from "@/lib/format";
 import type { FilaPrecio } from "@/lib/domain-types";
 import ResponsiveDataTable, { type TableColumn, type TableLoadParams } from "./ResponsiveDataTable";
+import { Monto } from "@/shared/components/layout/PortalProviders";
 
 const columns: readonly TableColumn<FilaPrecio>[] = [
   { key: "codigo", header: "Código", value: (fila) => <span className="mono whitespace-nowrap">{fila.codigo}</span> },
   { key: "lista", header: "Lista", value: (fila) => fila.lista ?? "—" },
   { key: "descripcion", header: "Descripción", value: (fila) => <span className="block max-w-[280px] truncate whitespace-nowrap" title={fila.descripcion || "—"}>{fila.descripcion || "—"}</span> },
-  { key: "precioActual", header: "Precio Actual", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioActual)}</span> },
+  { key: "precioActual", header: "Precio Actual", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioActual} /></span> },
   /*{
     key: "tipoVariacion",
     header: "Tipo Var.",
@@ -28,8 +29,8 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
       ? <span className="block max-w-[280px] truncate text-red-700" title={fila.mensajeError}>{fila.mensajeError}</span>
       : <span className="text-zinc-400">—</span>,
   },
-  { key: "precioPropuesto", header: "Precio Calc.", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.precioPropuesto)}</span> },
-  { key: "costoMinimo", header: "Precio Mín.", align: "right", value: (fila) => <span className="mono">{fmtMonto(fila.validacion.costoMinimo)}</span> },
+  { key: "precioPropuesto", header: "Precio Calc.", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioPropuesto} /></span> },
+  { key: "costoMinimo", header: "Precio Mín.", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.costoMinimo} /></span> },
 ];
 
 interface TablaImpactoDescuentoManualProps {

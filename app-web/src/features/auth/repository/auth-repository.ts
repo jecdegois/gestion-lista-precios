@@ -82,6 +82,7 @@ const sessions = {
             companies: {
               where: { isActive: true, revokedAt: null },
               include: {
+                companyInfo: { select: { currencySymbol: true } },
                 userRoles: {
                   where: { revokedAt: null },
                   include: { role: true },
