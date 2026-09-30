@@ -1,8 +1,9 @@
 import "server-only";
 
 import type { EjecucionKey, EjecucionLog, EstadoEjecucion } from "@/lib/domain-types";
-import { assertEscrituraPortalHabilitada, assertEscrituraSoftlandHabilitada, objetoPortal } from "@/server/companies";
-import { getPool, getPortalPool } from "@/server/db";
+import type { Prisma } from "@/generated/sqlserver";
+import { assertEscrituraPortalHabilitada, assertEscrituraSoftlandHabilitada } from "@/server/companies";
+import { ahoraServidor, getPool, plano, portalDb } from "@/server/db";
 
 export type CrearEjecucionInput = {
   tipo: EjecucionKey;
@@ -60,33 +61,30 @@ async function crear(compania: string, email: string, nombre: string, input: Cre
 
 async function actualizar(compania: string, id: string, input: ActualizarEjecucionInput): Promise<EjecucionLog> {
   assertEscrituraPortalHabilitada();
-  const pool = await getPortalPool();
-  const tabla = objetoPortal(compania, "EJECUCION_LOG");
-  const mssql = await import("mssql");
-  const q = await pool.request()
-    .input("id",           mssql.BigInt,      id)
-    .input("estado",       mssql.VarChar(25),  input.estado)
-    .input("total",        mssql.Int,          input.totalArticulos ?? null)
-    .input("exitosos",     mssql.Int,          input.exitosos ?? null)
-    .input("fallidos",     mssql.Int,          input.fallidos ?? null)
-    .input("observaciones",mssql.VarChar(500), input.observaciones ?? null)
-    .input("codigoError",  mssql.VarChar(40),  input.codigoError ?? null)
-    .input("mensajeError", mssql.VarChar(1000),input.mensajeError ?? null)
-    .query(
-      `UPDATE ${tabla}
-          SET ESTADO           = @estado,
-              FECHA_FIN        = CASE WHEN @estado IN ('COMPLETADO', 'COMPLETADO_CON_ERRORES', 'ERROR') THEN GETDATE() ELSE FECHA_FIN END,
-              TOTAL_ARTICULOS  = @total,
-              EXITOSOS         = @exitosos,
-              FALLIDOS         = @fallidos,
-              OBSERVACIONES    = @observaciones,
-              CODIGO_ERROR     = @codigoError,
-              MENSAJE_ERROR    = @mensajeError
-        OUTPUT INSERTED.*
-        WHERE ID_EJECUCION = @id;`,
-    );
-  if (!q.recordset[0]) throw new Error("No existe la ejecución solicitada.");
-  return toEjecucionLog(q.recordset[0] as Record<string, unknown>);
+  const db = portalDb(compania);
+  const idEjecucion = BigInt(id);
+  // FECHA_FIN solo se fija al llegar a un estado final (equivalente al GETDATE() del SQL anterior).
+  const fechaFin = ESTADOS_FINALES.includes(input.estado) ? await ahoraServidor(db) : undefined;
+  try {
+    const row = await db.eJECUCION_LOG.update({
+      where: { ID_EJECUCION: idEjecucion },
+      data: {
+        ESTADO: input.estado,
+        ...(fechaFin ? { FECHA_FIN: fechaFin } : {}),
+        TOTAL_ARTICULOS: input.totalArticulos ?? null,
+        EXITOSOS: input.exitosos ?? null,
+        FALLIDOS: input.fallidos ?? null,
+        OBSERVACIONES: input.observaciones ?? null,
+        CODIGO_ERROR: input.codigoError ?? null,
+        MENSAJE_ERROR: input.mensajeError ?? null,
+      },
+    });
+    return toEjecucionLog(plano(row));
+  } catch (error) {
+    // P2025: registro no encontrado
+    if ((error as { code?: string }).code === "P2025") throw new Error("No existe la ejecución solicitada.");
+    throw error;
+  }
 }
 
 export type EjecucionSpPreciosInput = {
