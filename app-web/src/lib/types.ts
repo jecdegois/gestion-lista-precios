@@ -28,20 +28,32 @@ export interface NivelPrecio {
   nombre: string;
 }
 
-/** Registro de Gestión Global leído desde dbo.GESTION_LISTAS_PRECIOS. */
+/** Registro de Gestion Global leido desde dbo.GESTION_LISTAS_PRECIOS. */
 export interface GestionGlobalLista extends NivelPrecio {
   version: string;
   variacionPorc: number | null;
+  /** Moneda de la lista (GESTION_LISTAS_PRECIOS.MONEDA). */
+  moneda: string | null;
   /**
-   * Lista padre desde la cual se obtienen los precios base para la simulación.
+   * Lista padre desde la cual se obtienen los precios base para la simulacion.
    * Corresponde a GESTION_LISTAS_PRECIOS.NIVEL_PRECIO_BASE.
-   * Si es NULL en la BD, se resuelve como el código de la propia lista (se busca a sí misma).
+   * Si es NULL en la BD, se resuelve como el codigo de la propia lista (se busca a si misma).
    */
   nivelPrecioBase: string;
+  /** Moneda de la lista base (GESTION_LISTAS_PRECIOS.MONEDA_BASE). */
+  monedaBase: string | null;
   fechaInicio: string | null;
   fechaFin: string | null;
   factorMultiplicador: number | null;
   horasAtras: number | null;
+  /** GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_COSTO */
+  validarPrecioBajoCosto: boolean;
+  /** GESTION_LISTAS_PRECIOS.EXIGIR_FACTOR_CONFIGURADO */
+  exigirFactorConfigurado: boolean;
+  /** GESTION_LISTAS_PRECIOS.EXCEPCIONES_ARTICULOS — VARCHAR(MAX) nullable, lista de articulos */
+  excepcionesArticulos: string | null;
+  /** GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN */
+  validarPrecioBajoMargenMin: boolean;
 }
 
 /** Resultado de evaluar una fila de la carga masiva de margen. */

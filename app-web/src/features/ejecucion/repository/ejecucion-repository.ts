@@ -1,9 +1,9 @@
 import "server-only";
 
 import type { EjecucionKey, EjecucionLog, EstadoEjecucion } from "@/lib/domain-types";
-import { assertEscrituraPortalHabilitada } from "@/server/companies";
-import { Prisma } from "@/generated/sqlserver";
-import { ahoraServidor, plano, portalDb } from "@/server/db";
+import type { Prisma } from "@/generated/sqlserver";
+import { assertEscrituraPortalHabilitada, assertEscrituraSoftlandHabilitada } from "@/server/companies";
+import { ahoraServidor, getPool, plano, portalDb } from "@/server/db";
 
 export type CrearEjecucionInput = {
   tipo: EjecucionKey;
@@ -18,6 +18,8 @@ export type ActualizarEjecucionInput = {
   exitosos?: number | null;
   fallidos?: number | null;
   observaciones?: string | null;
+  codigoError?: string | null;
+  mensajeError?: string | null;
 };
 
 function toEjecucionLog(row: Record<string, unknown>): EjecucionLog {
@@ -30,9 +32,9 @@ function toEjecucionLog(row: Record<string, unknown>): EjecucionLog {
     fechaInicio: new Date(row.FECHA_INICIO as string).toLocaleString("es-VE"),
     fechaFin: row.FECHA_FIN ? new Date(row.FECHA_FIN as string).toLocaleString("es-VE") : null,
     estado: row.ESTADO as EstadoEjecucion,
-    totalArticulos: Number(row.TOTAL_ARTICULOS ?? 0),
-    exitosos: Number(row.EXITOSOS ?? 0),
-    fallidos: Number(row.FALLIDOS ?? 0),
+    totalArticulos: row.TOTAL_ARTICULOS == null ? 0 : Number(row.TOTAL_ARTICULOS),
+    exitosos:       row.EXITOSOS == null ? 0 : Number(row.EXITOSOS),
+    fallidos:       row.FALLIDOS == null ? 0 : Number(row.FALLIDOS),
     idProcesoSP: row.ID_PROCESO_SP == null ? null : String(row.ID_PROCESO_SP),
     observaciones: row.OBSERVACIONES == null ? null : String(row.OBSERVACIONES),
   };
@@ -60,23 +62,85 @@ async function crear(compania: string, email: string, nombre: string, input: Cre
 async function actualizar(compania: string, id: string, input: ActualizarEjecucionInput): Promise<EjecucionLog> {
   assertEscrituraPortalHabilitada();
   const db = portalDb(compania);
+  const idEjecucion = BigInt(id);
+  // FECHA_FIN solo se fija al llegar a un estado final (equivalente al GETDATE() del SQL anterior).
+  const fechaFin = ESTADOS_FINALES.includes(input.estado) ? await ahoraServidor(db) : undefined;
   try {
     const row = await db.eJECUCION_LOG.update({
-      where: { ID_EJECUCION: BigInt(id) },
+      where: { ID_EJECUCION: idEjecucion },
       data: {
         ESTADO: input.estado,
-        ...(ESTADOS_FINALES.includes(input.estado) ? { FECHA_FIN: await ahoraServidor(db) } : {}),
+        ...(fechaFin ? { FECHA_FIN: fechaFin } : {}),
         TOTAL_ARTICULOS: input.totalArticulos ?? null,
         EXITOSOS: input.exitosos ?? null,
         FALLIDOS: input.fallidos ?? null,
         OBSERVACIONES: input.observaciones ?? null,
+        CODIGO_ERROR: input.codigoError ?? null,
+        MENSAJE_ERROR: input.mensajeError ?? null,
       },
     });
     return toEjecucionLog(plano(row));
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") throw new Error("No existe la ejecución solicitada.");
-    throw err;
+  } catch (error) {
+    // P2025: registro no encontrado
+    if ((error as { code?: string }).code === "P2025") throw new Error("No existe la ejecución solicitada.");
+    throw error;
   }
+}
+
+export type EjecucionSpPreciosInput = {
+  nivelPrecio: string;
+  moneda: string | null;
+  fechaInicio: string;         // YYYY-MM-DD
+  fechaFin: string;            // YYYY-MM-DD
+  nivelPrecioBase: string;
+  monedaBase: string | null;
+  factorMultiplicador: number;
+  version: number;
+  // El usuario solicitante se toma de la identidad en el servidor
+  usuarioSolicitante?: string;
+  validarPrecioBajoCosto: boolean;
+  exigirFactorConfigurado: boolean;
+  /** Puede ser NULL en BD — VARCHAR(MAX), lista de articulos como string */
+  excepcionesArticulos: string | null;
+  validarPrecioBajoMargenMin: boolean;
+};
+
+export type EjecucionSpPreciosResult = {
+  filasAfectadas: number;
+  observaciones: string;
+};
+
+/**
+ * Ejecuta SP_GESTION_LISTAS_PRECIOS_FULL contra la BD de Softland.
+ * Retorna filas afectadas y un resumen para persistir en el log.
+ * Lanza excepción si la ejecución está bloqueada o si el SP falla.
+ */
+async function ejecutarSpPrecios(compania: string, input: EjecucionSpPreciosInput): Promise<EjecucionSpPreciosResult> {
+  assertEscrituraSoftlandHabilitada();
+  const pool = await getPool(compania);
+  const mssql = await import("mssql");
+  const schema = compania.trim().toUpperCase();
+  const sp = `[${schema}].[SP_GESTION_LISTAS_PRECIOS_FULL]`;
+
+  const req = pool.request()
+    .input("p_nivel_precio",               mssql.VarChar(50),    input.nivelPrecio)
+    .input("p_moneda",                     mssql.VarChar(1),     input.moneda ?? null)
+    .input("p_fecha_inicio",               mssql.Date,           new Date(input.fechaInicio))
+    .input("p_fecha_fin",                  mssql.Date,           new Date(input.fechaFin))
+    .input("p_nivel_precio_base",          mssql.VarChar(50),    input.nivelPrecioBase)
+    .input("p_moneda_base",                mssql.VarChar(1),     input.monedaBase ?? null)
+    .input("p_factor_multiplicador",       mssql.Decimal(28, 8), input.factorMultiplicador)
+    .input("p_version",                    mssql.Int,            input.version)
+    .input("p_usuario_ult_modif",              mssql.VarChar(50),        input.usuarioSolicitante ?? "")
+    .input("p_validar_precio_bajo_costo",      mssql.Bit,                input.validarPrecioBajoCosto ? 1 : 0)
+    .input("p_exigir_factor_configurado",      mssql.Bit,                input.exigirFactorConfigurado ? 1 : 0)
+    .input("p_excepciones",                    mssql.NVarChar(mssql.MAX),input.excepcionesArticulos ?? null)
+    .input("p_validar_precio_bajo_margen_min", mssql.Bit,                input.validarPrecioBajoMargenMin ? 1 : 0);
+
+  const result = await req.execute(sp);
+  const filasAfectadas = result.rowsAffected.reduce((sum, n) => sum + n, 0);
+  const observaciones = `SP ejecutado correctamente. Filas afectadas: ${filasAfectadas}.`;
+  return { filasAfectadas, observaciones };
 }
 
 async function listar(compania: string, tipo: EjecucionKey): Promise<EjecucionLog[]> {
@@ -138,4 +202,4 @@ async function listarAudit(params: EjecucionAuditParams): Promise<EjecucionAudit
   };
 }
 
-export const ejecucionRepository = { crear, actualizar, listar, listarAudit };
+export const ejecucionRepository = { crear, actualizar, listar, listarAudit, ejecutarSpPrecios };

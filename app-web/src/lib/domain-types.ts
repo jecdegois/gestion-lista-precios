@@ -259,8 +259,7 @@ export interface EventoAuditoria {
 
 export type EjecucionKey =
   | "EJECUCION_PRECIOS"
-  | "EJECUCION_MARGEN"
-  | "EJECUCION_DESCUENTO";
+  | "EJECUCION_MARGEN";
 
 export type EstadoEjecucion =
   | "PENDIENTE"

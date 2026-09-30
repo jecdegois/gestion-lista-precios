@@ -425,36 +425,62 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       ...nivel,
       version: "1",
       variacionPorc: 0,
+      moneda: null,
       nivelPrecioBase: nivel.codigo,
+      monedaBase: null,
       fechaInicio: null,
       fechaFin: null,
       factorMultiplicador: null,
       horasAtras: null,
+      exigirFactorConfigurado:    false,
+      validarPrecioBajoCosto:     false,
+      excepcionesArticulos:       null,
+      validarPrecioBajoMargenMin: false,
     }));
   }
-  const rows = await softlandDbo().gESTION_LISTAS_PRECIOS.findMany({
-    where: { COMPANIA: compania.trim().toUpperCase() },
-    select: {
-      NIVEL_PRECIO: true, VERSION: true, VARIACION_PORC: true, FECHA_INICIO: true, FECHA_CORTE: true,
-      FACTOR_MULTIPLICADOR: true, HORAS_ATRAS: true, NIVEL_PRECIO_BASE: true,
-    },
-    orderBy: [{ NIVEL_PRECIO: "asc" }, { VERSION: "asc" }],
-  });
-  // Fechas: Prisma lee el datetime como UTC, así que toISOString() devuelve la fecha tal como está guardada.
-  const fecha = (d: Date) => d.toISOString().slice(0, 10);
-  return rows.map((r) => {
-    const codigo = r.NIVEL_PRECIO.trim();
+  const pool = await getPool(compania);
+  const mssql = await import("mssql");
+  const q = await pool.request()
+    .input("compania", mssql.VarChar(20), compania.trim().toUpperCase())
+    .query(
+      `SELECT A.NIVEL_PRECIO AS codigo,
+              A.VERSION AS version,
+              A.VARIACION_PORC AS variacionPorc,
+              LTRIM(RTRIM(A.MONEDA)) AS moneda,
+              CONVERT(varchar(10), A.FECHA_INICIO, 23) AS fechaInicio,
+              CONVERT(varchar(10), A.FECHA_CORTE, 23) AS fechaFin,
+              CAST(A.FACTOR_MULTIPLICADOR AS FLOAT) AS factorMultiplicador,
+              A.HORAS_ATRAS AS horasAtras,
+              -- Si NIVEL_PRECIO_BASE es NULL o vacío, la lista se toma como su propia base
+              COALESCE(NULLIF(LTRIM(RTRIM(A.NIVEL_PRECIO_BASE)), ''), A.NIVEL_PRECIO) AS nivelPrecioBase,
+              LTRIM(RTRIM(A.MONEDA_BASE)) AS monedaBase,
+              ISNULL(A.EXIGIR_FACTOR_CONFIGURADO, 0)    AS exigirFactorConfigurado,
+              ISNULL(A.VALIDAR_PRECIO_BAJO_COSTO, 0)    AS validarPrecioBajoCosto,
+              ISNULL(A.EXCEPCIONES_ARTICULOS, 0)        AS excepcionesArticulos,
+              ISNULL(A.VALIDAR_PRECIO_BAJO_MARGEN_MIN, 0) AS validarPrecioBajoMargenMin
+         FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
+        WHERE A.COMPANIA = @compania
+        ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION), A.VERSION;`,
+    );
+  return q.recordset.map((r: Record<string, unknown>) => {
+    const codigo = String(r.codigo ?? "").trim();
     return {
       codigo,
       nombre: codigo,
-      version: String(r.VERSION),
-      variacionPorc: r.VARIACION_PORC.toNumber(),
-      fechaInicio: fecha(r.FECHA_INICIO),
-      fechaFin: fecha(r.FECHA_CORTE),
-      factorMultiplicador: r.FACTOR_MULTIPLICADOR.toNumber(),
-      horasAtras: r.HORAS_ATRAS,
-      // Si NIVEL_PRECIO_BASE está vacío, la lista se toma como su propia base.
-      nivelPrecioBase: r.NIVEL_PRECIO_BASE.trim() || codigo,
+      version: String(r.version ?? "").trim(),
+      variacionPorc: r.variacionPorc == null ? null : Number(r.variacionPorc),
+      moneda: r.moneda == null ? null : String(r.moneda).trim() || null,
+      fechaInicio: r.fechaInicio == null ? null : String(r.fechaInicio).trim(),
+      fechaFin: r.fechaFin == null ? null : String(r.fechaFin).trim(),
+      factorMultiplicador: r.factorMultiplicador == null ? null : Number(r.factorMultiplicador),
+      horasAtras: r.horasAtras == null ? null : Number(r.horasAtras),
+      // Fallback en TypeScript por si el COALESCE retorna nulo igualmente
+      nivelPrecioBase: String(r.nivelPrecioBase ?? codigo).trim() || codigo,
+      monedaBase: r.monedaBase == null ? null : String(r.monedaBase).trim() || null,
+      exigirFactorConfigurado:    Boolean(r.exigirFactorConfigurado),
+      validarPrecioBajoCosto:     Boolean(r.validarPrecioBajoCosto),
+      excepcionesArticulos:       r.excepcionesArticulos == null ? null : String(r.excepcionesArticulos),
+      validarPrecioBajoMargenMin: Boolean(r.validarPrecioBajoMargenMin),
     };
   }).filter((nivel) => nivel.codigo && nivel.version);
 }
