@@ -115,8 +115,19 @@ async function siguienteCodigoSolicitud(compania: string): Promise<string> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return "SOL-" + (10450 + demoSeq());
   // Prisma no modela secuencias; el SQL crudo no toma el schema de la URL, por eso se califica.
-  const [q] = await portalDb(compania).$queryRaw<{ n: number }[]>`SELECT NEXT VALUE FOR ${Prisma.raw(objetoPortal(compania, "SEQ_SOLICITUD"))} AS n`;
-  return "SOL-" + q.n;
+  // Se usa $queryRawUnsafe con identificador validado: en el bundle de Next, Prisma.raw()
+  // dentro de $queryRaw`...` terminaba enviándose como parámetro (NEXT VALUE FOR @P1 → error 102).
+  const seq = identificadorSeguro(objetoPortal(compania, "SEQ_SOLICITUD"));
+  const [q] = await portalDb(compania).$queryRawUnsafe<{ n: number | bigint }[]>(`SELECT NEXT VALUE FOR ${seq} AS n`);
+  return "SOL-" + String(q.n);
+}
+
+/** Valida un objeto SQL calificado ([ESQUEMA].[OBJETO]) antes de interpolarlo en SQL crudo. */
+function identificadorSeguro(objeto: string): string {
+  if (!/^\[[A-Za-z0-9_]+\]\.\[[A-Za-z0-9_]+\]$/.test(objeto)) {
+    throw new Error(`Identificador SQL inválido: ${objeto}`);
+  }
+  return objeto;
 }
 
 async function agregarSolicitud(s: Solicitud): Promise<void> {
@@ -184,16 +195,19 @@ async function actualizarFactorAplicadoDetalles(compania: string, codigo: string
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return;
   // Asignación columna-a-columna: Prisma no la soporta, queda en SQL (calificado por esquema).
-  const spd = Prisma.raw(objetoPortal(compania, "SOLICITUD_DETALLE"));
-  const sp = Prisma.raw(objetoPortal(compania, "SOLICITUD"));
-  await portalDb(compania).$executeRaw`
-    UPDATE D
-       SET D.FACTOR_APLICADO = D.FACTOR_SOLICITADO
-      FROM ${spd} D
-      INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
-     WHERE S.CODIGO_SOLICITUD = ${codigo}
-       AND UPPER(LTRIM(RTRIM(COALESCE(D.ESTADO_FILA, '')))) IN ('VALIDO','OK','S','SI','1')
-       AND NULLIF(LTRIM(RTRIM(COALESCE(D.MENSAJE_ERROR, ''))), '') IS NULL;`;
+  // Mismo motivo que en siguienteCodigoSolicitud: identificadores validados + valor parametrizado (@P1).
+  const spd = identificadorSeguro(objetoPortal(compania, "SOLICITUD_DETALLE"));
+  const sp = identificadorSeguro(objetoPortal(compania, "SOLICITUD"));
+  await portalDb(compania).$executeRawUnsafe(
+    `UPDATE D
+        SET D.FACTOR_APLICADO = D.FACTOR_SOLICITADO
+       FROM ${spd} D
+       INNER JOIN ${sp} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
+      WHERE S.CODIGO_SOLICITUD = @P1
+        AND UPPER(LTRIM(RTRIM(COALESCE(D.ESTADO_FILA, '')))) IN ('VALIDO','OK','S','SI','1')
+        AND NULLIF(LTRIM(RTRIM(COALESCE(D.MENSAJE_ERROR, ''))), '') IS NULL;`,
+    codigo,
+  );
 }
 // ---------------------------------------------------------------------------
 // Helpers de mapeo
