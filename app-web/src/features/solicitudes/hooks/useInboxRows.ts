@@ -1,6 +1,6 @@
 "use client";
 
-import type { Solicitud } from "@/lib/domain-types";
+import type { Solicitud } from "@/shared/types/domain-types";
 import { filterInbox, type InboxFilters } from "../utils/inbox-filters";
 
 export { INBOX_PAGE_SIZE } from "./useInbox";

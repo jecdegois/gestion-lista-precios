@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { solicitudesService } from "@/features/solicitudes/services/solicitudes-service";
-import { getIdentidadActual } from "@/utils/auth";
+import { getIdentidadActual } from "@/server/session";
 
 const DEFAULT_MAX_RECORDS = 50;
 const SERVER_MAX_RECORDS = 100;

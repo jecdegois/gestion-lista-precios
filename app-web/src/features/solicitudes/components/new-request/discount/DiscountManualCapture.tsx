@@ -1,7 +1,7 @@
-import Icon from "@/components/Icon";
-import Dropdown, { type SelectOption } from "@/components/newComponents/Dropdown";
-import TablaArticulosCapturaManual, { type ArticuloCapturaManualRow } from "@/components/newComponents/TablaArticulosCapturaManual";
-import type { PreviewRedondeo } from "@/lib/preview";
+import Icon from "@/shared/components/ui/Icon";
+import Dropdown, { type SelectOption } from "@/shared/components/ui/Dropdown";
+import TablaArticulosCapturaManual, { type ArticuloCapturaManualRow } from "@/features/solicitudes/components/tables/TablaArticulosCapturaManual";
+import type { PreviewRedondeo } from "@/features/solicitudes/utils/preview";
 import { ARTICLES_PAGE_SIZE, type useArticleSearch } from "../../../hooks/useArticleSearch";
 import PercentInput from "../shared/PercentInput";
 import ArticleSummary from "./ArticleSummary";

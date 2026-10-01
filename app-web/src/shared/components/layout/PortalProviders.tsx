@@ -1,8 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useState } from "react";
-import type { Identidad } from "@/lib/domain-types";
-import { fmtMonto } from "@/lib/format";
+import type { Identidad } from "@/shared/types/domain-types";
+import { fmtMonto } from "@/shared/utils/format";
 
 type ToastVariant = "success" | "error";
 type Toast = { id: number; message: string; variant?: ToastVariant };

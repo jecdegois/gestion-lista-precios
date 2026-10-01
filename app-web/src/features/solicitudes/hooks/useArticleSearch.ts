@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DropdownLoadParams } from "@/components/newComponents/Dropdown";
-import type { ArticuloCatalogo } from "@/lib/domain-types";
+import type { DropdownLoadParams } from "@/shared/components/ui/Dropdown";
+import type { ArticuloCatalogo } from "@/shared/types/domain-types";
 import { fetchArticlesPage } from "../api/paged-api";
 
 export const ARTICLES_PAGE_SIZE = 50;

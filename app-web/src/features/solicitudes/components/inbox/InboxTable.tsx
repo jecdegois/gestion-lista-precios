@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import ResponsiveDataTable from "@/components/newComponents/ResponsiveDataTable";
-import type { Identidad, Solicitud } from "@/lib/domain-types";
+import ResponsiveDataTable from "@/shared/components/ui/ResponsiveDataTable";
+import type { Identidad, Solicitud } from "@/shared/types/domain-types";
 import { INBOX_PAGE_SIZE } from "../../hooks/useInbox";
 import { ALL, type InboxFilters as Filters } from "../../utils/inbox-filters";
 import { useInboxRows } from "../../hooks/useInboxRows";
 import { inboxColumns } from "./inbox-columns";
 import InboxFilters from "./InboxFilters";
 import InboxNotice from "./InboxNotice";
-import Icon from "@/components/Icon";
+import Icon from "@/shared/components/ui/Icon";
 
 /** Listado filtrable de la bandeja con carga incremental server-side. */
 export default function InboxTable({

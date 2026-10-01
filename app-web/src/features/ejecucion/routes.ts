@@ -1,4 +1,4 @@
-import type { EjecucionKey } from "@/lib/domain-types";
+import type { EjecucionKey } from "@/shared/types/domain-types";
 
 export const EJECUCION_LABELS: Record<EjecucionKey, string> = {
   EJECUCION_PRECIOS: "Precios",

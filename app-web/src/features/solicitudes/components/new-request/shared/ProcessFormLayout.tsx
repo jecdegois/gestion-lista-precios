@@ -1,7 +1,7 @@
 "use client";
 
-import { PROCESOS } from "@/lib/catalog";
-import type { ProcesoKey } from "@/lib/domain-types";
+import { PROCESOS } from "@/features/solicitudes/utils/catalog";
+import type { ProcesoKey } from "@/shared/types/domain-types";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
 import ProcessTabs from "../ProcessTabs";
 import CompanyContext, { type CatalogStatus } from "./CompanyContext";

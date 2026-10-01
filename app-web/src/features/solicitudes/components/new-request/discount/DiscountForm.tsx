@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { SelectOption } from "@/components/newComponents/Dropdown";
-import type { ArticuloCapturaManualRow } from "@/components/newComponents/TablaArticulosCapturaManual";
-import TablaImpactoDescuentoManual from "@/components/newComponents/TablaImpactoDescuentoManual";
+import type { SelectOption } from "@/shared/components/ui/Dropdown";
+import type { ArticuloCapturaManualRow } from "@/features/solicitudes/components/tables/TablaArticulosCapturaManual";
+import TablaImpactoDescuentoManual from "@/features/solicitudes/components/tables/TablaImpactoDescuentoManual";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
-import { calcularVariacion, redondeoPreview } from "@/lib/preview";
-import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/lib/domain-types";
+import { calcularVariacion, redondeoPreview } from "@/features/solicitudes/utils/preview";
+import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/shared/types/domain-types";
 import { simularManual } from "../../../api/solicitudes-api";
 import type { SolicitudInput } from "../../../schemas/solicitud-schema";
 import type { EntryMode, ProcessFormProps, UploadedFile } from "../../../types";

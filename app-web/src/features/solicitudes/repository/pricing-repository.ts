@@ -1,6 +1,6 @@
 import "server-only";
-import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/lib/domain-types";
-import type { Articulo, GestionGlobalLista, NivelPrecio } from "@/lib/types";
+import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/shared/types/domain-types";
+import type { Articulo, GestionGlobalLista, NivelPrecio } from "@/shared/types/models";
 import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "@/server/companies";
 import {
   buscarArticuloDemo,

@@ -1,8 +1,8 @@
 import "server-only";
-import type { CatalogoContext } from "@/lib/engine";
-import type { ArticuloCatalogo } from "@/lib/domain-types";
-import type { Articulo, NivelPrecio } from "@/lib/types";
-import { prisma } from "@/lib/prisma";
+import type { CatalogoContext } from "@/features/solicitudes/utils/engine";
+import type { ArticuloCatalogo } from "@/shared/types/domain-types";
+import type { Articulo, NivelPrecio } from "@/shared/types/models";
+import { prisma } from "@/server/prisma";
 import { pricingRepository } from "../repository/pricing-repository";
 
 /** Contexto de catálogo (artículos, listas y grupos) que consume el motor de cálculo. */

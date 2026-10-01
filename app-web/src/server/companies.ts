@@ -1,10 +1,12 @@
 import "server-only";
-import type { CompaniaInfo } from "@/lib/types";
+import { prisma } from "@/server/prisma";
+import type { CompaniaInfo } from "@/shared/types/models";
 
 /**
  * Configuración lógica de compañías sobre una base SQL Server compartida.
- * Se lee de COMPANIES_CONFIG y únicamente define esquema y nombres de objetos;
- * la conexión única se toma de las variables PORTAL_DB_*.
+ * Las compañías se gestionan en Postgres (`companies`, módulo Configuración): su
+ * `sql_schema` define el esquema en Softland y en PORTAL_PRECIOS. La conexión
+ * única se toma de las variables PORTAL_DB_*.
  */
 
 /** Nombres de objetos SQL configurables por compania (con defaults). */
@@ -80,47 +82,39 @@ function defaultsSql(): SqlObjetos {
   };
 }
 
-type CompaniaConfigRaw = {
-  label?: string;
-  schema?: string;
-  sql?: Partial<SqlObjetos>;
-};
+/** Caché de compañías activas; se refresca cada TTL_MS para ver cambios hechos en otras instancias. */
+const TTL_MS = 60_000;
+let cache: Record<string, CompaniaConfig> = {};
+let cargadoEn = 0;
+let cargando: Promise<void> | null = null;
 
-let cache: Record<string, CompaniaConfig> | null = null;
-
-function parseConfig(): Record<string, CompaniaConfig> {
-  if (cache) return cache;
-  const raw = process.env.COMPANIES_CONFIG;
-  const result: Record<string, CompaniaConfig> = {};
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as Record<string, CompaniaConfigRaw>;
-      for (const [codigo, cfg] of Object.entries(parsed)) {
-        result[codigo.toUpperCase()] = {
-          codigo: codigo.toUpperCase(),
-          label: cfg.label ?? codigo,
-          schema: cfg.schema ?? codigo.toUpperCase(),
-          sql: { ...defaultsSql(), ...(cfg.sql ?? {}) },
-        };
-      }
-    } catch (err) {
-      console.error("COMPANIES_CONFIG invalido; no es JSON valido.", err);
+/**
+ * Carga (o refresca) las compañías activas desde Postgres. Las funciones síncronas de
+ * este módulo leen el caché: `getSessionContext` lo garantiza cargado en cada request.
+ */
+export async function cargarCompanias(force = false): Promise<void> {
+  if (!force && Date.now() - cargadoEn < TTL_MS) return;
+  if (!force && cargando) return cargando;
+  cargando = (async () => {
+    const result: Record<string, CompaniaConfig> = {};
+    const rows = await prisma.company.findMany({ where: { isActive: true }, select: { code: true, name: true, sqlSchema: true } });
+    for (const row of rows) {
+      const codigo = row.code.toUpperCase();
+      result[codigo] = { codigo, label: row.name, schema: row.sqlSchema.toUpperCase(), sql: defaultsSql() };
     }
-  }
-  if (Object.keys(result).length === 0 && esModoDemo()) {
-    result.COFER = {
-      codigo: "COFER",
-      label: "COFERSA",
-      schema: "COFER",
-      sql: defaultsSql(),
-    };
-  }
-  cache = result;
-  return result;
+    if (Object.keys(result).length === 0 && esModoDemo()) {
+      result.COFER = { codigo: "COFER", label: "COFERSA", schema: "COFER", sql: defaultsSql() };
+    }
+    cache = result;
+    cargadoEn = Date.now();
+  })().finally(() => {
+    cargando = null;
+  });
+  return cargando;
 }
 
 export function listarCompanias(): CompaniaInfo[] {
-  return Object.values(parseConfig()).map((c) => ({ codigo: c.codigo, label: c.label }));
+  return Object.values(cache).map((c) => ({ codigo: c.codigo, label: c.label }));
 }
 
 export function resolverCompania(codigo: string | null | undefined): CompaniaConfig {
@@ -128,9 +122,9 @@ export function resolverCompania(codigo: string | null | undefined): CompaniaCon
   if (!clave) {
     throw new Error("La solicitud no indica la compania activa.");
   }
-  const cfg = parseConfig()[clave];
+  const cfg = cache[clave];
   if (!cfg) {
-    throw new Error(`No hay base de datos Softland configurada para la compania '${codigo}'.`);
+    throw new Error(`La compañía '${codigo}' no existe o está inactiva en Configuración.`);
   }
   return cfg;
 }

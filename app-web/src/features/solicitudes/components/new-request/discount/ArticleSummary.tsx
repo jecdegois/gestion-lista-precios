@@ -1,7 +1,7 @@
-import { EstadoRedondeoBadge } from "@/components/Badges";
-import { calcularCostoMinimoArticulo } from "@/lib/catalog";
-import type { ArticuloCatalogo } from "@/lib/domain-types";
-import type { PreviewRedondeo } from "@/lib/preview";
+import { EstadoRedondeoBadge } from "@/features/solicitudes/components/Badges";
+import { calcularCostoMinimoArticulo } from "@/features/solicitudes/utils/catalog";
+import type { ArticuloCatalogo } from "@/shared/types/domain-types";
+import type { PreviewRedondeo } from "@/features/solicitudes/utils/preview";
 import { Monto } from "@/shared/components/layout/PortalProviders";
 
 function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {

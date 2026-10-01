@@ -44,7 +44,8 @@ Usuario interno
 | Componente | Responsabilidad |
 |---|---|
 | `app-web/` | Aplicación full-stack Next.js: interfaz React, Server Actions y Route Handlers. |
-| `app-web/src/lib/` | Reglas de dominio: factores, validaciones de margen y redondeo comercial. |
+| `app-web/src/features/solicitudes/utils/` | Reglas de dominio de solicitudes: motor de cálculo, catálogo y previsualización. |
+| `app-web/src/shared/` | Tipos de dominio, formato y redondeo comercial compartidos entre módulos. |
 | `app-web/src/server/` | Persistencia del portal, modo demo, conexiones `mssql` y ejecución de SPs. |
 | `docs/` | Especificaciones funcionales, análisis de datos y paquete SQL de redondeo v2. |
 | `aidlc-docs/` | Requisitos, planes e informes de análisis e impacto IA-DLC. |
@@ -136,10 +137,10 @@ Para operar contra Softland, configure `DEMO_MODE=false` y `COMPANIES_CONFIG` en
 ```text
 MV26020-Calculo-de-listas-de-precio/
 ├── app-web/                         # Portal Next.js
-│   ├── src/app/                     # Rutas, acciones de servidor y API
-│   ├── src/components/              # Interfaz del portal
-│   ├── src/lib/                     # Cálculo, redondeo y tipos de dominio
-│   └── src/server/                  # SQL Server, repositorios y modo demo
+│   ├── app/                         # Rutas (páginas) y API
+│   ├── src/features/<módulo>/       # Código propio de cada módulo (api, components, hooks, services…)
+│   ├── src/shared/                  # Lo que usan varios módulos (components/ui, layout, api, types, utils)
+│   └── src/server/                  # Conexiones (SQL Server, Prisma) y guardas de sesión
 ├── docs/                            # Requerimientos y paquete SQL v2
 ├── aidlc-docs/                      # Requisitos, planes e informes IA-DLC
 └── README.md

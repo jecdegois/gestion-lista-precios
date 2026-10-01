@@ -1,5 +1,5 @@
-import { PROCESOS, estaEnAmbito } from "@/lib/catalog";
-import type { EstadoSolicitud, Solicitud } from "@/lib/domain-types";
+import { PROCESOS, estaEnAmbito } from "@/features/solicitudes/utils/catalog";
+import type { EstadoSolicitud, Solicitud } from "@/shared/types/domain-types";
 
 export const ALL = "TODOS";
 

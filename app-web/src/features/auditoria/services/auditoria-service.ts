@@ -1,5 +1,5 @@
 import { auditRepository, type AuditListParams } from "../repository/audit-repository";
-import type { Identidad } from "@/lib/domain-types";
+import type { Identidad } from "@/shared/types/domain-types";
 
 export type AuditQueryParams = Omit<AuditListParams, "compania">;
 

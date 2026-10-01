@@ -1,6 +1,6 @@
 import "server-only";
-import type { EventoAuditoria, EventoTipo, Rol, Solicitud } from "@/lib/domain-types";
-import { construirFilaCompleta, construirFilaDescuentoMasivo, construirFilasMayoreodMasivo } from "@/lib/engine";
+import type { EventoAuditoria, EventoTipo, Rol, Solicitud } from "@/shared/types/domain-types";
+import { construirFilaCompleta, construirFilaDescuentoMasivo, construirFilasMayoreodMasivo } from "@/features/solicitudes/utils/engine";
 
 /**
  * Almacen en memoria de solicitudes y eventos (flujo maker-checker).

@@ -1,4 +1,5 @@
-import type { Identidad, EjecucionKey, EstadoEjecucion } from "@/lib/domain-types";
+import type { Identidad, EjecucionKey, EstadoEjecucion } from "@/shared/types/domain-types";
+import { resolverCompania } from "@/server/companies";
 import { ejecucionRepository, type EjecucionSpPreciosInput } from "../repository/ejecucion-repository";
 
 export async function crearEjecucion(identidad: Identidad, input: {
@@ -37,7 +38,7 @@ export async function listarEjecuciones(identidad: Identidad, tipo: EjecucionKey
  */
 export async function ejecutarSpPrecios(identidad: Identidad, input: EjecucionSpPreciosInput) {
   const compania = identidad.compania!;
-  const schema   = compania.trim().toUpperCase();
+  const schema   = resolverCompania(compania).schema;
 
   // Helpers para construir el EXEC
   const q  = (v: string) => `'${v.replace(/'/g, "''")}'`;

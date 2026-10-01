@@ -7,10 +7,10 @@ import {
   construirFilasGestionGlobal,
   construirFilaDesdeVariacion,
   textoFactorCalculado,
-} from "@/lib/engine";
-import type { CriteriosArticulo, FilaPrecio, FilaResultado, ProcesoKey, TipoVariacion } from "@/lib/domain-types";
-import { fmtMonto } from "@/lib/format";
-import { nombreArchivoS3 } from "@/lib/ids";
+} from "@/features/solicitudes/utils/engine";
+import type { CriteriosArticulo, FilaPrecio, FilaResultado, ProcesoKey, TipoVariacion } from "@/shared/types/domain-types";
+import { fmtMonto } from "@/shared/utils/format";
+import { nombreArchivoS3 } from "@/features/solicitudes/utils/ids";
 import { pricingRepository, type HallazgoGestionGlobal } from "../repository/pricing-repository";
 import type { CatalogoSolicitud } from "../types";
 import {

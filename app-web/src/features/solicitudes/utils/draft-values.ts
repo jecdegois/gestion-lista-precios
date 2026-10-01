@@ -1,4 +1,4 @@
-import type { Solicitud, TipoVariacion } from "@/lib/domain-types";
+import type { Solicitud, TipoVariacion } from "@/shared/types/domain-types";
 import type { UploadedFile } from "../types";
 
 export function firstText(...values: unknown[]): string {

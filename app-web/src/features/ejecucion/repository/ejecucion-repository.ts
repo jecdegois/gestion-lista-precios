@@ -1,9 +1,9 @@
 import "server-only";
 
-import type { EjecucionKey, EjecucionLog, EstadoEjecucion } from "@/lib/domain-types";
+import type { EjecucionKey, EjecucionLog, EstadoEjecucion } from "@/shared/types/domain-types";
 import type { Prisma } from "@/generated/sqlserver";
 import { assertEscrituraPortalHabilitada, assertEscrituraSoftlandHabilitada } from "@/server/companies";
-import { ahoraServidor, getPool, plano, portalDb } from "@/server/db";
+import { ahoraServidor, esquemaDe, getPool, plano, portalDb } from "@/server/db";
 
 export type CrearEjecucionInput = {
   tipo: EjecucionKey;
@@ -119,8 +119,7 @@ async function ejecutarSpPrecios(compania: string, input: EjecucionSpPreciosInpu
   assertEscrituraSoftlandHabilitada();
   const pool = await getPool(compania);
   const mssql = await import("mssql");
-  const schema = compania.trim().toUpperCase();
-  const sp = `[${schema}].[SP_GESTION_LISTAS_PRECIOS_FULL]`;
+  const sp = `${esquemaDe(compania)}.[SP_GESTION_LISTAS_PRECIOS_FULL]`;
 
   const req = pool.request()
     .input("p_nivel_precio",               mssql.VarChar(50),    input.nivelPrecio)

@@ -1,9 +1,9 @@
 "use client";
 
-import Icon from "@/components/Icon";
-import Dropdown, { type SelectOption } from "@/components/newComponents/Dropdown";
-import { EVENTOS_AUDITORIA } from "@/lib/events";
-import type { EventoTipo, Rol } from "@/lib/domain-types";
+import Icon from "@/shared/components/ui/Icon";
+import Dropdown, { type SelectOption } from "@/shared/components/ui/Dropdown";
+import { EVENTOS_AUDITORIA } from "@/shared/utils/events";
+import type { EventoTipo, Rol } from "@/shared/types/domain-types";
 
 export const AUDIT_ALL = "TODOS";
 

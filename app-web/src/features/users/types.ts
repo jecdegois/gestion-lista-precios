@@ -1,4 +1,4 @@
-import type { RoleCode, UserStatusDomain } from "@/lib/domain-types";
+import type { RoleCode, UserStatusDomain } from "@/shared/types/domain-types";
 
 export type Assignment = { company: string; role: RoleCode };
 

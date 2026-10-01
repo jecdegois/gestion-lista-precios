@@ -1,4 +1,4 @@
-import type { ArticuloCatalogo, FilaPrecio, TipoVariacion } from "@/lib/domain-types";
+import type { ArticuloCatalogo, FilaPrecio, TipoVariacion } from "@/shared/types/domain-types";
 
 export type GlobalManagementPage = {
   filas: FilaPrecio[];

@@ -1,5 +1,5 @@
 import { GENERIC_NETWORK_ERROR, GENERIC_SERVER_ERROR, type ApiResult } from "@/shared/api/api-types";
-import type { EjecucionLog } from "@/lib/domain-types";
+import type { EjecucionLog } from "@/shared/types/domain-types";
 
 export const AUDIT_EXEC_PAGE_SIZE = 50;
 

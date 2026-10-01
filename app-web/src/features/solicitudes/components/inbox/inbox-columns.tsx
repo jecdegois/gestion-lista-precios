@@ -1,7 +1,7 @@
-import { EstadoBadge } from "@/components/Badges";
-import type { TableColumn } from "@/components/newComponents/ResponsiveDataTable";
-import { PROCESOS } from "@/lib/catalog";
-import type { Solicitud } from "@/lib/domain-types";
+import { EstadoBadge } from "@/features/solicitudes/components/Badges";
+import type { TableColumn } from "@/shared/components/ui/ResponsiveDataTable";
+import { PROCESOS } from "@/features/solicitudes/utils/catalog";
+import type { Solicitud } from "@/shared/types/domain-types";
 import { formatDbDate } from "../../utils/inbox-filters";
 
 /** Columnas de la bandeja; la solicitud propia se marca con "Tu solicitud". */

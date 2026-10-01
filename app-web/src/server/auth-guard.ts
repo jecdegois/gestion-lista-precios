@@ -1,21 +1,24 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import type { AuthContext, RoleCode } from "@/lib/domain-types";
+import type { AuthContext, RoleCode } from "@/shared/types/domain-types";
 import { authService } from "@/features/auth/services/auth-service";
 import { authRepository } from "@/features/auth/repository/auth-repository";
 import { SESSION_COOKIE_NAME } from "@/features/auth/session-cookie";
+import { cargarCompanias } from "./companies";
 
 export async function getSessionContext(): Promise<AuthContext | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
-  const resolved = await authService.resolveContext(token);
+  // Las compañías (esquema SQL de cada una) se leen de Postgres; los repositorios las resuelven en síncrono.
+  const [resolved] = await Promise.all([authService.resolveContext(token), cargarCompanias()]);
   if (!resolved) return null;
 
   return {
     sessionId: resolved.sessionId,
     expiresAt: resolved.expiresAt,
+    activeCompany: resolved.activeCompany,
     userId: resolved.user.id,
     email: resolved.user.email,
     fullName: resolved.user.fullName,
@@ -24,6 +27,7 @@ export async function getSessionContext(): Promise<AuthContext | null> {
     companies: resolved.user.companies.map((assignment) => ({
       company: assignment.company,
       currencySymbol: assignment.currencySymbol,
+      brandColor: assignment.brandColor,
       role: assignment.role as RoleCode,
     })),
   };

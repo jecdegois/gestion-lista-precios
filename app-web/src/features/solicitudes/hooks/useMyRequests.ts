@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/shared/components/layout/PortalProviders";
-import type { ProcesoKey, Solicitud } from "@/lib/domain-types";
+import type { ProcesoKey, Solicitud } from "@/shared/types/domain-types";
 import { enviarBorrador, getMisSolicitudes, getSolicitudDetalle, solicitarCancelacion } from "../api/solicitudes-api";
 
 const PAGE_SIZE = 20;

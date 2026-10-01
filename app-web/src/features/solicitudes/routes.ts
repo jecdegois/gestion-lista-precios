@@ -1,4 +1,4 @@
-import type { ProcesoKey } from "@/lib/domain-types";
+import type { ProcesoKey } from "@/shared/types/domain-types";
 
 /** Ruta de la pestaña de Nueva Solicitud para cada proceso. */
 export const ROUTE_BY_PROCESS: Record<ProcesoKey, string> = {

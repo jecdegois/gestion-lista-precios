@@ -1,6 +1,6 @@
 import "server-only";
 import { Prisma } from "@/generated/sqlserver";
-import type { FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/lib/domain-types";
+import type { FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/shared/types/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
 import { ahoraServidor, plano, portalDb } from "@/server/db";
 import {

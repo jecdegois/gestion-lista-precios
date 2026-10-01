@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/shared/components/layout/PortalProviders";
-import type { Solicitud } from "@/lib/domain-types";
+import type { Solicitud } from "@/shared/types/domain-types";
 import type { ApiResult } from "@/shared/api/api-types";
 import {
   aprobarSolicitud,

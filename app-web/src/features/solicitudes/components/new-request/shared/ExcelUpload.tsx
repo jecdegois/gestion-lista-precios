@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Icon from "@/components/Icon";
-import type { FilaResultado, ProcesoKey } from "@/lib/domain-types";
+import Icon from "@/shared/components/ui/Icon";
+import type { FilaResultado, ProcesoKey } from "@/shared/types/domain-types";
 import ExcelDropzone from "./ExcelDropzone";
 
 /** Descarga de plantilla + carga del archivo + resumen de filas inválidas. */

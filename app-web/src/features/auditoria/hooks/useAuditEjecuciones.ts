@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/shared/components/layout/PortalProviders";
-import type { EjecucionLog } from "@/lib/domain-types";
+import type { EjecucionLog } from "@/shared/types/domain-types";
 import {
   getEjecucionesAudit,
   AUDIT_EXEC_PAGE_SIZE,

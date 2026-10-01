@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { GestionGlobalLista, NivelPrecio } from "@/lib/types";
+import type { GestionGlobalLista, NivelPrecio } from "@/shared/types/models";
 import { getCatalogoGestionGlobal } from "../api/solicitudes-api";
 
 /** Listas de Gestión Global (con versión y variación vigente) y niveles de precio maestros. */

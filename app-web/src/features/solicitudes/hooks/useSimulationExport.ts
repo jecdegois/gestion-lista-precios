@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useToast } from "@/shared/components/layout/PortalProviders";
-import { descargarSimulacionExcel } from "@/lib/export-simulation";
-import type { FilaResultado } from "@/lib/domain-types";
+import { descargarSimulacionExcel } from "@/features/solicitudes/utils/export-simulation";
+import type { FilaResultado } from "@/shared/types/domain-types";
 
 /** Exporta a Excel las filas simuladas; `getRows` puede ser asíncrono (p. ej. traer todas las páginas). */
 export function useSimulationExport(fileSlug: string, variationLabel: string, modo?: "precioBase") {

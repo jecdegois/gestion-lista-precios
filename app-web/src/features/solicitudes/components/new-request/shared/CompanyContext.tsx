@@ -1,4 +1,4 @@
-import Icon from "@/components/Icon";
+import Icon from "@/shared/components/ui/Icon";
 
 export type CatalogStatus = { loading: boolean; error: string | null; noLevels: boolean };
 

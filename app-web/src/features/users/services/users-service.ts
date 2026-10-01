@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/server/prisma";
 import type { Prisma } from "@/generated/postgres";
-import type { AuthContext } from "@/lib/domain-types";
+import type { AuthContext } from "@/shared/types/domain-types";
 import { authRepository } from "@/features/auth/repository/auth-repository";
 import { hashPassword } from "@/features/auth/services/auth-service";
 import { usersRepository as repo } from "../repository/users-repository";

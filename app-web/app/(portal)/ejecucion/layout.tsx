@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getIdentidad, requireAuth } from "@/utils/auth";
+import { getIdentidad, requireAuth } from "@/server/session";
 
 /**
  * Guard de acceso para el módulo de Ejecución.

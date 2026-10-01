@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import RevisionModal from "@/components/RevisionModal";
+import RevisionModal from "@/features/solicitudes/components/RevisionModal";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
 import { useInbox } from "../../hooks/useInbox";
 import { resumeDraftRoute } from "../../routes";

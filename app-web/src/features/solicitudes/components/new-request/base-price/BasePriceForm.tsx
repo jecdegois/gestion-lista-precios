@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import TablaImpactoActualizacionMasiva from "@/components/newComponents/TablaImpactoActualizacionMasiva";
-import { esHallazgoDeNegocio } from "@/components/Tablas";
-import type { FilaPrecio, FilaResultado } from "@/lib/domain-types";
+import TablaImpactoActualizacionMasiva from "@/features/solicitudes/components/tables/TablaImpactoActualizacionMasiva";
+import { esHallazgoDeNegocio } from "@/features/solicitudes/components/tables/Tablas";
+import type { FilaPrecio, FilaResultado } from "@/shared/types/domain-types";
 import type { SolicitudInput } from "../../../schemas/solicitud-schema";
 import type { ProcessFormProps, UploadedFile } from "../../../types";
 import { draftFile } from "../../../utils/draft-values";

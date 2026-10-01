@@ -1,8 +1,8 @@
-import Dropdown, { type SelectOption } from "@/components/newComponents/Dropdown";
-import { fmtFactor } from "@/lib/format";
-import type { TipoVariacion } from "@/lib/domain-types";
-import type { GestionGlobalLista } from "@/lib/types";
-import type { Variacion } from "@/lib/engine";
+import Dropdown, { type SelectOption } from "@/shared/components/ui/Dropdown";
+import { fmtFactor } from "@/shared/utils/format";
+import type { TipoVariacion } from "@/shared/types/domain-types";
+import type { GestionGlobalLista } from "@/shared/types/models";
+import type { Variacion } from "@/features/solicitudes/utils/engine";
 import PercentInput from "../shared/PercentInput";
 
 const VARIATION_OPTIONS: SelectOption[] = [

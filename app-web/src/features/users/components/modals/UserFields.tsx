@@ -1,3 +1,5 @@
+import FormField from "@/shared/components/ui/FormField";
+
 export type BasicUserData = { email: string; fullName: string; isAdmin: boolean };
 
 /** Correo, nombre y privilegio de administrador del formulario de usuario. */
@@ -15,8 +17,7 @@ export default function UserFields({
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="block text-xs font-medium text-zinc-600 mb-1.5">Correo</span>
+        <FormField label="Correo">
           <input
             className="input"
             type="email"
@@ -25,9 +26,8 @@ export default function UserFields({
             disabled={!emailEditable}
             onChange={(e) => onChange({ ...data, email: e.target.value })}
           />
-        </label>
-        <label className="block">
-          <span className="block text-xs font-medium text-zinc-600 mb-1.5">Nombre completo</span>
+        </FormField>
+        <FormField label="Nombre completo">
           <input
             className="input"
             required
@@ -35,7 +35,7 @@ export default function UserFields({
             disabled={!nameEditable}
             onChange={(e) => onChange({ ...data, fullName: e.target.value })}
           />
-        </label>
+        </FormField>
       </div>
 
       <label className="flex items-start gap-2 text-sm text-zinc-700">

@@ -1,10 +1,10 @@
 "use client";
 
 import { type ComponentType } from "react";
-import MisSolicitudes from "@/components/MisSolicitudes";
-import RevisionModal from "@/components/RevisionModal";
+import MisSolicitudes from "@/features/solicitudes/components/new-request/MisSolicitudes";
+import RevisionModal from "@/features/solicitudes/components/RevisionModal";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
-import type { ProcesoKey } from "@/lib/domain-types";
+import type { ProcesoKey } from "@/shared/types/domain-types";
 import { useMyRequests } from "../../hooks/useMyRequests";
 import type { ProcessFormProps } from "../../types";
 import BasePriceForm from "./base-price/BasePriceForm";

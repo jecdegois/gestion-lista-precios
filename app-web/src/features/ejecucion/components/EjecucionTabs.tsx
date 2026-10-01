@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { EjecucionKey } from "@/lib/domain-types";
+import type { EjecucionKey } from "@/shared/types/domain-types";
 import { EJECUCION_LABELS, ROUTE_BY_EJECUCION } from "../routes";
 
 /** Pestañas ocultas temporalmente hasta que estén listas para producción. */

@@ -1,4 +1,4 @@
-import Icon from "@/components/Icon";
+import Icon from "@/shared/components/ui/Icon";
 
 const VARIANTS = {
   error: { className: "bg-red-50 border-red-200 text-red-700", icon: "alertTriangle", role: "alert" },

@@ -17,6 +17,8 @@ model Session {
   revokeReason SessionRevokeReason? @map("revoke_reason")
   ipAddress    String?              @map("ip_address") @db.Inet
   userAgent    String?              @map("user_agent")
+  /// Empresa activa elegida en el header; si ya no está asignada se usa la primera.
+  activeCompany String?             @map("active_company")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

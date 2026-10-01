@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ArticuloCatalogo } from "@/lib/domain-types";
-import type { NivelPrecio } from "@/lib/types";
+import type { ArticuloCatalogo } from "@/shared/types/domain-types";
+import type { NivelPrecio } from "@/shared/types/models";
 import { getCatalogoSolicitud } from "../api/solicitudes-api";
 
 /** Niveles de precio de la compañía y, opcionalmente, el catálogo de artículos del nivel. */

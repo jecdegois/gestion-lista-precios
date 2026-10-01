@@ -1,8 +1,8 @@
 "use client";
 
-import Icon from "@/components/Icon";
-import Dropdown, { type SelectOption } from "@/components/newComponents/Dropdown";
-import type { EjecucionKey, EstadoEjecucion } from "@/lib/domain-types";
+import Icon from "@/shared/components/ui/Icon";
+import Dropdown, { type SelectOption } from "@/shared/components/ui/Dropdown";
+import type { EjecucionKey, EstadoEjecucion } from "@/shared/types/domain-types";
 import { EJECUCION_LABELS } from "@/features/ejecucion/routes";
 
 export const EXEC_AUDIT_ALL = "TODOS";

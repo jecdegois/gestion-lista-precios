@@ -1,4 +1,4 @@
-import Icon from "@/components/Icon";
+import Icon from "@/shared/components/ui/Icon";
 
 /** Encabezado del resultado de la simulación con exportación a Excel. */
 export default function SimulationResult({

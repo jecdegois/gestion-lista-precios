@@ -1,6 +1,6 @@
-import type { AuthContext } from "@/lib/domain-types";
+import type { AuthContext } from "@/shared/types/domain-types";
 import { authRepository } from "@/features/auth/repository/auth-repository";
-import { getServerSession } from "@/utils/auth";
+import { getServerSession } from "@/server/session";
 import { apiError, apiUnauthorized, withApiRoute } from "./api-response";
 
 /**

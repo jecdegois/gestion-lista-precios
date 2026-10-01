@@ -1,6 +1,6 @@
 import { apiBadRequest, apiServiceResult, parseJsonBody, withIdentidad } from "@/shared/api";
 import { listarEjecuciones, crearEjecucion } from "@/features/ejecucion/services/ejecucion-service";
-import type { EjecucionKey } from "@/lib/domain-types";
+import type { EjecucionKey } from "@/shared/types/domain-types";
 
 const tipos: EjecucionKey[] = ["EJECUCION_PRECIOS", "EJECUCION_MARGEN"];
 

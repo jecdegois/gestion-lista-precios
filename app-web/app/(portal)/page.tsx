@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getIdentidad, requireAuth } from "@/utils/auth";
+import { getIdentidad, requireAuth } from "@/server/session";
 
 const INICIO_POR_ROL = {
   OPERADOR: "/solicitudes/nueva",
@@ -14,5 +14,5 @@ export default async function HomePage() {
   if (!isAuth) redirect("/auth/login");
 
   const identidad = getIdentidad(session);
-  redirect(identidad.rol === "SIN_PERMISO" && identidad.isAdmin ? "/usuarios" : INICIO_POR_ROL[identidad.rol]);
+  redirect(identidad.rol === "SIN_PERMISO" && identidad.isAdmin ? "/configuracion/usuarios" : INICIO_POR_ROL[identidad.rol]);
 }

@@ -1,5 +1,5 @@
-import Icon from "@/components/Icon";
-import type { Identidad } from "@/lib/domain-types";
+import Icon from "@/shared/components/ui/Icon";
+import type { Identidad } from "@/shared/types/domain-types";
 
 export default function Vista403({ user }: { user: Identidad }) {
   return (

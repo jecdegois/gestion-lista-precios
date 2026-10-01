@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { solicitudesService } from "@/features/solicitudes/services/solicitudes-service";
 import { pricingRepository } from "@/features/solicitudes/repository/pricing-repository";
-import { getIdentidadActual } from "@/utils/auth";
+import { getIdentidadActual } from "@/server/session";
 
 function parseNonNegativeInteger(value: string | null, fallback: number): number {
   const parsed = Number(value);

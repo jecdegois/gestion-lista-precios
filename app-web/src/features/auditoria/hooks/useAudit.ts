@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/shared/components/layout/PortalProviders";
-import type { EventoAuditoria } from "@/lib/domain-types";
+import type { EventoAuditoria } from "@/shared/types/domain-types";
 import { getEventos } from "../api/auditoria-api";
 import { AUDIT_PAGE_SIZE } from "../audit-constants";
 import { type AuditFilters, AUDIT_FILTERS_DEFAULT, toApiParams } from "../components/AuditFilters";

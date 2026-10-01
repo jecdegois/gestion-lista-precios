@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Modal from "@/shared/components/ui/Modal";
 
 /** Muestra la contraseña temporal una sola vez; no se vuelve a poder consultar. */
 export default function TemporaryPasswordModal({
@@ -19,24 +20,25 @@ export default function TemporaryPasswordModal({
     setCopied(true);
   }
 
+  // Sin cierre por ✕, clic fuera ni Esc: el admin confirma con «Listo» que guardó la contraseña.
   return (
-    <div className="modal-overlay">
-      <div className="modal-box !max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="temporary-password-title">
-        <h2 id="temporary-password-title" className="text-base font-semibold text-zinc-900 mb-1">Contraseña temporal</h2>
-        <p className="text-sm text-zinc-500 mb-4">
-          Entréguela a <span className="mono">{email}</span> por un canal seguro. No se volverá a mostrar y deberá
-          cambiarla al ingresar.
-        </p>
-        <div className="flex gap-2">
-          <input className="input mono" readOnly value={password} onFocus={(e) => e.target.select()} aria-label="Contraseña temporal" />
-          <button type="button" className="btn btn-outline" onClick={() => void copy()}>
-            {copied ? "Copiada" : "Copiar"}
-          </button>
-        </div>
-        <div className="flex justify-end mt-6">
-          <button type="button" className="btn btn-default" onClick={onClose}>Listo</button>
-        </div>
+    <Modal
+      title="Contraseña temporal"
+      onClose={onClose}
+      dismissible={false}
+      className="!max-w-md"
+      footer={<button type="button" className="btn btn-default" onClick={onClose}>Listo</button>}
+    >
+      <p className="text-sm text-zinc-500 mb-4">
+        Entréguela a <span className="mono">{email}</span> por un canal seguro. No se volverá a mostrar y deberá
+        cambiarla al ingresar.
+      </p>
+      <div className="flex gap-2">
+        <input className="input mono" readOnly value={password} onFocus={(e) => e.target.select()} aria-label="Contraseña temporal" />
+        <button type="button" className="btn btn-outline" onClick={() => void copy()}>
+          {copied ? "Copiada" : "Copiar"}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }

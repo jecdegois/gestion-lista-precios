@@ -1,6 +1,6 @@
-import type { TableColumn } from "@/components/newComponents/ResponsiveDataTable";
-import type { EventoAuditoria } from "@/lib/domain-types";
-import { etiquetaEvento } from "@/lib/events";
+import type { TableColumn } from "@/shared/components/ui/ResponsiveDataTable";
+import type { EventoAuditoria } from "@/shared/types/domain-types";
+import { etiquetaEvento } from "@/shared/utils/events";
 
 export const auditColumns: readonly TableColumn<EventoAuditoria>[] = [
   {

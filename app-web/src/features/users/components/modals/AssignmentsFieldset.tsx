@@ -1,4 +1,4 @@
-import type { RoleCode } from "@/lib/domain-types";
+import type { RoleCode } from "@/shared/types/domain-types";
 import type { Catalogs } from "../../types";
 
 export type RolesByCompany = Record<string, RoleCode | "">;

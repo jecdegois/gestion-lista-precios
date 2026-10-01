@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PROCESOS } from "@/lib/catalog";
-import type { ProcesoKey } from "@/lib/domain-types";
+import { PROCESOS } from "@/features/solicitudes/utils/catalog";
+import type { ProcesoKey } from "@/shared/types/domain-types";
 import { ROUTE_BY_PROCESS } from "../../routes";
 
 export default function ProcessTabs() {

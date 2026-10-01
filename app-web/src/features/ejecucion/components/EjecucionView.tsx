@@ -2,7 +2,7 @@
 
 import { type ComponentType, useEffect, useState } from "react";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
-import type { EjecucionKey, EjecucionLog } from "@/lib/domain-types";
+import type { EjecucionKey, EjecucionLog } from "@/shared/types/domain-types";
 import { EJECUCION_LABELS } from "../routes";
 import EjecucionTabs from "./EjecucionTabs";
 import UltimasEjecuciones from "./UltimasEjecuciones";

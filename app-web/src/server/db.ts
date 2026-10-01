@@ -41,6 +41,19 @@ export async function getPool(compania: string): Promise<MssqlConnectionPool> {
   return poolFor(process.env.SOFTLAND_DB_NAME ?? "SOFTLANDQA");
 }
 
+/** Esquemas que existen en la BD de Softland y en la del portal (diagnóstico de Configuración). */
+export async function esquemasExistentes(): Promise<{ softland: Set<string>; portal: Set<string> }> {
+  const leer = async (database: string) => {
+    const { recordset } = await (await poolFor(database)).request().query<{ name: string }>("SELECT name FROM sys.schemas");
+    return new Set(recordset.map((r) => r.name.toUpperCase()));
+  };
+  const [softland, portal] = await Promise.all([
+    leer(process.env.SOFTLAND_DB_NAME ?? "SOFTLANDQA"),
+    leer(process.env.PORTAL_DB_NAME ?? "PORTAL_PRECIOS"),
+  ]);
+  return { softland, portal };
+}
+
 /** Devuelve el esquema calificado de la compania (p. ej. "[FEBECA]"). */
 export function esquemaDe(compania: string): string {
   return `[${resolverCompania(compania).schema}]`;

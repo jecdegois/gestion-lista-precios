@@ -1,5 +1,5 @@
-import type { ArticuloCatalogo, Solicitud } from "@/lib/domain-types";
-import type { NivelPrecio } from "@/lib/types";
+import type { ArticuloCatalogo, Solicitud } from "@/shared/types/domain-types";
+import type { NivelPrecio } from "@/shared/types/models";
 
 /** Props comunes a los formularios de cada pestaña de Nueva Solicitud. */
 export interface ProcessFormProps {

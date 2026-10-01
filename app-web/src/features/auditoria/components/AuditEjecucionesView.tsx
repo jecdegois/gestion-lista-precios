@@ -1,9 +1,9 @@
 "use client";
 
-import ResponsiveDataTable from "@/components/newComponents/ResponsiveDataTable";
-import type { EjecucionLog } from "@/lib/domain-types";
+import ResponsiveDataTable from "@/shared/components/ui/ResponsiveDataTable";
+import type { EjecucionLog } from "@/shared/types/domain-types";
 import { useAuditEjecuciones } from "../hooks/useAuditEjecuciones";
-import { ejecucionAuditColumns } from "./table/ejecucion-audit-columns";
+import { ejecucionColumns, ejecucionRowClass } from "@/features/ejecucion/components/table/ejecucion-columns";
 import AuditEjecucionFilters from "./AuditEjecucionFilters";
 import { AUDIT_EXEC_PAGE_SIZE } from "../api/ejecuciones-audit-api";
 
@@ -31,7 +31,7 @@ export default function AuditEjecucionesView() {
 
       <ResponsiveDataTable<EjecucionLog>
         rows={ejecuciones}
-        columns={ejecucionAuditColumns}
+        columns={ejecucionColumns}
         rowKey={(e) => e.id}
         loading={refreshing && ejecuciones.length === 0}
         loadingMore={loadingMore}
@@ -40,9 +40,7 @@ export default function AuditEjecucionesView() {
         onLoadMore={() => void loadMore()}
         emptyTitle="Sin ejecuciones registradas"
         emptyDescription="No hay ejecuciones que coincidan con los filtros seleccionados."
-        rowClassName={(e) =>
-          e.estado === "ERROR" || e.estado === "COMPLETADO_CON_ERRORES" ? "row-alert" : ""
-        }
+        rowClassName={ejecucionRowClass}
       />
 
       {hasMore && (

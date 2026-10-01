@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import Icon, { initials } from "@/components/Icon";
-import { signOut } from "@/features/auth/api/auth-api";
-import type { Identidad } from "@/lib/domain-types";
+import Icon, { initials } from "@/shared/components/ui/Icon";
+import { setActiveCompany, signOut } from "@/features/auth/api/auth-api";
+import type { Identidad } from "@/shared/types/domain-types";
+import { useToast } from "./PortalProviders";
 
 type NavItem = { key: string; label: string; href: string; visible: (user: Identidad) => boolean };
 
@@ -14,7 +16,7 @@ const NAV_ITEMS: NavItem[] = [
   // TODO: cuando el cliente defina el rol EJECUTOR, agregar aquí: u.rol === "EJECUTOR"
   { key: "ejecucion", label: "Ejecución", href: "/ejecucion", visible: (u) => u.rol === "APROBADOR" || !!u.isAdmin },
   { key: "auditoria", label: "Auditoría", href: "/auditoria", visible: (u) => u.rol !== "SIN_PERMISO" },
-  { key: "users", label: "Usuarios", href: "/usuarios", visible: (u) => !!u.isAdmin },
+  { key: "settings", label: "Configuración", href: "/configuracion", visible: (u) => !!u.isAdmin },
 ];
 
 function navActiva(pathname: string): string | null {
@@ -22,13 +24,25 @@ function navActiva(pathname: string): string | null {
   if (pathname.startsWith("/solicitudes/bandeja")) return "bandeja";
   if (pathname.startsWith("/ejecucion")) return "ejecucion";
   if (pathname.startsWith("/auditoria")) return "auditoria";
-  if (pathname.startsWith("/usuarios")) return "users";
+  if (pathname.startsWith("/configuracion")) return "settings";
   return null;
 }
 
 export default function Header({ user }: { user: Identidad }) {
   const router = useRouter();
   const activa = navActiva(usePathname());
+
+  const pushToast = useToast();
+  const [switching, setSwitching] = useState(false);
+
+  async function handleCompanyChange(company: string) {
+    setSwitching(true);
+    const res = await setActiveCompany(company);
+    // El layout recalcula la identidad: esquema SQL, color y moneda de la nueva empresa.
+    if (res.ok) router.refresh();
+    else pushToast(res.error ?? "No se pudo cambiar la compañía", "error");
+    setSwitching(false);
+  }
 
   async function handleLogout() {
     await signOut();
@@ -37,17 +51,20 @@ export default function Header({ user }: { user: Identidad }) {
 
   return (
     <header className="border-b border-zinc-200 bg-white sticky top-0 z-40">
-      <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-zinc-900 text-white font-bold flex items-center justify-center">GP</div>
-          <div>
-            <h1 className="text-sm font-semibold text-zinc-900">Gestión Masiva de Precios</h1>
-            <p className="text-xs text-zinc-500">Integración con Softland · Prototipo interactivo</p>
+      <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap lg:flex-nowrap">
+        {/* min-w-0: en escritorio el título se recorta antes de bajar el selector de empresa a otra línea. */}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex-none w-9 h-9 rounded-lg bg-[var(--accent)] text-[var(--accent-fg)] font-bold flex items-center justify-center">GP</div>
+          <div className="min-w-0">
+            <h1 className="text-sm font-semibold text-zinc-900 truncate">Gestión Masiva de Precios</h1>
+            <p className="text-xs text-zinc-500 truncate" title="Integración con Softland · Prototipo interactivo">
+              Integración con Softland · Prototipo interactivo
+            </p>
           </div>
         </div>
 
         {(user.rol !== "SIN_PERMISO" || user.isAdmin) && (
-          <nav className="flex items-center gap-1 flex-wrap">
+          <nav className="flex items-center gap-1 flex-wrap lg:flex-nowrap flex-none">
             {NAV_ITEMS.filter((item) => item.visible(user)).map((item) => (
               <Link key={item.key} href={item.href} className={"nav-link" + (activa === item.key ? " active" : "")}>
                 {item.label}
@@ -56,16 +73,29 @@ export default function Header({ user }: { user: Identidad }) {
           </nav>
         )}
 
-        <div className="flex items-center gap-2">
-          <span className="avatar w-8 h-8 text-[11px]" style={{ background: user.color }}>
+        <div className="flex items-center gap-2 flex-none">
+          <span className="avatar w-8 h-8 text-[11px]" style={{ background: "var(--accent)", color: "var(--accent-fg)" }}>
             {initials(user.nombre)}
           </span>
           <div className="text-right">
             <p className="text-xs font-semibold text-zinc-900">{user.nombre}</p>
             <p className="text-[11px] text-zinc-500">
               {user.rol === "SIN_PERMISO" && user.isAdmin ? "ADMINISTRADOR" : user.rol.replace("_", " ")}
-              {user.compania ? " · " + user.compania : ""}
+              {(user.companias?.length ?? 0) < 2 && user.compania ? " · " + user.compania : ""}
             </p>
+            {user.companias && user.companias.length > 1 && (
+              <select
+                className="text-[11px] font-semibold text-zinc-700 bg-transparent border border-zinc-200 rounded px-1 py-0.5 cursor-pointer"
+                aria-label="Compañía activa"
+                value={user.compania ?? ""}
+                disabled={switching}
+                onChange={(e) => void handleCompanyChange(e.target.value)}
+              >
+                {user.companias.map((code) => (
+                  <option key={code} value={code}>{code}</option>
+                ))}
+              </select>
+            )}
           </div>
           <button className="btn btn-ghost" title="Cerrar sesión" onClick={handleLogout}>
             <Icon name="x" className="w-4 h-4" />

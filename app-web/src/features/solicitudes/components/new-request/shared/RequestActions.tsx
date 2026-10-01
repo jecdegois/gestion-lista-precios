@@ -1,4 +1,4 @@
-import Icon from "@/components/Icon";
+import Icon from "@/shared/components/ui/Icon";
 import type { SubmissionState } from "../../../types";
 
 /** Botones de simular, guardar borrador y enviar a aprobación. */

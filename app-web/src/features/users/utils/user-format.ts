@@ -1,4 +1,4 @@
-import type { UserStatusDomain } from "@/lib/domain-types";
+import type { UserStatusDomain } from "@/shared/types/domain-types";
 import type { UserView } from "../types";
 
 export type UsersTab = "all" | "pending";

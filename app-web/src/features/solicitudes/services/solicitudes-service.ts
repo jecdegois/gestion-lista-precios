@@ -1,6 +1,6 @@
 import "server-only";
-import { estaEnAmbito } from "@/lib/catalog";
-import { nombreArchivoS3, nuevoIdProcesoSP } from "@/lib/ids";
+import { estaEnAmbito } from "@/features/solicitudes/utils/catalog";
+import { nombreArchivoS3, nuevoIdProcesoSP } from "@/features/solicitudes/utils/ids";
 import type {
   CriteriosArticulo,
   FilaMargen,
@@ -11,8 +11,8 @@ import type {
   ProcesoKey,
   Rol,
   Solicitud,
-} from "@/lib/domain-types";
-import { esFilaMargen } from "@/lib/domain-types";
+} from "@/shared/types/domain-types";
+import { esFilaMargen } from "@/shared/types/domain-types";
 import { esModoDemo, esModoSoloLectura, esModoSoloPortal } from "@/server/companies";
 import { auditRepository } from "@/features/auditoria/repository/audit-repository";
 import { requestsRepository as repo } from "../repository/requests-repository";

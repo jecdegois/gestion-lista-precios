@@ -1,5 +1,5 @@
-import type { SelectOption } from "@/components/newComponents/Dropdown";
-import type { ArticuloCatalogo, CriteriosArticulo } from "@/lib/domain-types";
+import type { SelectOption } from "@/shared/components/ui/Dropdown";
+import type { ArticuloCatalogo, CriteriosArticulo } from "@/shared/types/domain-types";
 
 /** Clasificaciones de artículo en cascada usadas como criterios de Precio Base. */
 export const CLASSIFICATIONS = [

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import ResponsiveDataTable from "@/components/newComponents/ResponsiveDataTable";
-import type { EventoAuditoria } from "@/lib/domain-types";
+import ResponsiveDataTable from "@/shared/components/ui/ResponsiveDataTable";
+import type { EventoAuditoria } from "@/shared/types/domain-types";
 import { useAudit } from "../hooks/useAudit";
 import { auditColumns } from "./table/audit-columns";
 import AuditFilters from "./AuditFilters";
@@ -89,7 +89,7 @@ export default function AuditView() {
             className={[
               "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
               activeTab === tab.id
-                ? "border-blue-600 text-blue-600"
+                ? "border-[var(--accent)] text-[var(--accent)]"
                 : "border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300",
             ].join(" ")}
           >

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useToast } from "@/shared/components/layout/PortalProviders";
-import type { Solicitud } from "@/lib/domain-types";
+import type { Solicitud } from "@/shared/types/domain-types";
 import { enviarBorrador, enviarSolicitud, guardarBorrador } from "../api/solicitudes-api";
 import type { SolicitudInput } from "../schemas/solicitud-schema";
 

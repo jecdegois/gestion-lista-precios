@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { TableLoadParams } from "@/components/newComponents/ResponsiveDataTable";
-import type { FilaPrecio, TipoVariacion } from "@/lib/domain-types";
+import type { TableLoadParams } from "@/shared/components/ui/ResponsiveDataTable";
+import type { FilaPrecio, TipoVariacion } from "@/shared/types/domain-types";
 import { fetchGlobalManagementPage } from "../api/paged-api";
 import { useOnChange } from "./useOnChange";
 

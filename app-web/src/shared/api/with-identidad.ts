@@ -1,5 +1,5 @@
-import type { Identidad } from "@/lib/domain-types";
-import { getIdentidadActual } from "@/utils/auth";
+import type { Identidad } from "@/shared/types/domain-types";
+import { getIdentidadActual } from "@/server/session";
 import { apiError, apiUnauthorized, withApiRoute } from "./api-response";
 
 /**

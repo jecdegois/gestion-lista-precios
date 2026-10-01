@@ -1,5 +1,5 @@
 import "server-only";
-import type { Articulo, NivelPrecio } from "@/lib/types";
+import type { Articulo, NivelPrecio } from "@/shared/types/models";
 
 /**
  * Catalogo en memoria por compania para DEMO_MODE. Permite ejecutar el portal

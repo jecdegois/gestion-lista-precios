@@ -52,3 +52,8 @@ export function setPassword(input: SetPasswordInput, token: string) {
 export function changePassword(input: ChangePasswordInput) {
   return postAuth("/api/auth/cambiar-password", input);
 }
+
+/** Cambia la empresa activa de la sesión (selector del header). */
+export function setActiveCompany(company: string) {
+  return postAuth("/api/sesion/empresa", { company });
+}

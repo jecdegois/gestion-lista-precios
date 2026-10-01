@@ -1,5 +1,5 @@
-import Icon from "@/components/Icon";
-import type { UserStatusDomain } from "@/lib/domain-types";
+import Icon from "@/shared/components/ui/Icon";
+import type { UserStatusDomain } from "@/shared/types/domain-types";
 import { USER_STATUS, type UserFilters } from "../utils/user-format";
 
 export default function UsersFilters({
@@ -13,7 +13,7 @@ export default function UsersFilters({
   onChange: (filters: UserFilters) => void;
 }) {
   return (
-    <div className="flex items-end gap-3 flex-wrap p-4 border-b border-zinc-200">
+    <div className="card flex items-end gap-3 flex-wrap p-4">
       <label className="relative flex-1 min-w-[220px]">
         <span className="sr-only">Buscar por nombre o correo</span>
         <Icon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />

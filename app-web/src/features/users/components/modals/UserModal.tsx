@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Icon from "@/components/Icon";
-import type { RoleCode } from "@/lib/domain-types";
+import type { RoleCode } from "@/shared/types/domain-types";
+import Modal from "@/shared/components/ui/Modal";
 import type { Assignment, Catalogs, UserView } from "../../types";
 import AssignmentsFieldset, { type RolesByCompany } from "./AssignmentsFieldset";
 import UserFields, { type BasicUserData } from "./UserFields";
@@ -72,29 +72,25 @@ export default function UserModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <form className="modal-box !max-w-xl" onSubmit={handleSubmit} aria-labelledby="user-modal-title">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
-          <h2 id="user-modal-title" className="text-base font-semibold text-zinc-900">{copy.title}</h2>
-          <button type="button" className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">
-            <Icon name="x" className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4">
-          <UserFields data={data} emailEditable={mode === "create"} nameEditable={mode !== "approve"} onChange={setData} />
-          <AssignmentsFieldset catalogs={catalogs} roles={roles} onChange={setRoles} />
-          {copy.note && <p className="text-xs text-zinc-500">{copy.note}</p>}
-          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-        </div>
-
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-zinc-200">
+    <Modal
+      title={copy.title}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      footer={
+        <>
           <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn btn-default" disabled={submitting}>
             {submitting ? "Guardando…" : copy.submit}
           </button>
-        </div>
-      </form>
-    </div>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <UserFields data={data} emailEditable={mode === "create"} nameEditable={mode !== "approve"} onChange={setData} />
+        <AssignmentsFieldset catalogs={catalogs} roles={roles} onChange={setRoles} />
+        {copy.note && <p className="text-xs text-zinc-500">{copy.note}</p>}
+        {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      </div>
+    </Modal>
   );
 }

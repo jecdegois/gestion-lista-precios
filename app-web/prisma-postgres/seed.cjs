@@ -11,9 +11,9 @@ const ROLES = [
 ];
 
 const COMPANIES = [
-  { code: "FEBECA", name: "FEBECA C.A.", sqlSchema: "FEBECA", currencySymbol: "Bs." },
-  { code: "BEVAL", name: "BEVAL C.A.", sqlSchema: "BEVAL", currencySymbol: "Bs." },
-  { code: "SILLACA", name: "SILLACA C.A.", sqlSchema: "SILLACA", currencySymbol: "Bs." },
+  { code: "FEBECA", name: "FEBECA C.A.", sqlSchema: "FEBECA", currencySymbol: "Bs.", country: "VE", brandColor: "#009EE0" },
+  { code: "BEVAL", name: "BEVAL C.A.", sqlSchema: "BEVAL", currencySymbol: "Bs.", country: "VE", brandColor: "#CBE443" },
+  { code: "SILLACA", name: "SILLACA C.A.", sqlSchema: "SILLACA", currencySymbol: "Bs.", country: "VE", brandColor: "#E4007D" },
 ];
 
 async function main() {

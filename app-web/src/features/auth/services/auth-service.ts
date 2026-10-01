@@ -258,6 +258,7 @@ class AuthService {
     return {
       sessionId: record.id,
       expiresAt: record.expiresAt,
+      activeCompany: record.activeCompany,
       user: {
         id: record.user.id,
         email: record.user.email,
@@ -269,6 +270,7 @@ class AuthService {
           companyRecord.userRoles.map((userRole) => ({
             company: companyRecord.company,
             currencySymbol: companyRecord.companyInfo.currencySymbol,
+            brandColor: companyRecord.companyInfo.brandColor,
             role: userRole.role.code,
           })),
         ),

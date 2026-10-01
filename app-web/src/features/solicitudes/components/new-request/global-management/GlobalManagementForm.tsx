@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import TablaImpactoGestionGlobal from "@/components/newComponents/TablaImpactoGestionGlobal";
-import type { SelectOption } from "@/components/newComponents/Dropdown";
-import { calcularVariacion } from "@/lib/preview";
-import type { FilaPrecio, TipoVariacion } from "@/lib/domain-types";
+import TablaImpactoGestionGlobal from "@/features/solicitudes/components/tables/TablaImpactoGestionGlobal";
+import type { SelectOption } from "@/shared/components/ui/Dropdown";
+import { calcularVariacion } from "@/features/solicitudes/utils/preview";
+import type { FilaPrecio, TipoVariacion } from "@/shared/types/domain-types";
 import type { SolicitudInput } from "../../../schemas/solicitud-schema";
 import type { ProcessFormProps } from "../../../types";
 import { draftValues } from "../../../utils/draft-values";

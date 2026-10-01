@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Dropdown, { type SelectOption } from "@/components/newComponents/Dropdown";
-import type { EjecucionLog } from "@/lib/domain-types";
+import Modal from "@/shared/components/ui/Modal";
+import Dropdown, { type SelectOption } from "@/shared/components/ui/Dropdown";
+import type { EjecucionLog } from "@/shared/types/domain-types";
 import { useGlobalManagementCatalog } from "@/features/solicitudes/hooks/useGlobalManagementCatalog";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
 import { ejecutarPrecios } from "@/features/ejecucion/api/ejecucion-api";
@@ -34,20 +35,22 @@ interface ConfirmModalProps {
 
 function ConfirmModal({ nivelPrecio, nivelPrecioBase, factor, onConfirm, onCancel }: ConfirmModalProps) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={onCancel}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-title"
+    <Modal
+      title="Confirmar ejecucion"
+      onClose={onCancel}
+      className="!max-w-md"
+      footer={
+        <>
+          <button className="btn btn-ghost" onClick={onCancel}>
+            Cancelar
+          </button>
+          <button className="btn btn-default" onClick={onConfirm}>
+            Confirmar ejecucion
+          </button>
+        </>
+      }
     >
-      <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6 flex flex-col gap-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 id="confirm-title" className="text-base font-semibold text-zinc-900">
-          Confirmar ejecucion
-        </h2>
+      <div className="flex flex-col gap-4">
         <p className="text-sm text-zinc-600">
           Se ejecutara <span className="font-medium text-zinc-800">SP_GESTION_LISTAS_PRECIOS_FULL</span> con los siguientes parametros:
         </p>
@@ -68,16 +71,8 @@ function ConfirmModal({ nivelPrecio, nivelPrecioBase, factor, onConfirm, onCance
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           Esta accion modificara precios en Softland. No se puede deshacer.
         </p>
-        <div className="flex justify-end gap-2 pt-1">
-          <button className="btn btn-ghost" onClick={onCancel}>
-            Cancelar
-          </button>
-          <button className="btn btn-default" onClick={onConfirm}>
-            Confirmar ejecucion
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

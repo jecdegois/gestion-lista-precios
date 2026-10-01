@@ -1,7 +1,7 @@
-import Icon from "@/components/Icon";
-import Dropdown, { type SelectOption } from "@/components/newComponents/Dropdown";
-import { PROCESOS } from "@/lib/catalog";
-import type { ProcesoKey } from "@/lib/domain-types";
+import Icon from "@/shared/components/ui/Icon";
+import Dropdown, { type SelectOption } from "@/shared/components/ui/Dropdown";
+import { PROCESOS } from "@/features/solicitudes/utils/catalog";
+import type { ProcesoKey } from "@/shared/types/domain-types";
 import { ALL, INBOX_STATUSES, type InboxFilters as Filters } from "../../utils/inbox-filters";
 
 const STATUS_OPTIONS: SelectOption[] = INBOX_STATUSES.map((s) => ({ value: s, label: s === ALL ? "Todos los estados" : s }));

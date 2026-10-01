@@ -1,6 +1,6 @@
 import "server-only";
 import { Prisma } from "@/generated/sqlserver";
-import type { EventoAuditoria, EventoTipo, Rol } from "@/lib/domain-types";
+import type { EventoAuditoria, EventoTipo, Rol } from "@/shared/types/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
 import { portalDb } from "@/server/db";
 import {

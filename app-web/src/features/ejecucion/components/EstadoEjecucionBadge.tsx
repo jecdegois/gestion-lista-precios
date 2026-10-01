@@ -1,4 +1,4 @@
-import type { EstadoEjecucion } from "@/lib/domain-types";
+import type { EstadoEjecucion } from "@/shared/types/domain-types";
 
 const ESTADO_STYLES: Record<EstadoEjecucion, { cls: string; label: string }> = {
   PENDIENTE:              { cls: "badge-pendiente",  label: "Pendiente"             },

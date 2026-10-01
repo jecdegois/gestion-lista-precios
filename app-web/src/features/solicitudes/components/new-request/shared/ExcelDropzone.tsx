@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Icon from "@/components/Icon";
-import type { FilaResultado, ProcesoKey } from "@/lib/domain-types";
+import Icon from "@/shared/components/ui/Icon";
+import type { FilaResultado, ProcesoKey } from "@/shared/types/domain-types";
 import { parsearExcel } from "../../../api/solicitudes-api";
 
 /** Zona de arrastre/selección de la plantilla .xlsx; la parsea en el servidor. */

@@ -1,4 +1,4 @@
-import Icon from "@/components/Icon";
+import Icon from "@/shared/components/ui/Icon";
 
 export default function DraftBanner({ id, onDiscard }: { id: string; onDiscard: () => void }) {
   return (

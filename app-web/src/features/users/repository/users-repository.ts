@@ -1,6 +1,6 @@
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/server/prisma";
 import type { Prisma } from "@/generated/postgres";
-import type { RoleCode } from "@/lib/domain-types";
+import type { RoleCode } from "@/shared/types/domain-types";
 import type { Assignment, Catalogs, UserView } from "../types";
 
 type Tx = Prisma.TransactionClient;

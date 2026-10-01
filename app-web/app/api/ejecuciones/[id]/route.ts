@@ -1,6 +1,6 @@
 import { apiBadRequest, apiServiceResult, parseJsonBody, withIdentidad } from "@/shared/api";
 import { actualizarEjecucion } from "@/features/ejecucion/services/ejecucion-service";
-import type { EstadoEjecucion } from "@/lib/domain-types";
+import type { EstadoEjecucion } from "@/shared/types/domain-types";
 
 const estados: EstadoEjecucion[] = ["PENDIENTE", "EN_PROCESO", "COMPLETADO", "COMPLETADO_CON_ERRORES", "ERROR"];
 

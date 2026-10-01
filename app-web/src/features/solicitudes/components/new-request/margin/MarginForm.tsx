@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import TablaImpactoMargen from "@/components/newComponents/TablaImpactoMargen";
+import TablaImpactoMargen from "@/features/solicitudes/components/tables/TablaImpactoMargen";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
-import { calcularVariacion } from "@/lib/preview";
-import type { FilaResultado } from "@/lib/domain-types";
+import { calcularVariacion } from "@/features/solicitudes/utils/preview";
+import type { FilaResultado } from "@/shared/types/domain-types";
 import type { SolicitudInput } from "../../../schemas/solicitud-schema";
 import type { ProcessFormProps, UploadedFile } from "../../../types";
 import { draftFile, draftValues, EMPTY_FILE } from "../../../utils/draft-values";

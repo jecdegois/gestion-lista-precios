@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/server/prisma";
 import type { Prisma } from "@/generated/postgres";
 
 export const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -82,7 +82,7 @@ const sessions = {
             companies: {
               where: { isActive: true, revokedAt: null },
               include: {
-                companyInfo: { select: { currencySymbol: true } },
+                companyInfo: { select: { currencySymbol: true, brandColor: true } },
                 userRoles: {
                   where: { revokedAt: null },
                   include: { role: true },
@@ -93,6 +93,10 @@ const sessions = {
         },
       },
     });
+  },
+
+  setActiveCompany(id: string, company: string) {
+    return prisma.session.update({ where: { id }, data: { activeCompany: company } });
   },
 
   touch(id: string) {

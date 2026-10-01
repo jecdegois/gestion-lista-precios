@@ -1,5 +1,5 @@
 import { GENERIC_NETWORK_ERROR, GENERIC_SERVER_ERROR, type ApiResult } from "@/shared/api/api-types";
-import type { EventoAuditoria } from "@/lib/domain-types";
+import type { EventoAuditoria } from "@/shared/types/domain-types";
 import { AUDIT_PAGE_SIZE } from "../audit-constants";
 
 export type AuditApiParams = {
