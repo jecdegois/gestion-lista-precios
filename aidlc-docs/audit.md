@@ -2082,3 +2082,51 @@ MENSAJE_ERROR
 - INSERT usuario de prueba con ROL_GLOBAL = 'AUDITOR'
 
 ---
+
+## Cambio incremental — Bloqueo de envío Precio Base por VALIDAR_PRECIO_BAJO_MARGEN_MIN
+**Timestamp**: 2026-09-30T00:00:00Z
+**User Input**: "LA actualizacion de precio base para MayoreoD deberia leer el Flag VALIDAR_PRECIO_BAJO_MARGEN_MIN de la tabla dbo.gestion_listas_precio y si está activo no permitir hacer una solicitud con hallazgos de margen"
+**AI Response**: "Implementado bloqueo en envío (UI + servidor) para MAYOREOD_MASIVO cuando GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN=1 y existen filas ALERTA_MARGEN. El servidor re-lee el flag de BD y recalcula el hallazgo; aplica también al envío de borradores. Archivos: solicitudes-service.ts, BasePriceForm.tsx, domain-types.ts."
+**Context**: CONSTRUCTION — cambio puntual fuera del plan PASO 4. Deuda técnica DT-01..DT-06 no modificada.
+
+---
+
+## Cambio incremental — Aviso preventivo VALIDAR_PRECIO_BAJO_MARGEN_MIN en Precio Base
+**Timestamp**: 2026-09-30T00:00:00Z
+**User Input**: "Veo bien la validación. revisa Si cargas al abrir la pestaña de precio base la bandera de margen minimo, si es así, Agrega un mensaje con una bandera cuando el parametro esté encendido para que el usuario sepa que no se va a procesar si el archivo tiene articulos por debajo del margen antes de darle al boton"
+**AI Response**: "Confirmado que el flag se carga al montar BasePriceForm. Agregado banner informativo (🚩) arriba de la carga de Excel visible cuando el flag está activo."
+**Context**: CONSTRUCTION — ajuste UI puntual en BasePriceForm.tsx.
+
+---
+
+## Corrección — Banner de margen mínimo no visible en Precio Base
+**Timestamp**: 2026-09-30T00:00:00Z
+**User Input**: "No veo el banner que comentas"
+**AI Response**: "Causa raíz: BasePriceForm leía data.listas pero la API responde { ok, data: { listas } }, por lo que los flags nunca se cargaban (también afectaba VALIDAR_PRECIO_BAJO_COSTO). Se cambió a getCatalogoGestionGlobal() y se normaliza el código de lista (trim/upper)."
+**Context**: CONSTRUCTION — bugfix UI en BasePriceForm.tsx.
+
+---
+
+## Bugfix — Error 102 "Incorrect syntax near '@P1'" al generar solicitud de Precio Base
+**Timestamp**: 2026-09-30T00:00:00Z
+**User Input**: "[api] error no manejado: PrismaClientKnownRequestError: Invalid `prisma.$queryRaw()` invocation: Raw query failed. Code: `102`. Message: `Incorrect syntax near '@P1'`. ... al generar solicitud de precio base"
+**AI Response**: "Causa: requests-repository.siguienteCodigoSolicitud usaba Prisma.raw() dentro de $queryRaw`NEXT VALUE FOR ${...}`; en el bundle de Next el identificador se enviaba como parámetro (@P1), inválido en NEXT VALUE FOR. Se reemplazó por $queryRawUnsafe con identificador validado por regex. Mismo patrón corregido en actualizarFactorAplicadoDetalles ($executeRawUnsafe con @P1 parametrizado)."
+**Context**: CONSTRUCTION — bugfix requests-repository.ts. Pendiente revisar audit-repository.list (mismo patrón Prisma.raw).
+
+---
+
+## Cambio — Columna de validación de margen en aprobación
+**Timestamp**: 2026-09-30T00:00:00Z
+**User Input**: "la columna correcta para la validacion es: GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN"
+**AI Response**: "El bloqueo de aprobación (RevisionModal + aprobarSolicitud) ahora usa parametros.validarPrecioBajoMargenMin en lugar de validarPrecioBajoCosto. Se eliminó el banner de BasePriceForm basado en VALIDAR_PRECIO_BAJO_COSTO. Mensajes actualizados a 'precio bajo margen mínimo'."
+**Context**: CONSTRUCTION — ajuste de regla de negocio MAYOREOD_MASIVO.
+
+---
+
+## Cambio — Validación vigente de VALIDAR_PRECIO_BAJO_MARGEN_MIN al aprobar
+**Timestamp**: 2026-09-30T00:00:00Z
+**User Input**: "El modal de revision debe validar el parametro de margen  GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN cada vez que abre el modal junto con la carga de informacion de la solicitud, para que no permita procesasr la solicitud si el parámetro se enciende luego de hacer la solicitud y antes de aprobarla."
+**AI Response**: "RevisionModal consulta el flag vigente al abrir (por solicitud.id) y deshabilita 'Procesar' mientras verifica o si está activo con filas ALERTA_MARGEN. aprobarSolicitud re-lee el flag en BD (falla cerrado) en lugar del valor capturado al envío."
+**Context**: CONSTRUCTION — RevisionModal.tsx, solicitudes-service.ts.
+
+---
