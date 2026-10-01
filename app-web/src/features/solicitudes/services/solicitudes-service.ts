@@ -13,6 +13,7 @@ import type {
   Solicitud,
 } from "@/lib/domain-types";
 import { esFilaMargen } from "@/lib/domain-types";
+import { validarFila } from "@/lib/engine";
 import { esModoDemo, esModoSoloLectura, esModoSoloPortal } from "@/server/companies";
 import { auditRepository } from "@/features/auditoria/repository/audit-repository";
 import { requestsRepository as repo } from "../repository/requests-repository";
@@ -40,6 +41,22 @@ function errorSoloLectura(): { ok: false; error: string } {
 
 function errorSoloPortal(): { ok: false; error: string } {
   return { ok: false, error: "La aplicación está en modo de simulación segura: no se ejecutan procedimientos ni cambios sobre Softland." };
+}
+
+const LISTA_PRECIO_BASE = "MAYOREOD";
+
+/**
+ * Lee GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN de MAYOREOD para la compañía.
+ * Falla cerrado: si no se puede consultar la configuración, se lanza el error.
+ */
+async function leerValidarPrecioBajoMargenMin(compania: string): Promise<boolean> {
+  const listas = await pricingRepository.listGlobalManagement(compania);
+  const config = listas.find((l) => l.codigo.trim().toUpperCase() === LISTA_PRECIO_BASE);
+  return config?.validarPrecioBajoMargenMin === true;
+}
+
+function mensajeBloqueoMargenMin(filasConHallazgo: number): string {
+  return `No se puede enviar: la lista ${LISTA_PRECIO_BASE} tiene activada la validación de precio bajo margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN) y la solicitud contiene ${filasConHallazgo} fila(s) con precio por debajo del margen mínimo. Corrija los precios antes de enviar.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +172,40 @@ async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boole
     return { ok: false, error: "La solicitud contiene un artículo que no existe en la lista de precio seleccionada en Softland." };
   }
 
+  // Precio Base (MAYOREOD): si GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN está
+  // activo, no se permite enviar la solicitud con hallazgos de margen. El flag se lee de la
+  // BD y el hallazgo se recalcula en servidor (no se confía en la validación del cliente).
+  let parametrosSolicitud = input.parametros;
+  if (input.proceso === "MAYOREOD_MASIVO") {
+    let validarMargenMin: boolean;
+    try {
+      validarMargenMin = await leerValidarPrecioBajoMargenMin(input.compania);
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "Error no identificado.";
+      return { ok: false, error: `No fue posible verificar la configuración de margen mínimo de la lista ${LISTA_PRECIO_BASE}: ${detalle}` };
+    }
+    parametrosSolicitud = { ...input.parametros, validarPrecioBajoMargenMin: validarMargenMin };
+    if (validarMargenMin) {
+      const filasConHallazgo = filasParaProcesar.filter((fila) => {
+        if (fila.validacion.estadoRedondeo === "ALERTA_MARGEN") return true;
+        const listaFila = ("listaCodigo" in fila && fila.listaCodigo
+          ? resolverNivelPrecio(niveles, fila.listaCodigo)
+          : listaPredeterminada) ?? listaPredeterminada;
+        const contexto = contextosPorLista.get(listaFila);
+        if (!contexto || !("valorPropuestoRaw" in fila)) return false;
+        const recalculo = validarFila(
+          { codigo: fila.codigo, valorPropuestoRaw: String(fila.valorPropuestoRaw ?? "") },
+          "precio",
+          contexto,
+        );
+        return recalculo.estadoRedondeo === "ALERTA_MARGEN";
+      }).length;
+      if (filasConHallazgo > 0) {
+        return { ok: false, error: mensajeBloqueoMargenMin(filasConHallazgo) };
+      }
+    }
+  }
+
   // Enriquecer filas con la lista/nivel correspondiente
   const filasConLista: FilaResultado[] = filasParaProcesar.map((fila) => {
     const listaFila = "listaCodigo" in fila && fila.listaCodigo
@@ -176,7 +227,7 @@ async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boole
     solicitanteNombre: identidadPortal.nombre,
     solicitanteEmail: identidadPortal.email,
     idpOperador,
-    parametros: input.parametros,
+    parametros: parametrosSolicitud,
     filas: filasConLista,
     archivoNombre: input.archivoNombre ?? null,
     archivoS3Key: input.archivoS3Key ?? null,
@@ -291,6 +342,27 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
   }
   if (s.proceso === "FACTOR_PRECIO" && !esModoDemo() && esModoSoloPortal()) {
     return errorSoloPortal();
+  }
+
+  // Bloqueo por GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (MAYOREOD_MASIVO).
+  // Se lee el valor VIGENTE en BD al aprobar (el flag pudo activarse después del envío).
+  let validarMargenMinVigente = false;
+  if (s.proceso === "MAYOREOD_MASIVO") {
+    try {
+      validarMargenMinVigente = await leerValidarPrecioBajoMargenMin(input.compania);
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "Error no identificado.";
+      return { ok: false, error: `No fue posible verificar la configuración de margen mínimo de la lista ${LISTA_PRECIO_BASE}: ${detalle}` };
+    }
+  }
+  if (s.proceso === "MAYOREOD_MASIVO" && validarMargenMinVigente) {
+    const filasConAlertaMargen = s.filas.filter((fila) => fila.validacion.estadoRedondeo === "ALERTA_MARGEN").length;
+    if (filasConAlertaMargen > 0) {
+      return {
+        ok: false,
+        error: `No se puede aprobar: la lista MAYOREOD tiene activada la validación de precio bajo margen mínimo y la solicitud contiene ${filasConAlertaMargen} fila(s) con precio por debajo del margen mínimo. El solicitante debe corregir los precios y reenviar la solicitud.`,
+      };
+    }
   }
 
   const idProcesoSP = nuevoIdProcesoSP();
@@ -538,6 +610,20 @@ async function enviarBorrador(
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
   if (s.estado !== "BORRADOR") return { ok: false, error: "Solo se puede enviar una solicitud en estado BORRADOR." };
   if (s.solicitanteEmail !== usuarioEmail) return { ok: false, error: "Solo el solicitante original puede enviar este borrador." };
+  // Mismo bloqueo que en el envío directo: el flag se re-lee al momento de enviar el borrador.
+  if (s.proceso === "MAYOREOD_MASIVO") {
+    let validarMargenMin: boolean;
+    try {
+      validarMargenMin = await leerValidarPrecioBajoMargenMin(compania);
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "Error no identificado.";
+      return { ok: false, error: `No fue posible verificar la configuración de margen mínimo de la lista ${LISTA_PRECIO_BASE}: ${detalle}` };
+    }
+    const filasConHallazgo = s.filas.filter((fila) => fila.validacion.estadoRedondeo === "ALERTA_MARGEN").length;
+    if (validarMargenMin && filasConHallazgo > 0) {
+      return { ok: false, error: mensajeBloqueoMargenMin(filasConHallazgo) };
+    }
+  }
   await repo.update(compania, solicitudId, { estado: "PENDIENTE" });
   await auditRepository.record({ event: "BORRADOR_ENVIADO", user: usuarioNombre, role: usuarioRol, company: s.compania, requestId: solicitudId, userEmail: usuarioEmail });
   return { ok: true };
