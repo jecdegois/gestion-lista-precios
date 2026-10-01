@@ -1,5 +1,6 @@
 import type { Identidad, EjecucionKey, EstadoEjecucion } from "@/shared/types/domain-types";
 import { resolverCompania } from "@/server/companies";
+import { pricingRepository } from "@/features/solicitudes/repository/pricing-repository";
 import { ejecucionRepository, type EjecucionSpPreciosInput } from "../repository/ejecucion-repository";
 
 export async function crearEjecucion(identidad: Identidad, input: {
@@ -36,9 +37,33 @@ export async function listarEjecuciones(identidad: Identidad, tipo: EjecucionKey
  * Garantia: si ocurre cualquier error despues de crear el log, el registro
  * se cierra con estado ERROR antes de retornar. Nunca lanza al caller.
  */
-export async function ejecutarSpPrecios(identidad: Identidad, input: EjecucionSpPreciosInput) {
+export async function ejecutarSpPrecios(identidad: Identidad, nivelPrecio: string, version: number) {
   const compania = identidad.compania!;
   const schema   = resolverCompania(compania).schema;
+
+  // Parametros releidos de GESTION_LISTAS_PRECIOS: el cliente solo elige lista y version
+  const listas = await pricingRepository.listGlobalManagement(compania);
+  const lista = listas.find((l) => l.codigo === nivelPrecio && Number(l.version) === version);
+  if (!lista) return { ok: false as const, error: "La lista y version indicadas no existen en la gestion de listas." };
+  if (lista.fechaInicio == null || lista.fechaFin == null || lista.factorMultiplicador == null) {
+    return { ok: false as const, error: "La lista no tiene fechas o factor multiplicador configurados." };
+  }
+
+  const input: EjecucionSpPreciosInput = {
+    nivelPrecio:                lista.codigo,
+    moneda:                     lista.moneda,
+    fechaInicio:                lista.fechaInicio,
+    fechaFin:                   lista.fechaFin,
+    nivelPrecioBase:            lista.nivelPrecioBase,
+    monedaBase:                 lista.monedaBase,
+    factorMultiplicador:        lista.factorMultiplicador,
+    version,
+    usuarioSolicitante:         identidad.nombre,
+    exigirFactorConfigurado:    lista.exigirFactorConfigurado,
+    validarPrecioBajoCosto:     lista.validarPrecioBajoCosto,
+    excepcionesArticulos:       lista.excepcionesArticulos,
+    validarPrecioBajoMargenMin: lista.validarPrecioBajoMargenMin,
+  };
 
   // Helpers para construir el EXEC
   const q  = (v: string) => `'${v.replace(/'/g, "''")}'`;

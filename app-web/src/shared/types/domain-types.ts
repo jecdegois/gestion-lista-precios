@@ -16,7 +16,7 @@ export interface AuthContext {
   fullName: string;
   isAdmin: boolean;
   mustChangePassword: boolean;
-  companies: { company: string; currencySymbol: string; brandColor: string; role: RoleCode }[];
+  companies: { company: string; currencySymbol: string; brandColor: string; logoUrl: string | null; role: RoleCode }[];
   /** Empresa activa elegida en el header (null = primera asignada). */
   activeCompany: string | null;
 }
@@ -33,6 +33,8 @@ export interface Identidad {
   moneda?: string;
   /** Color de énfasis de la compañía activa (companies.brand_color). */
   brandColor?: string;
+  /** URL del logo de la compañía activa; sin logo, el header muestra las iniciales. */
+  logoUrl?: string | null;
   /** Administrador global: gestiona usuarios aunque no tenga compañías asignadas. */
   isAdmin?: boolean;
   /** Subject canónico del proveedor de identidad, usado como IDP_OPERADOR. */

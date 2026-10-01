@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 /** Marco común de las pantallas de acceso: marca, tarjeta con título y pie opcional. */
 export default function AuthLayout({
   title,
@@ -14,9 +16,15 @@ export default function AuthLayout({
     <div className="min-h-screen flex items-center justify-center px-6 py-10 bg-white">
       <div className="relative w-full max-w-md">
         <div className="text-center mb-10">
-          <div className="w-14 h-14 rounded-lg bg-zinc-900 flex items-center justify-center text-white font-bold text-lg mx-auto mb-4 shadow-md">
-            GP
-          </div>
+          <Image
+            src="/logos/grupo-mayoreo.png"
+            alt="Grupo Mayoreo"
+            width={666}
+            height={375}
+            sizes="112px"
+            priority
+            className="w-28 h-auto mx-auto mb-4"
+          />
           <h1 className="text-2xl font-bold text-zinc-900 mb-1">Gestión Masiva de Precios</h1>
           <p className="text-zinc-500 text-sm">Sistema de automatización de listas de precio</p>
         </div>

@@ -1,50 +1,32 @@
+import type { FieldErrors, UseFormRegister } from "react-hook-form";
 import FormField from "@/shared/components/ui/FormField";
-
-export type BasicUserData = { email: string; fullName: string; isAdmin: boolean };
+import type { UserFormInput } from "../../schemas/user-schema";
 
 /** Correo, nombre y privilegio de administrador del formulario de usuario. */
 export default function UserFields({
-  data,
+  register,
+  errors,
   emailEditable,
   nameEditable,
-  onChange,
 }: {
-  data: BasicUserData;
+  register: UseFormRegister<UserFormInput>;
+  errors: FieldErrors<UserFormInput>;
   emailEditable: boolean;
   nameEditable: boolean;
-  onChange: (data: BasicUserData) => void;
 }) {
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Correo">
-          <input
-            className="input"
-            type="email"
-            required
-            value={data.email}
-            disabled={!emailEditable}
-            onChange={(e) => onChange({ ...data, email: e.target.value })}
-          />
+        <FormField label="Correo" error={errors.email?.message}>
+          <input className="input" type="email" {...register("email")} disabled={!emailEditable} />
         </FormField>
-        <FormField label="Nombre completo">
-          <input
-            className="input"
-            required
-            value={data.fullName}
-            disabled={!nameEditable}
-            onChange={(e) => onChange({ ...data, fullName: e.target.value })}
-          />
+        <FormField label="Nombre completo" error={errors.fullName?.message}>
+          <input className="input" {...register("fullName")} disabled={!nameEditable} />
         </FormField>
       </div>
 
       <label className="flex items-start gap-2 text-sm text-zinc-700">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={data.isAdmin}
-          onChange={(e) => onChange({ ...data, isAdmin: e.target.checked })}
-        />
+        <input type="checkbox" className="mt-0.5" {...register("isAdmin")} />
         <span>
           <b>Administrador global</b>
           <span className="block text-xs text-zinc-500">Gestiona usuarios y permisos. No otorga acceso operativo por sí solo.</span>

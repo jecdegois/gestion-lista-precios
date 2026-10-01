@@ -1,6 +1,5 @@
 import { apiRequest } from "@/shared/api/api-request";
 import type { EjecucionKey, EjecucionLog, EstadoEjecucion } from "@/shared/types/domain-types";
-import type { EjecucionSpPreciosInput } from "@/features/ejecucion/repository/ejecucion-repository";
 
 export function crearEjecucion(input: { tipo: EjecucionKey; parametros: Record<string, unknown>; spNombre: string; observaciones: string }) {
   return apiRequest<{ ejecucion: EjecucionLog }>("/api/ejecuciones", { method: "POST", body: input });
@@ -15,6 +14,6 @@ export function listarEjecuciones(tipo: EjecucionKey) {
 }
 
 /** Ejecuta SP_GESTION_LISTAS_PRECIOS_FULL end-to-end (crea log, invoca SP, actualiza log). */
-export function ejecutarPrecios(input: EjecucionSpPreciosInput) {
+export function ejecutarPrecios(input: { nivelPrecio: string; version: number }) {
   return apiRequest<{ ejecucion: EjecucionLog }>("/api/ejecuciones/ejecutar", { method: "POST", body: input });
 }

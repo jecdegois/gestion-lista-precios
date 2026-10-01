@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const passwordField = z
   .string()
-  .min(15, { error: "La contraseña debe tener al menos 15 caracteres" })
+  .min(8, { error: "La contraseña debe tener al menos 8 caracteres" })
   .max(128, { error: "La contraseña no puede exceder 128 caracteres" });
 
 export const SignInSchema = z.object({

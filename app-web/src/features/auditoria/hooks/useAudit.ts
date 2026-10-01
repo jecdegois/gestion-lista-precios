@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useToast } from "@/shared/components/layout/PortalProviders";
+import { notify } from "@/shared/notifications/notify";
 import type { EventoAuditoria } from "@/shared/types/domain-types";
 import { getEventos } from "../api/auditoria-api";
 import { AUDIT_PAGE_SIZE } from "../audit-constants";
@@ -12,7 +12,6 @@ import { type AuditFilters, AUDIT_FILTERS_DEFAULT, toApiParams } from "../compon
  * Patrón análogo al useInbox de la bandeja de solicitudes.
  */
 export function useAudit() {
-  const pushToast = useToast();
 
   const [events, setEvents] = useState<EventoAuditoria[]>([]);
   const [total, setTotal] = useState(0);
@@ -40,14 +39,14 @@ export function useAudit() {
           setHasMore(res.data.hasMore);
           setNextOffset(res.data.nextOffset);
         } else {
-          pushToast(res.error, "error");
+          notify.error(res.error);
         }
       } finally {
         setRefreshing(false);
         pendingFetch.current = false;
       }
     },
-    [pushToast],
+    [],
   );
 
   // Carga inicial
@@ -95,12 +94,12 @@ export function useAudit() {
         setHasMore(res.data.hasMore);
         setNextOffset(res.data.nextOffset);
       } else {
-        pushToast(res.error, "error");
+        notify.error(res.error);
       }
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, nextOffset, loadingMore, filters, pushToast]);
+  }, [hasMore, nextOffset, loadingMore, filters]);
 
   return {
     events,

@@ -51,7 +51,7 @@ export default function SetPasswordForm() {
         <AuthField
           label="Nueva contraseña"
           type="password"
-          placeholder="Mínimo 15 caracteres"
+          placeholder="Mínimo 8 caracteres"
           autoComplete="new-password"
           disabled={isLoading}
           registration={register("newPassword")}

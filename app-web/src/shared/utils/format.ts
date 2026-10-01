@@ -1,5 +1,7 @@
 /** Utilidades de formato compartidas por la UI. */
 
+import type { Identidad } from "@/shared/types/domain-types";
+
 export function fmtMonto(n: number | null | undefined, moneda = ""): string {
   if (typeof n !== "number" || Number.isNaN(n)) return "—";
   const monto = n.toLocaleString("es-CR", { maximumFractionDigits: 2 });
@@ -30,4 +32,9 @@ export function fmtPorcentajeCapturado(x: number | string | null | undefined): s
   const numero = Math.abs(Number(String(x).replace(",", ".")));
   if (!Number.isFinite(numero)) return String(x);
   return `${numero.toLocaleString("es-CR", { maximumFractionDigits: 4 })}%`;
+}
+
+/** Rol para mostrar; un administrador sin rol en la compañía se muestra como ADMINISTRADOR. */
+export function roleLabel(user: Pick<Identidad, "rol" | "isAdmin">): string {
+  return user.rol === "SIN_PERMISO" && user.isAdmin ? "ADMINISTRADOR" : user.rol.replace("_", " ");
 }

@@ -51,6 +51,7 @@ export async function getSessionContext(): Promise<AuthContext | null> {
       company: assignment.company,
       currencySymbol: assignment.currencySymbol,
       brandColor: assignment.brandColor,
+      logoUrl: assignment.logoUrl,
       role: assignment.role as RoleCode,
     })),
   };

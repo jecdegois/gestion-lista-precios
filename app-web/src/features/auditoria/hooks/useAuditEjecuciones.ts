@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useToast } from "@/shared/components/layout/PortalProviders";
+import { notify } from "@/shared/notifications/notify";
 import type { EjecucionLog } from "@/shared/types/domain-types";
 import {
   getEjecucionesAudit,
@@ -18,7 +18,6 @@ import {
  * Patrón idéntico a useAudit (solicitudes).
  */
 export function useAuditEjecuciones() {
-  const pushToast = useToast();
 
   const [ejecuciones, setEjecuciones] = useState<EjecucionLog[]>([]);
   const [total,       setTotal]       = useState(0);
@@ -49,14 +48,14 @@ export function useAuditEjecuciones() {
           setHasMore(res.data.hasMore);
           setNextOffset(res.data.nextOffset);
         } else {
-          pushToast(res.error, "error");
+          notify.error(res.error);
         }
       } finally {
         setRefreshing(false);
         pendingFetch.current = false;
       }
     },
-    [pushToast],
+    [],
   );
 
   // Carga inicial (solo al montar)
@@ -99,12 +98,12 @@ export function useAuditEjecuciones() {
         setHasMore(res.data.hasMore);
         setNextOffset(res.data.nextOffset);
       } else {
-        pushToast(res.error, "error");
+        notify.error(res.error);
       }
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, nextOffset, loadingMore, filters, pushToast]);
+  }, [hasMore, nextOffset, loadingMore, filters]);
 
   return {
     ejecuciones,

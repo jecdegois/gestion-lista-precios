@@ -22,6 +22,9 @@
 *.pem
 *.key
 
+# Archivos subidos por los usuarios (UPLOADS_DIR)
+/storage/
+
 # Logs and diagnostics
 *.log
 npm-debug.log*

@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function PortalLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { isAuth, session } = await requireAuth();
   if (!isAuth) redirect("/auth/login");
+  if (session.mustChangePassword) redirect("/auth/cambiar-contrasena");
 
   const user = getIdentidad(session);
 

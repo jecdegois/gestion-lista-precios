@@ -5,6 +5,8 @@ export type CompanySettings = {
   country: string;
   currencySymbol: string;
   brandColor: string;
+  /** URL del logo cargado, o null si la compañía no tiene. */
+  logoUrl: string | null;
 };
 
 /**

@@ -35,6 +35,23 @@ export const UpdateUserSchema = z
 
 export const ApproveUserSchema = PermissionsSchema;
 
+/**
+ * Formulario de usuario: un rol (o "" = sin acceso) por compañía.
+ * Correo y nombre se validan siempre; los no editables vienen precargados del usuario.
+ */
+export const UserFormSchema = z
+  .object({
+    email: z.string().trim().pipe(z.email({ error: "El correo electrónico no es válido" })),
+    fullName: z.string().trim().min(1, { error: "El nombre es obligatorio" }),
+    isAdmin: z.boolean(),
+    roles: z.record(z.string(), z.enum([...ROLE_CODES, ""])),
+  })
+  .refine((data) => data.isAdmin || Object.values(data.roles).some(Boolean), {
+    error: "Asigne al menos una compañía o marque al usuario como administrador",
+    path: ["roles"],
+  });
+
+export type UserFormInput = z.infer<typeof UserFormSchema>;
 export type CreateUserInput = z.infer<typeof CreateUserSchema>;
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
 export type ApproveUserInput = z.infer<typeof ApproveUserSchema>;

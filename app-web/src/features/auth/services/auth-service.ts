@@ -7,8 +7,10 @@ import {
   ChangePasswordInput,
 } from "../schemas/auth-schema";
 import { authRepository } from "../repository/auth-repository";
+import type { GoogleIdentity } from "./google-oidc";
+import { companyLogoUrl } from "@/features/settings/utils/company-logo";
 
-const { users, sessions, tokens, counters, audit } = authRepository;
+const { users, sessions, tokens, audit } = authRepository;
 
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 } as const;
 const PASSWORD_KEY_LENGTH = 64;
@@ -69,10 +71,6 @@ const GENERIC_RESET_MESSAGE =
 
 class AuthService {
   async signUp(input: SignUpInput, ctx: RequestContext): Promise<AuthResult> {
-    if (await counters.isBlocked(input.email, "signup")) {
-      return { ok: false, error: "Demasiados intentos. Intente más tarde." };
-    }
-
     const existing = await users.findByEmail(input.email);
     if (existing) {
       return { ok: true, message: "Solicitud recibida. La cuenta queda pendiente de aprobación." };
@@ -84,7 +82,6 @@ class AuthService {
       fullName: input.name,
       passwordHash,
     });
-    await counters.reset(input.email, "signup");
     await audit.record({
       event: "signup_requested",
       actorEmail: user.email,
@@ -100,15 +97,10 @@ class AuthService {
     input: SignInInput,
     ctx: RequestContext,
   ): Promise<AuthResult & { sessionToken?: string }> {
-    if (await counters.isBlocked(input.email, "login")) {
-      return { ok: false, error: "Demasiados intentos. Intente más tarde." };
-    }
-
     const user = await users.findByEmail(input.email);
     const passwordOk = await verifyPassword(input.password, user?.passwordHash ?? null);
 
     if (!user || !passwordOk || user.status === "inactive") {
-      await counters.registerFailure(input.email, "login");
       await audit.record({
         event: "login_failed",
         actorEmail: input.email,
@@ -118,11 +110,55 @@ class AuthService {
       return { ok: false, error: "Credenciales inválidas" };
     }
 
-    await counters.reset(input.email, "login");
+    return this.startSession(user, "password", ctx);
+  }
+
+  /**
+   * Login con Google: busca por sub y, la primera vez, enlaza por email.
+   * No crea cuentas; el correo debe existir en el portal.
+   */
+  async signInWithGoogle(
+    identity: GoogleIdentity,
+    ctx: RequestContext,
+  ): Promise<AuthResult & { sessionToken?: string }> {
+    let user = await users.findByGoogleSub(identity.sub);
+
+    if (!user) {
+      const byEmail = await users.findByEmail(identity.email);
+      // Si el usuario ya tiene otra cuenta de Google enlazada, no se reemplaza.
+      if (byEmail && !byEmail.googleSub) {
+        user = await users.linkGoogle(byEmail.id, identity.sub);
+      }
+    }
+
+    if (!user || user.status === "inactive") {
+      await audit.record({
+        event: "login_failed",
+        actorEmail: identity.email,
+        ipAddress: ctx.ip,
+        userAgent: ctx.userAgent,
+        details: { provider: "google" },
+      });
+      return { ok: false, error: "No hay una cuenta activa del portal para ese correo de Google" };
+    }
+    // Sin sesión: el login de Google vuelve a la pantalla de login con el aviso.
+    if (user.status === "pending") {
+      return { ok: true, message: "Su cuenta está pendiente de aprobación" };
+    }
+
+    return this.startSession(user, "google", ctx);
+  }
+
+  private async startSession(
+    user: { id: string; email: string; status: string },
+    authProvider: "password" | "google",
+    ctx: RequestContext,
+  ): Promise<AuthResult & { sessionToken?: string }> {
     await sessions.purgeExpired();
 
     const { token } = await sessions.issue({
       userId: user.id,
+      authProvider,
       ipAddress: ctx.ip,
       userAgent: ctx.userAgent,
     });
@@ -150,15 +186,10 @@ class AuthService {
   }
 
   async requestPasswordReset(input: ForgotPasswordInput, ctx: RequestContext): Promise<AuthResult> {
-    if (await counters.isBlocked(input.email, "password_reset")) {
-      return { ok: true, message: GENERIC_RESET_MESSAGE };
-    }
-
     const user = await users.findByEmail(input.email);
 
     if (user && user.status === "active" && user.passwordHash) {
       const token = await tokens.issue(user.id, "password_reset");
-      await counters.registerFailure(input.email, "password_reset");
       await audit.record({
         event: "password_reset",
         actorId: user.id,
@@ -170,7 +201,6 @@ class AuthService {
       return { ok: true, resetToken: token, message: GENERIC_RESET_MESSAGE };
     }
 
-    await counters.registerFailure(input.email, "password_reset");
     return { ok: true, message: GENERIC_RESET_MESSAGE };
   }
 
@@ -194,7 +224,6 @@ class AuthService {
     const passwordHash = await hashPassword(input.newPassword);
     await users.changePassword(user.id, passwordHash);
     await sessions.revokeAllForUser(user.id, "password_reset");
-    await counters.reset(user.email, "password_reset");
     await audit.record({
       event: "password_changed",
       actorId: user.id,
@@ -265,12 +294,14 @@ class AuthService {
         fullName: record.user.fullName,
         status: record.user.status,
         isAdmin: record.user.isAdmin,
-        mustChangePassword: record.user.mustChangePassword,
+        // Quien entra con Google no conoce la contraseña temporal: no se le exige cambiarla.
+        mustChangePassword: record.user.mustChangePassword && record.authProvider === "password",
         companies: record.user.companies.flatMap((companyRecord) =>
           companyRecord.userRoles.map((userRole) => ({
             company: companyRecord.company,
             currencySymbol: companyRecord.companyInfo.currencySymbol,
             brandColor: companyRecord.companyInfo.brandColor,
+            logoUrl: companyLogoUrl(companyRecord.company, companyRecord.companyInfo.logoUpdatedAt),
             role: userRole.role.code,
           })),
         ),

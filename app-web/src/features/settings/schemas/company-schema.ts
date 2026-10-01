@@ -36,5 +36,11 @@ export const CreateCompanySchema = UpdateCompanySchema.extend({
   code: sqlIdentifier("El código"),
 });
 
+/** Formulario de compañía: el esquema SQL toma el código cuando se deja vacío. */
+export const CompanyFormSchema = z.preprocess(
+  (data: CreateCompanyInput) => ({ ...data, sqlSchema: data.sqlSchema.trim() || data.code }),
+  CreateCompanySchema,
+);
+
 export type UpdateCompanyInput = z.infer<typeof UpdateCompanySchema>;
 export type CreateCompanyInput = z.infer<typeof CreateCompanySchema>;

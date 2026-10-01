@@ -133,18 +133,8 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
     setLastResult(null);
 
     const result = await ejecutarPrecios({
-      nivelPrecio:                selectedList.codigo,
-      moneda:                     selectedList.moneda ?? null,
-      fechaInicio:                selectedList.fechaInicio!,
-      fechaFin:                   selectedList.fechaFin!,
-      nivelPrecioBase:            selectedList.nivelPrecioBase,
-      monedaBase:                 selectedList.monedaBase ?? null,
-      factorMultiplicador:        selectedList.factorMultiplicador!,
-      version:                    Number(selectedList.version),
-      validarPrecioBajoCosto:     selectedList.validarPrecioBajoCosto,
-      exigirFactorConfigurado:    selectedList.exigirFactorConfigurado,
-      excepcionesArticulos:       selectedList.excepcionesArticulos,
-      validarPrecioBajoMargenMin: selectedList.validarPrecioBajoMargenMin,
+      nivelPrecio: selectedList.codigo,
+      version:     Number(selectedList.version),
     });
 
     setProcessing(false);

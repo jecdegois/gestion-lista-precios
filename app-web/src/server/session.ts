@@ -31,6 +31,7 @@ export function getIdentidad(session: AuthContext): Identidad {
     companias: [...new Set(session.companies.map((c) => c.company))],
     moneda: asignacion?.currencySymbol ?? "",
     brandColor: asignacion?.brandColor,
+    logoUrl: asignacion?.logoUrl,
     isAdmin: session.isAdmin,
   };
 }

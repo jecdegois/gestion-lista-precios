@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useToast } from "@/shared/components/layout/PortalProviders";
+import { notify } from "@/shared/notifications/notify";
 import { descargarSimulacionExcel } from "@/features/solicitudes/utils/export-simulation";
 import type { FilaResultado } from "@/shared/types/domain-types";
 
 /** Exporta a Excel las filas simuladas; `getRows` puede ser asíncrono (p. ej. traer todas las páginas). */
 export function useSimulationExport(fileSlug: string, variationLabel: string, modo?: "precioBase") {
-  const pushToast = useToast();
   const [exporting, setExporting] = useState(false);
 
   /**
@@ -32,7 +31,7 @@ export function useSimulationExport(fileSlug: string, variationLabel: string, mo
         modo,
       );
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : "No fue posible exportar la simulación.", "error");
+      notify.error(error instanceof Error ? error.message : "No fue posible exportar la simulación.");
     } finally {
       setExporting(false);
     }

@@ -1,42 +1,20 @@
 import { apiBadRequest, apiServiceResult, parseJsonBody, withIdentidad } from "@/shared/api";
 import { ejecutarSpPrecios } from "@/features/ejecucion/services/ejecucion-service";
-import type { EjecucionSpPreciosInput } from "@/features/ejecucion/repository/ejecucion-repository";
 
 /**
  * POST /api/ejecuciones/ejecutar
- * Cuerpo esperado: EjecucionSpPreciosInput
+ * Cuerpo esperado: { nivelPrecio, version }. El resto de parametros se relee de
+ * GESTION_LISTAS_PRECIOS en el servidor; no se confia en lo que mande el cliente.
  * Orquesta: crea log EN_PROCESO → ejecuta SP_GESTION_LISTAS_PRECIOS_FULL → actualiza log COMPLETADO | ERROR.
  */
 export const POST = withIdentidad(async (req, identidad) => {
-  const body = await parseJsonBody<Partial<EjecucionSpPreciosInput>>(req);
+  const body = await parseJsonBody<{ nivelPrecio?: unknown; version?: unknown }>(req);
+  const nivelPrecio = typeof body?.nivelPrecio === "string" ? body.nivelPrecio.trim() : "";
+  const version = Number(body?.version);
 
-  if (
-    !body?.nivelPrecio        ||
-    !body.fechaInicio         ||
-    !body.fechaFin            ||
-    !body.nivelPrecioBase     ||
-    body.factorMultiplicador == null ||
-    body.version == null
-  ) {
+  if (!nivelPrecio || !Number.isInteger(version)) {
     return apiBadRequest("Parametros de ejecucion incompletos.");
   }
 
-  const input: EjecucionSpPreciosInput = {
-    nivelPrecio:                body.nivelPrecio,
-    moneda:                     body.moneda ?? null,
-    fechaInicio:                body.fechaInicio,
-    fechaFin:                   body.fechaFin,
-    nivelPrecioBase:            body.nivelPrecioBase,
-    monedaBase:                 body.monedaBase ?? null,
-    factorMultiplicador:        body.factorMultiplicador,
-    version:                    body.version,
-    // El usuario solicitante se toma de la identidad del servidor, no del body
-    usuarioSolicitante:         identidad.nombre,
-    exigirFactorConfigurado:    body.exigirFactorConfigurado  ?? false,
-    validarPrecioBajoCosto:     body.validarPrecioBajoCosto   ?? false,
-    excepcionesArticulos:       body.excepcionesArticulos     ?? null,
-    validarPrecioBajoMargenMin: body.validarPrecioBajoMargenMin ?? false,
-  };
-
-  return apiServiceResult(await ejecutarSpPrecios(identidad, input));
+  return apiServiceResult(await ejecutarSpPrecios(identidad, nivelPrecio, version));
 });

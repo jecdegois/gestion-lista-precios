@@ -67,7 +67,7 @@ export default function RegisterForm() {
         <AuthField
           label="Contraseña"
           type="password"
-          placeholder="Mínimo 15 caracteres"
+          placeholder="Mínimo 8 caracteres"
           autoComplete="new-password"
           disabled={isLoading}
           registration={register("password")}

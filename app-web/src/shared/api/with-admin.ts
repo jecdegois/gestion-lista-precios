@@ -2,6 +2,7 @@ import type { AuthContext } from "@/shared/types/domain-types";
 import { authRepository } from "@/features/auth/repository/auth-repository";
 import { getServerSession } from "@/server/session";
 import { apiError, apiUnauthorized, withApiRoute } from "./api-response";
+import { MUST_CHANGE_PASSWORD_ERROR } from "./with-identidad";
 
 /**
  * Como `withIdentidad`, pero exige administrador global y entrega el contexto de
@@ -14,6 +15,7 @@ export function withAdmin<C = unknown>(
     withApiRoute(async (r: Request) => {
       const session = await getServerSession();
       if (!session) return apiUnauthorized("Sesión no válida");
+      if (session.mustChangePassword) return apiError(MUST_CHANGE_PASSWORD_ERROR, 403);
       if (!session.isAdmin) {
         await authRepository.audit.record({
           event: "access_denied",

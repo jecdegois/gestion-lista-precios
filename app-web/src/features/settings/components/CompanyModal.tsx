@@ -1,12 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import ColorInput from "@/shared/components/ui/ColorInput";
 import FormField from "@/shared/components/ui/FormField";
 import Modal from "@/shared/components/ui/Modal";
-import { CreateCompanySchema, type CreateCompanyInput } from "../schemas/company-schema";
+import { CompanyFormSchema, type CreateCompanyInput } from "../schemas/company-schema";
+import type { LogoChange } from "../hooks/useCompanySettings";
 import type { CompanySettings } from "../types";
 import { DEFAULT_BRAND_COLOR } from "../utils/brand-color";
+import LogoInput from "./LogoInput";
 
 const EMPTY: CreateCompanyInput = {
   code: "",
@@ -28,82 +32,63 @@ export default function CompanyModal({
 }: {
   company?: CompanySettings;
   onClose: () => void;
-  onSubmit: (input: CreateCompanyInput) => Promise<boolean>;
+  onSubmit: (input: CreateCompanyInput, logo: LogoChange) => Promise<boolean>;
 }) {
   const editing = !!company;
-  const [data, setData] = useState<CreateCompanyInput>(company ? { ...company } : EMPTY);
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const set = (field: keyof CreateCompanyInput) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setData((d) => ({ ...d, [field]: e.target.value }));
+  const [logo, setLogo] = useState<LogoChange>(undefined);
+  const [logoError, setLogoError] = useState<string>();
+  const {
+    register,
+    control,
+    watch,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm({ resolver: zodResolver(CompanyFormSchema), defaultValues: company ? { ...company } : EMPTY });
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    // El esquema SQL toma el código cuando se deja vacío.
-    const parsed = CreateCompanySchema.safeParse({ ...data, sqlSchema: data.sqlSchema.trim() || data.code });
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Datos inválidos");
-      return;
-    }
-    setError("");
-    setSubmitting(true);
-    const ok = await onSubmit(parsed.data);
-    setSubmitting(false);
-    if (ok) onClose();
+  async function submit(input: CreateCompanyInput) {
+    if (await onSubmit(input, logo)) onClose();
   }
 
   return (
     <Modal
       title={editing ? `Editar ${company.name}` : "Nueva compañía"}
       onClose={onClose}
-      onSubmit={handleSubmit}
+      onSubmit={handleSubmit(submit)}
       footer={
         <>
           <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
-          <button type="submit" className="btn btn-default" disabled={submitting}>
-            {submitting ? "Guardando…" : editing ? "Guardar cambios" : "Crear compañía"}
+          <button type="submit" className="btn btn-default" disabled={isSubmitting}>
+            {isSubmitting ? "Guardando…" : editing ? "Guardar cambios" : "Crear compañía"}
           </button>
         </>
       }
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Código" hint={editing ? "No se puede cambiar" : "Único; p. ej. COFERSA"}>
-          <input
-            className="input uppercase"
-            value={data.code}
-            onChange={set("code")}
-            maxLength={30}
-            autoFocus={!editing}
-            disabled={editing}
-            required
+        <FormField label="Código" hint={editing ? "No se puede cambiar" : "Único; p. ej. COFERSA"} error={errors.code?.message}>
+          <input className="input uppercase" {...register("code")} maxLength={30} autoFocus={!editing} disabled={editing} />
+        </FormField>
+        <FormField label="Nombre" error={errors.name?.message}>
+          <input className="input" {...register("name")} maxLength={100} />
+        </FormField>
+        <FormField label="Esquema SQL" error={errors.sqlSchema?.message}>
+          <input className="input uppercase" {...register("sqlSchema")} maxLength={30} placeholder={watch("code").toUpperCase()} />
+        </FormField>
+        <FormField label="País" hint="Código de 2 letras; p. ej. VE" error={errors.country?.message}>
+          <input className="input uppercase" {...register("country")} maxLength={2} />
+        </FormField>
+        <FormField label="Moneda" hint="Símbolo; p. ej. Bs." error={errors.currencySymbol?.message}>
+          <input className="input" {...register("currencySymbol")} maxLength={5} />
+        </FormField>
+        <FormField label="Color de marca" error={errors.brandColor?.message}>
+          <Controller
+            control={control}
+            name="brandColor"
+            render={({ field }) => <ColorInput label="Color de marca" value={field.value} onChange={field.onChange} />}
           />
         </FormField>
-        <FormField label="Nombre">
-          <input className="input" value={data.name} onChange={set("name")} maxLength={100} required />
+        <FormField label="Logo" hint="PNG, JPEG o WebP de hasta 512 KB; se muestra en el header" error={logoError} className="sm:col-span-2">
+          <LogoInput currentUrl={company?.logoUrl ?? null} value={logo} onChange={setLogo} onError={setLogoError} />
         </FormField>
-        <FormField label="Esquema SQL" hint="Esquema en SQL Server; vacío usa el código">
-          <input
-            className="input uppercase"
-            value={data.sqlSchema}
-            onChange={set("sqlSchema")}
-            maxLength={30}
-            placeholder={data.code.toUpperCase()}
-          />
-        </FormField>
-        <FormField label="País" hint="Código de 2 letras; p. ej. VE">
-          <input className="input uppercase" value={data.country} onChange={set("country")} maxLength={2} />
-        </FormField>
-        <FormField label="Moneda" hint="Símbolo; p. ej. Bs.">
-          <input className="input" value={data.currencySymbol} onChange={set("currencySymbol")} maxLength={5} required />
-        </FormField>
-        <FormField label="Color de marca">
-          <ColorInput
-            label="Color de marca"
-            value={data.brandColor}
-            onChange={(brandColor) => setData((d) => ({ ...d, brandColor }))}
-          />
-        </FormField>
-        {error && <p role="alert" className="sm:col-span-2 text-sm text-red-600">{error}</p>}
       </div>
     </Modal>
   );

@@ -9,6 +9,12 @@ model Company {
   country   String   @default("")
   /// Color de énfasis del portal para la empresa, en hex #RRGGBB.
   brandColor String  @map("brand_color") @default("#18181B")
+  /// Logo de la empresa (PNG, JPEG o WebP) que se muestra en el header del portal.
+  /// Clave del archivo en el almacenamiento de subidas (`src/server/storage.ts`).
+  logoKey   String?   @map("logo_key")
+  logoMimeType  String?   @map("logo_mime_type")
+  /// Versión del logo para invalidar la caché del navegador; null = sin logo.
+  logoUpdatedAt DateTime? @map("logo_updated_at") @db.Timestamptz(6)
   isActive  Boolean  @map("is_active") @default(true)
   createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @map("updated_at") @updatedAt @db.Timestamptz(6)

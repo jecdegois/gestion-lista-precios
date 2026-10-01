@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useToast } from "@/shared/components/layout/PortalProviders";
+import { notify } from "@/shared/notifications/notify";
 import type { Solicitud } from "@/shared/types/domain-types";
 import { enviarBorrador, enviarSolicitud, guardarBorrador } from "../api/solicitudes-api";
 import type { SolicitudInput } from "../schemas/solicitud-schema";
@@ -19,7 +19,6 @@ export function useRequestSubmission({
   onSubmitted: () => void;
   onReset: () => void;
 }) {
-  const pushToast = useToast();
   const [draftId, setDraftId] = useState<string | null>(draft?.id ?? null);
   const [sending, setSending] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -30,10 +29,10 @@ export function useRequestSubmission({
     const res = await guardarBorrador(input);
     setSavingDraft(false);
     if (!res.ok) {
-      pushToast(res.error, "error");
+      notify.error(res.error);
       return;
     }
-    pushToast(`Borrador ${res.data.solicitud.id} guardado. Puedes retomarlo desde "Mis solicitudes".`, "success");
+    notify.success(`Borrador ${res.data.solicitud.id} guardado. Puedes retomarlo desde "Mis solicitudes".`);
     onSubmitted();
   }
 
@@ -42,13 +41,13 @@ export function useRequestSubmission({
     const res = draftId ? await enviarBorrador(draftId) : await enviarSolicitud(input);
     setSending(false);
     if (!res.ok) {
-      pushToast(res.error, "error");
+      notify.error(res.error);
       return;
     }
     const id = draftId ?? ("solicitud" in res.data ? res.data.solicitud.id : "");
     setSent(true);
     setDraftId(null);
-    pushToast(`Solicitud ${id} enviada a aprobación · Estado: Pendiente de aprobación`, "success");
+    notify.success(`Solicitud ${id} enviada a aprobación · Estado: Pendiente de aprobación`);
     onSubmitted();
     setTimeout(() => {
       setSent(false);

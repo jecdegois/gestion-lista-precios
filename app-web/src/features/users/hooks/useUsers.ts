@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useToast } from "@/shared/components/layout/PortalProviders";
+import { notify } from "@/shared/notifications/notify";
 import type { ApiResult } from "@/shared/api/api-types";
 import {
   approveUser,
@@ -19,7 +19,6 @@ export type TemporaryPassword = { email: string; password: string };
 
 /** Estado del listado de usuarios y sus acciones; cada acción notifica y refresca. */
 export function useUsers() {
-  const pushToast = useToast();
   const [users, setUsers] = useState<UserView[]>([]);
   const [catalogs, setCatalogs] = useState<Catalogs>({ companies: [], roles: [] });
   const [loading, setLoading] = useState(true);
@@ -30,9 +29,9 @@ export function useUsers() {
     if (res.ok) {
       setUsers(res.data.users);
       setCatalogs({ companies: res.data.companies, roles: res.data.roles });
-    } else pushToast(res.error, "error");
+    } else notify.error(res.error);
     setLoading(false);
-  }, [pushToast]);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -42,10 +41,10 @@ export function useUsers() {
   async function run<T>(action: Promise<ApiResult<T>>, onSuccess?: (data: T) => void) {
     const res = await action;
     if (!res.ok) {
-      pushToast(res.error, "error");
+      notify.error(res.error);
       return false;
     }
-    pushToast(res.message ?? "Operación realizada", "success");
+    notify.success(res.message ?? "Operación realizada");
     onSuccess?.(res.data);
     await refresh();
     return true;

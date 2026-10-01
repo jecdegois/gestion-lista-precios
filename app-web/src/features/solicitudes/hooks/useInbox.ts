@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useToast } from "@/shared/components/layout/PortalProviders";
+import { notify } from "@/shared/notifications/notify";
 import type { Solicitud } from "@/shared/types/domain-types";
 import type { ApiResult } from "@/shared/api/api-types";
 import {
@@ -24,7 +24,6 @@ export const INBOX_PAGE_SIZE = 20;
  * El polling de EN_PROCESO refresca solo la primera página para no sobrecargar.
  */
 export function useInbox(readOnly: boolean) {
-  const pushToast = useToast();
 
   // Lista acumulada de solicitudes (cabeceras sin filas de detalle)
   const [requests, setRequests] = useState<Solicitud[]>([]);
@@ -51,12 +50,12 @@ export function useInbox(readOnly: boolean) {
         setHasMore(res.data.hasMore);
         setNextOffset(res.data.nextOffset);
       } else {
-        pushToast(res.error, "error");
+        notify.error(res.error);
       }
     } finally {
       setRefreshing(false);
     }
-  }, [pushToast]);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -79,12 +78,12 @@ export function useInbox(readOnly: boolean) {
         setHasMore(res.data.hasMore);
         setNextOffset(res.data.nextOffset);
       } else {
-        pushToast(res.error, "error");
+        notify.error(res.error);
       }
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, nextOffset, loadingMore, pushToast]);
+  }, [hasMore, nextOffset, loadingMore]);
 
   // ── Polling de EN_PROCESO: refresca solo la primera página ─────────────────
   const hasRunning = requests.some((s) => s.estado === "EN_PROCESO");
@@ -129,7 +128,7 @@ export function useInbox(readOnly: boolean) {
       if (res.ok) {
         setModalRequest(res.data.solicitud);
       } else {
-        pushToast(res.error, "error");
+        notify.error(res.error);
       }
     } finally {
       setLoadingDetail(false);
@@ -158,24 +157,24 @@ export function useInbox(readOnly: boolean) {
   ) {
     if (readOnly) return;
     const res = await action();
-    if (!res.ok) pushToast(res.error, "error");
-    else pushToast(success, variant);
+    if (!res.ok) notify.error(res.error);
+    else notify.show(success, variant);
     await refresh();
   }
 
   async function approve(id: string) {
     if (readOnly) return;
     const res = await aprobarSolicitud(id);
-    if (!res.ok) pushToast(res.error, "error");
-    else pushToast(`Solicitud ${id} en proceso · ${res.data.idProcesoSP ?? ""}`, "success");
+    if (!res.ok) notify.error(res.error);
+    else notify.success(`Solicitud ${id} en proceso · ${res.data.idProcesoSP ?? ""}`);
     await refresh();
   }
 
   async function retry(id: string) {
     if (readOnly) return;
     const res = await reintentarSolicitud(id);
-    if (!res.ok) pushToast(res.error, "error");
-    else pushToast(`Solicitud ${id} reintentada y enviada a proceso.`, "success");
+    if (!res.ok) notify.error(res.error);
+    else notify.success(`Solicitud ${id} reintentada y enviada a proceso.`);
     await refresh();
   }
 

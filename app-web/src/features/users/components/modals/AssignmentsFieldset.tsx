@@ -1,17 +1,16 @@
-import type { RoleCode } from "@/shared/types/domain-types";
+import type { UseFormRegister } from "react-hook-form";
+import type { UserFormInput } from "../../schemas/user-schema";
 import type { Catalogs } from "../../types";
-
-export type RolesByCompany = Record<string, RoleCode | "">;
 
 /** Un selector de rol por compañía; "Sin acceso" quita la asignación. */
 export default function AssignmentsFieldset({
   catalogs,
-  roles,
-  onChange,
+  register,
+  error,
 }: {
   catalogs: Catalogs;
-  roles: RolesByCompany;
-  onChange: (roles: RolesByCompany) => void;
+  register: UseFormRegister<UserFormInput>;
+  error?: string;
 }) {
   return (
     <fieldset>
@@ -23,12 +22,7 @@ export default function AssignmentsFieldset({
               <span className="mono text-xs text-zinc-500 mr-2">{c.code}</span>
               {c.name}
             </label>
-            <select
-              id={`role-${c.code}`}
-              className="input !w-48"
-              value={roles[c.code] ?? ""}
-              onChange={(e) => onChange({ ...roles, [c.code]: e.target.value as RoleCode | "" })}
-            >
+            <select id={`role-${c.code}`} className="input !w-48" {...register(`roles.${c.code}`)}>
               <option value="">Sin acceso</option>
               {catalogs.roles.map((r) => (
                 <option key={r.code} value={r.code}>{r.name}</option>
@@ -37,6 +31,7 @@ export default function AssignmentsFieldset({
           </div>
         ))}
       </div>
+      {error && <p role="alert" className="text-[11px] text-red-600 mt-1">{error}</p>}
     </fieldset>
   );
 }

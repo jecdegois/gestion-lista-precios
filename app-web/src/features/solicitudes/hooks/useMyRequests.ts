@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useToast } from "@/shared/components/layout/PortalProviders";
+import { notify } from "@/shared/notifications/notify";
 import type { ProcesoKey, Solicitud } from "@/shared/types/domain-types";
 import { enviarBorrador, getMisSolicitudes, getSolicitudDetalle, solicitarCancelacion } from "../api/solicitudes-api";
 
@@ -17,7 +17,6 @@ export function useMyRequests(process: ProcesoKey, readOnly: boolean) {
   const router = useRouter();
   const pathname = usePathname();
   const draftParam = useRef(useSearchParams().get("borrador"));
-  const pushToast = useToast();
 
   const [requests, setRequests] = useState<Solicitud[]>([]);
   const [total, setTotal] = useState(0);
@@ -34,7 +33,7 @@ export function useMyRequests(process: ProcesoKey, readOnly: boolean) {
   const refresh = useCallback(async () => {
     const res = await getMisSolicitudes(process, 0, PAGE_SIZE);
     if (!res.ok) {
-      pushToast(res.error, "error");
+      notify.error(res.error);
       return;
     }
     setRequests(res.data.solicitudes);
@@ -54,7 +53,7 @@ export function useMyRequests(process: ProcesoKey, readOnly: boolean) {
       }
       router.replace(pathname);
     }
-  }, [pathname, process, pushToast, router]);
+  }, [pathname, process, router]);
 
   useEffect(() => {
     void refresh();
@@ -76,12 +75,12 @@ export function useMyRequests(process: ProcesoKey, readOnly: boolean) {
         setHasMore(res.data.hasMore);
         setNextOffset(res.data.nextOffset);
       } else {
-        pushToast(res.error, "error");
+        notify.error(res.error);
       }
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, nextOffset, loadingMore, process, pushToast]);
+  }, [hasMore, nextOffset, loadingMore, process]);
 
   // ── Detalle lazy al abrir el modal ────────────────────────────────────────
   async function openWithDetail(id: string): Promise<void> {
@@ -91,7 +90,7 @@ export function useMyRequests(process: ProcesoKey, readOnly: boolean) {
     try {
       const res = await getSolicitudDetalle(id);
       if (res.ok) setModalRequest(res.data.solicitud);
-      else pushToast(res.error, "error");
+      else notify.error(res.error);
     } finally {
       setLoadingDetail(false);
     }
@@ -104,16 +103,16 @@ export function useMyRequests(process: ProcesoKey, readOnly: boolean) {
   async function submitDraft(id: string) {
     if (readOnly) return;
     const res = await enviarBorrador(id);
-    if (!res.ok) pushToast(res.error, "error");
-    else pushToast(`Solicitud ${id} enviada a aprobación.`, "success");
+    if (!res.ok) notify.error(res.error);
+    else notify.success(`Solicitud ${id} enviada a aprobación.`);
     await refresh();
   }
 
   async function requestCancellation(id: string, reason: string) {
     if (readOnly) return;
     const res = await solicitarCancelacion(id, { motivo: reason });
-    if (!res.ok) pushToast(res.error, "error");
-    else pushToast(`Cancelación de ${id} solicitada. El aprobador debe confirmarla.`, "success");
+    if (!res.ok) notify.error(res.error);
+    else notify.success(`Cancelación de ${id} solicitada. El aprobador debe confirmarla.`);
     await refresh();
   }
 

@@ -1,5 +1,6 @@
 import type { TableColumn } from "@/shared/components/ui/ResponsiveDataTable";
 import ColorSwatch from "@/shared/components/ui/ColorSwatch";
+import Icon from "@/shared/components/ui/Icon";
 import type { CompanyListItem } from "../../types";
 
 /** Bases donde falta el esquema de la compañía (vacío si existe o si no se pudo verificar). */
@@ -12,9 +13,11 @@ function missingSchemas(company: CompanyListItem): string[] {
 export function companyColumns({
   inUseCode,
   onEdit,
+  onDelete,
 }: {
   inUseCode: string | null;
   onEdit: (company: CompanyListItem) => void;
+  onDelete: (company: CompanyListItem) => void;
 }): TableColumn<CompanyListItem>[] {
   return [
     {
@@ -59,9 +62,23 @@ export function companyColumns({
       header: "Acciones",
       align: "right",
       render: (c) => (
-        <button className="btn btn-outline" onClick={() => onEdit(c)}>
-          Editar
-        </button>
+        <div className="inline-flex gap-1">
+          <button className="btn btn-outline" onClick={() => onEdit(c)}>
+            Editar
+          </button>
+          <button
+            className="btn btn-ghost"
+            title={`Eliminar ${c.name}`}
+            aria-label={`Eliminar ${c.name}`}
+            onClick={(e) => {
+              // Sin propagar: la fila abriría el modal de edición.
+              e.stopPropagation();
+              onDelete(c);
+            }}
+          >
+            <Icon name="trash" className="w-4 h-4 text-red-600" />
+          </button>
+        </div>
       ),
     },
   ];

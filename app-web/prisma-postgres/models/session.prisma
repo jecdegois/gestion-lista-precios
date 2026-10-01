@@ -6,6 +6,11 @@ enum SessionRevokeReason {
   permissions_change
 }
 
+enum AuthProvider {
+  password
+  google
+}
+
 model Session {
   id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tokenHash    Bytes                @unique @map("token_hash")
@@ -19,6 +24,8 @@ model Session {
   userAgent    String?              @map("user_agent")
   /// Empresa activa elegida en el header; si ya no está asignada se usa la primera.
   activeCompany String?             @map("active_company")
+  /// Método de login; el cambio de contraseña obligatorio solo aplica a "password".
+  authProvider AuthProvider         @default(password) @map("auth_provider")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

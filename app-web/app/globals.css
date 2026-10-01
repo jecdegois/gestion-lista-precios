@@ -58,10 +58,6 @@ body { background: #f8f9fb; color: #0a0a0a; font-family: Inter, ui-sans-serif, s
 .nav-link { font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 8px; color: #71717a; cursor: pointer; user-select: none; }
 .nav-link.active { background: var(--accent); color: var(--accent-fg); }
 .row-alert { background: #FEF2F2; }
-.toast-wrap { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; width: min(380px, 90vw); }
-.toast { background: #18181b; color: #fff; font-size: 13px; padding: 11px 14px; border-radius: 10px; box-shadow: 0 10px 25px -5px rgba(0,0,0,.3); display: flex; align-items: flex-start; gap: 8px; }
-.toast.success { background: #15803D; }
-.toast.error { background: #DC2626; }
 
 .progress-track { width: 100%; height: 10px; background: #e4e4e7; border-radius: 999px; overflow: hidden; }
 .progress-fill { height: 100%; background: linear-gradient(90deg,#4338CA,#6366F1); border-radius: 999px; }

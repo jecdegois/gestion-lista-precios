@@ -4,14 +4,6 @@ import type { Prisma } from "@/generated/postgres";
 
 export const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
-export const RATE_LIMIT = {
-  attempts: 5,
-  windowMs: 15 * 60 * 1000,
-  blockMs: 15 * 60 * 1000,
-} as const;
-
-export type AttemptType = "login" | "signup" | "password_reset";
-
 type TokenPurpose = "password_reset" | "admin_invite";
 
 export type AuditInput = {
@@ -28,6 +20,14 @@ export type AuditInput = {
 const users = {
   findByEmail(email: string) {
     return prisma.user.findUnique({ where: { email } });
+  },
+
+  findByGoogleSub(googleSub: string) {
+    return prisma.user.findUnique({ where: { googleSub } });
+  },
+
+  linkGoogle(id: string, googleSub: string) {
+    return prisma.user.update({ where: { id }, data: { googleSub } });
   },
 
   findById(id: string) {
@@ -61,7 +61,12 @@ const users = {
 };
 
 const sessions = {
-  issue(input: { userId: string; ipAddress?: string; userAgent?: string }) {
+  issue(input: {
+    userId: string;
+    authProvider: "password" | "google";
+    ipAddress?: string;
+    userAgent?: string;
+  }) {
     const token = randomBytes(32).toString("base64url");
     const tokenHash = createHash("sha256").update(token).digest();
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
@@ -82,7 +87,7 @@ const sessions = {
             companies: {
               where: { isActive: true, revokedAt: null },
               include: {
-                companyInfo: { select: { currencySymbol: true, brandColor: true } },
+                companyInfo: { select: { currencySymbol: true, brandColor: true, logoUpdatedAt: true } },
                 userRoles: {
                   where: { revokedAt: null },
                   include: { role: true },
@@ -174,42 +179,6 @@ const tokens = {
   },
 };
 
-const counters = {
-  async isBlocked(key: string, attemptType: AttemptType) {
-    const counter = await prisma.accessCounter.findUnique({
-      where: { key_attemptType: { key, attemptType } },
-    });
-    return !!counter?.blockedUntil && counter.blockedUntil > new Date();
-  },
-
-  async registerFailure(key: string, attemptType: AttemptType) {
-    const now = new Date();
-    const counter = await prisma.accessCounter.findUnique({
-      where: { key_attemptType: { key, attemptType } },
-    });
-    const windowExpired =
-      !counter || counter.windowStart.getTime() <= now.getTime() - RATE_LIMIT.windowMs;
-    const attempts = windowExpired ? 1 : counter.attempts + 1;
-    const blockedUntil =
-      attempts >= RATE_LIMIT.attempts ? new Date(now.getTime() + RATE_LIMIT.blockMs) : null;
-
-    await prisma.accessCounter.upsert({
-      where: { key_attemptType: { key, attemptType } },
-      create: { key, attemptType, attempts: 1, windowStart: now, lastAttemptAt: now, blockedUntil },
-      update: {
-        attempts,
-        windowStart: windowExpired ? now : counter.windowStart,
-        lastAttemptAt: now,
-        blockedUntil,
-      },
-    });
-  },
-
-  reset(key: string, attemptType: AttemptType) {
-    return prisma.accessCounter.deleteMany({ where: { key, attemptType } });
-  },
-};
-
 const audit = {
   async record(input: AuditInput) {
     try {
@@ -231,4 +200,4 @@ const audit = {
   },
 };
 
-export const authRepository = { users, sessions, tokens, counters, audit };
+export const authRepository = { users, sessions, tokens, audit };

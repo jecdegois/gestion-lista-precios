@@ -1,7 +1,6 @@
 import "server-only";
 import { get } from "env-var";
 
-// Next.js ya carga el .env; no hace falta dotenv.
 const APP_ENV = get("APP_ENV").required().asEnum(["qa", "prod"]);
 
 export const envs = {
@@ -24,4 +23,12 @@ export const envs = {
   READ_ONLY_MODE: get("READ_ONLY_MODE").default("true").asBool(),
   SOFTLAND_EXECUTION_BLOCKED: get("SOFTLAND_EXECUTION_BLOCKED").default("true").asBool(),
   PORTAL_ONLY_MODE: get("PORTAL_ONLY_MODE").default("false").asBool(),
+
+  // Carpeta de archivos subidos (logos); relativa al directorio de arranque de la app.
+  UPLOADS_DIR: get("UPLOADS_DIR").default("storage/uploads").asString(),
+
+  // Login con Google (OpenID Connect); el redirect URI debe estar autorizado en Google Cloud.
+  GOOGLE_CLIENT_ID: get("GOOGLE_CLIENT_ID").required().asString(),
+  GOOGLE_CLIENT_SECRET: get("GOOGLE_CLIENT_SECRET").required().asString(),
+  GOOGLE_REDIRECT_URI: get("GOOGLE_REDIRECT_URI").required().asUrlString(),
 };

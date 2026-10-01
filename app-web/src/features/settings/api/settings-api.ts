@@ -16,3 +16,16 @@ export function updateCompany(code: string, input: UpdateCompanyInput) {
     body: input,
   });
 }
+
+export function deleteCompany(code: string) {
+  return apiRequest(`/api/configuracion/companias/${encodeURIComponent(code)}`, { method: "DELETE" });
+}
+
+/** `file` null quita el logo. */
+export function setCompanyLogo(code: string, file: File | null) {
+  const url = `/api/configuracion/companias/${encodeURIComponent(code)}/logo`;
+  if (!file) return apiRequest<{ company: CompanySettings }>(url, { method: "DELETE" });
+  const body = new FormData();
+  body.append("file", file);
+  return apiRequest<{ company: CompanySettings }>(url, { method: "POST", body });
+}
