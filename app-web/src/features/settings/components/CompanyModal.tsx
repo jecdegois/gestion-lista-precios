@@ -103,10 +103,6 @@ export default function CompanyModal({
             onChange={(brandColor) => setData((d) => ({ ...d, brandColor }))}
           />
         </FormField>
-        <p className="sm:col-span-2 text-xs text-zinc-500">
-          El esquema SQL debe existir en la base de Softland y en PORTAL_PRECIOS (lo crea el DBA con los scripts de
-          <code className="mono"> backend/sql/portal/</code>).
-        </p>
         {error && <p role="alert" className="sm:col-span-2 text-sm text-red-600">{error}</p>}
       </div>
     </Modal>

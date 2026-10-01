@@ -1,4 +1,5 @@
 import "server-only";
+import { envs } from "@/config/envs";
 import { prisma } from "@/server/prisma";
 import type { CompaniaInfo } from "@/shared/types/models";
 
@@ -141,7 +142,7 @@ export function nombreSql(compania: string, clave: keyof SqlObjetos): string {
 }
 
 export function esModoDemo(): boolean {
-  return (process.env.DEMO_MODE ?? "false").trim().toLowerCase() === "true";
+  return envs.DEMO_MODE;
 }
 
 /**
@@ -149,7 +150,7 @@ export function esModoDemo(): boolean {
  * es solo lectura para evitar escrituras accidentales si falta la variable.
  */
 export function esModoSoloLectura(): boolean {
-  return (process.env.READ_ONLY_MODE ?? "true").trim().toLowerCase() === "true";
+  return envs.READ_ONLY_MODE;
 }
 
 /**
@@ -161,13 +162,11 @@ export function esModoSoloLectura(): boolean {
  * `SELECT` de catálogos permanecen habilitadas.
  */
 export function esEjecucionSoftlandBloqueada(): boolean {
-  const valor = (process.env.SOFTLAND_EXECUTION_BLOCKED ?? "true").trim().replace(/;$/, "").toLowerCase();
-  return valor !== "false";
+  return envs.SOFTLAND_EXECUTION_BLOCKED;
 }
 
 export function esModoSoloPortal(): boolean {
-  return esEjecucionSoftlandBloqueada()
-    || (process.env.PORTAL_ONLY_MODE ?? "false").trim().toLowerCase() === "true";
+  return esEjecucionSoftlandBloqueada() || envs.PORTAL_ONLY_MODE;
 }
 
 export function assertEscrituraPortalHabilitada(): void {

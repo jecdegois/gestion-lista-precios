@@ -2,25 +2,29 @@ import "server-only";
 import type { ConnectionPool as MssqlConnectionPool } from "mssql";
 import { PrismaClient as SoftlandClient } from "@/generated/softland";
 import { Prisma, PrismaClient as PortalClient } from "@/generated/sqlserver";
+import { envs } from "@/config/envs";
 import { resolverCompania } from "./companies";
 
 /**
  * Dos bases en el mismo servidor y con el mismo login (PORTAL_DB_*):
  * - PORTAL_DB_NAME (PORTAL_PRECIOS): estado del portal, un esquema por empresa (Prisma, ver portalDb).
- * - SOFTLAND_DB_NAME (SOFTLANDQA): catálogos de Softland, solo lectura (mssql).
+ * - Softland (SOFTLANDQA o SOFTLANDPRD según APP_ENV): catálogos de Softland, solo lectura (mssql).
  */
+const SOFTLAND_DB = envs.SOFTLAND_DB_NAME;
+const PORTAL_DB = envs.PORTAL_DB_NAME;
+
 const pools = new Map<string, Promise<MssqlConnectionPool>>();
 
 function buildSqlConfig(database: string) {
   return {
-    server: process.env.PORTAL_DB_SERVER ?? "localhost",
+    server: envs.PORTAL_DB_SERVER,
     database,
-    user: process.env.PORTAL_DB_USER ?? "app_user",
-    password: process.env.PORTAL_DB_PASSWORD ?? "",
-    port: Number(process.env.SQL_PORT ?? 1433),
+    user: envs.PORTAL_DB_USER,
+    password: envs.PORTAL_DB_PASSWORD,
+    port: envs.SQL_PORT,
     options: {
-      encrypt: (process.env.SQL_ENCRYPT ?? "false").toLowerCase() === "true",
-      trustServerCertificate: (process.env.SQL_TRUST_SERVER_CERTIFICATE ?? "true").toLowerCase() === "true",
+      encrypt: envs.SQL_ENCRYPT,
+      trustServerCertificate: envs.SQL_TRUST_SERVER_CERTIFICATE,
     },
     pool: { max: 5, min: 0, idleTimeoutMillis: 30000 },
   };
@@ -38,20 +42,32 @@ async function poolFor(database: string): Promise<MssqlConnectionPool> {
 /** Pool de Softland para los catálogos de una compañía (valida que la compañía exista). */
 export async function getPool(compania: string): Promise<MssqlConnectionPool> {
   resolverCompania(compania);
-  return poolFor(process.env.SOFTLAND_DB_NAME ?? "SOFTLANDQA");
+  return poolFor(SOFTLAND_DB);
+}
+
+async function leerEsquemas(database: string): Promise<Set<string>> {
+  const { recordset } = await (await poolFor(database)).request().query<{ name: string }>("SELECT name FROM sys.schemas");
+  return new Set(recordset.map((r) => r.name.toUpperCase()));
 }
 
 /** Esquemas que existen en la BD de Softland y en la del portal (diagnóstico de Configuración). */
 export async function esquemasExistentes(): Promise<{ softland: Set<string>; portal: Set<string> }> {
-  const leer = async (database: string) => {
-    const { recordset } = await (await poolFor(database)).request().query<{ name: string }>("SELECT name FROM sys.schemas");
-    return new Set(recordset.map((r) => r.name.toUpperCase()));
-  };
   const [softland, portal] = await Promise.all([
-    leer(process.env.SOFTLAND_DB_NAME ?? "SOFTLANDQA"),
-    leer(process.env.PORTAL_DB_NAME ?? "PORTAL_PRECIOS"),
+    leerEsquemas(SOFTLAND_DB),
+    leerEsquemas(PORTAL_DB),
   ]);
   return { softland, portal };
+}
+
+/** Igual que esquemasExistentes, cacheado 1 min (se consulta en cada request de sesión). */
+let esquemasCache: { en: number; esquemas: ReturnType<typeof esquemasExistentes> } | undefined;
+export function esquemasExistentesCache(): ReturnType<typeof esquemasExistentes> {
+  if (!esquemasCache || Date.now() - esquemasCache.en > 60_000) {
+    const esquemas = esquemasExistentes();
+    esquemas.catch(() => (esquemasCache = undefined));
+    esquemasCache = { en: Date.now(), esquemas };
+  }
+  return esquemasCache.esquemas;
 }
 
 /** Devuelve el esquema calificado de la compania (p. ej. "[FEBECA]"). */
@@ -61,12 +77,12 @@ export function esquemaDe(compania: string): string {
 
 /** URL de Prisma (SQL Server) con el login PORTAL_DB_*. SQL Server no tiene search_path: el esquema va en `schema`. */
 function urlSqlServer(database: string, schema: string): string {
-  const e = process.env;
+  const e = envs;
   return (
-    `sqlserver://${e.PORTAL_DB_SERVER ?? "localhost"}:${e.SQL_PORT ?? 1433};` +
-    `database=${database};user=${e.PORTAL_DB_USER ?? "app_user"};` +
-    `password={${e.PORTAL_DB_PASSWORD ?? ""}};encrypt=${(e.SQL_ENCRYPT ?? "false").toLowerCase()};` +
-    `trustServerCertificate=${(e.SQL_TRUST_SERVER_CERTIFICATE ?? "true").toLowerCase()};schema=${schema}`
+    `sqlserver://${e.PORTAL_DB_SERVER}:${e.SQL_PORT};` +
+    `database=${database};user=${e.PORTAL_DB_USER};` +
+    `password={${e.PORTAL_DB_PASSWORD}};encrypt=${e.SQL_ENCRYPT};` +
+    `trustServerCertificate=${e.SQL_TRUST_SERVER_CERTIFICATE};schema=${schema}`
   );
 }
 
@@ -89,17 +105,17 @@ function cliente<T extends PortalClient | SoftlandClient>(Client: new (o: { data
 
 /** BD del portal (PORTAL_PRECIOS), esquema de la compañía. */
 export function portalDb(compania: string): PortalClient {
-  return cliente(PortalClient, process.env.PORTAL_DB_NAME ?? "PORTAL_PRECIOS", resolverCompania(compania).schema);
+  return cliente(PortalClient, PORTAL_DB, resolverCompania(compania).schema);
 }
 
 /** Softland, esquema de la compañía (NIVEL_PRECIO, VERSION_NIVEL). */
 export function softlandDb(compania: string): SoftlandClient {
-  return cliente(SoftlandClient, process.env.SOFTLAND_DB_NAME ?? "SOFTLANDQA", resolverCompania(compania).schema);
+  return cliente(SoftlandClient, SOFTLAND_DB, resolverCompania(compania).schema);
 }
 
 /** Softland, esquema dbo (GESTION_LISTAS_PRECIOS, compartida por las empresas). */
 export function softlandDbo(): SoftlandClient {
-  return cliente(SoftlandClient, process.env.SOFTLAND_DB_NAME ?? "SOFTLANDQA", "dbo");
+  return cliente(SoftlandClient, SOFTLAND_DB, "dbo");
 }
 
 /**

@@ -1,4 +1,4 @@
-// Softland (SOFTLAND_DB_NAME): solo las tablas que el portal lee con Prisma.
+// Softland (SOFTLANDQA o SOFTLANDPRD según APP_ENV): solo las tablas que el portal lee con Prisma.
 // Escrito a mano (cada esquema tiene ~900 tablas; NO usar `db pull`, `db push` ni `migrate`).
 // El esquema (FEBECA, BEVAL, ... o dbo) lo pone la URL de cada cliente: ver src/server/db.ts.
 

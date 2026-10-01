@@ -4,7 +4,24 @@ import type { AuthContext, RoleCode } from "@/shared/types/domain-types";
 import { authService } from "@/features/auth/services/auth-service";
 import { authRepository } from "@/features/auth/repository/auth-repository";
 import { SESSION_COOKIE_NAME } from "@/features/auth/session-cookie";
-import { cargarCompanias } from "./companies";
+import { cargarCompanias, esModoDemo, resolverCompania } from "./companies";
+import { esquemasExistentesCache } from "./db";
+
+type Esquemas = Awaited<ReturnType<typeof esquemasExistentesCache>>;
+
+/**
+ * Una compañía sin esquema en Softland o en PORTAL_PRECIOS no puede operar: se quita de la sesión, así no
+ * aparece en el selector del header ni puede activarse. Si no se pudo verificar (esquemas null), no se filtra.
+ */
+function operable(company: string, esquemas: Esquemas | null): boolean {
+  if (!esquemas) return true;
+  try {
+    const { schema } = resolverCompania(company);
+    return esquemas.softland.has(schema) && esquemas.portal.has(schema);
+  } catch {
+    return false;
+  }
+}
 
 export async function getSessionContext(): Promise<AuthContext | null> {
   const cookieStore = await cookies();
@@ -12,7 +29,13 @@ export async function getSessionContext(): Promise<AuthContext | null> {
   if (!token) return null;
 
   // Las compañías (esquema SQL de cada una) se leen de Postgres; los repositorios las resuelven en síncrono.
-  const [resolved] = await Promise.all([authService.resolveContext(token), cargarCompanias()]);
+  const [resolved, esquemas] = await Promise.all([
+    authService.resolveContext(token),
+    cargarCompanias().then(() => (esModoDemo() ? null : esquemasExistentesCache())).catch((error) => {
+      console.error("[sesion] no se pudieron verificar los esquemas en SQL Server:", error);
+      return null;
+    }),
+  ]);
   if (!resolved) return null;
 
   return {
@@ -24,7 +47,7 @@ export async function getSessionContext(): Promise<AuthContext | null> {
     fullName: resolved.user.fullName,
     isAdmin: resolved.user.isAdmin,
     mustChangePassword: resolved.user.mustChangePassword,
-    companies: resolved.user.companies.map((assignment) => ({
+    companies: resolved.user.companies.filter((assignment) => operable(assignment.company, esquemas)).map((assignment) => ({
       company: assignment.company,
       currencySymbol: assignment.currencySymbol,
       brandColor: assignment.brandColor,

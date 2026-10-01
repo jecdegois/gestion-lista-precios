@@ -24,6 +24,7 @@
     "@hookform/resolvers": "^5.9.1",
     "@prisma/client": "^6.19.3",
     "clsx": "^2.1.1",
+    "env-var": "^7.5.0",
     "mssql": "10.0.2",
     "next": "14.2.33",
     "react": "18.3.1",

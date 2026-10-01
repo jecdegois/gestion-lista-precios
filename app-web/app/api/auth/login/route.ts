@@ -1,3 +1,4 @@
+import { envs } from "@/config/envs";
 import {
   apiBadRequest,
   apiServiceResult,
@@ -29,7 +30,7 @@ export const POST = withApiRoute(async (req: Request) => {
     response.cookies.set(SESSION_COOKIE_NAME, sessionToken, {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: envs.NODE_ENV === "production",
       path: "/",
       maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
     });
