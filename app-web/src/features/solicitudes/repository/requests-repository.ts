@@ -158,6 +158,46 @@ async function agregarSolicitud(s: Solicitud): Promise<void> {
   });
 }
 
+/**
+ * Reemplaza cabecera y detalle de un borrador propio (para guardarlo de nuevo o
+ * enviarlo). Devuelve false si ya no está en BORRADOR o no es del solicitante;
+ * el UPDATE condicionado bloquea la fila, así dos envíos simultáneos no pasan ambos.
+ */
+async function reemplazarBorrador(s: Solicitud): Promise<boolean> {
+  assertEscrituraPortalHabilitada();
+  if (esModoDemo()) {
+    const actual = demoObtener(s.id);
+    if (actual?.estado !== "BORRADOR" || actual.solicitanteEmail !== s.solicitanteEmail) return false;
+    demoActualizar(s.id, s);
+    return true;
+  }
+  const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
+  const db = portalDb(s.compania);
+  const ahora = await ahoraServidor(db);
+  return db.$transaction(async (tx) => {
+    const actual = await tx.sOLICITUD.findFirst({ where: { CODIGO_SOLICITUD: s.id }, select: { ID_SOLICITUD: true } });
+    if (!actual) return false;
+    const { count } = await tx.sOLICITUD.updateMany({
+      where: { ID_SOLICITUD: actual.ID_SOLICITUD, ESTADO: "BORRADOR", SOLICITANTE_EMAIL: s.solicitanteEmail },
+      data: {
+        ESTADO: s.estado,
+        MODALIDAD: s.modalidad,
+        LISTA_PRECIO: lista || null,
+        PARAMETROS_JSON: JSON.stringify({ ...s.parametros, filas: s.filas }),
+        ARCHIVO_NOMBRE: s.archivoNombre,
+        ARCHIVO_S3_KEY: s.archivoS3Key,
+        FECHA_ULT_ESTADO: ahora,
+      },
+    });
+    if (count !== 1) return false;
+    await tx.sOLICITUD_DETALLE.deleteMany({ where: { ID_SOLICITUD: actual.ID_SOLICITUD } });
+    await tx.sOLICITUD_DETALLE.createMany({
+      data: s.filas.map((f) => ({ ...detalleData(f, s.proceso), ID_SOLICITUD: actual.ID_SOLICITUD })),
+    });
+    return true;
+  });
+}
+
 async function actualizarSolicitud(compania: string, codigo: string, patch: Partial<Solicitud>): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) {
@@ -321,7 +361,11 @@ function mapSolicitud(r: Record<string, unknown>, detalle: Record<string, unknow
     solicitanteEmail: String(r.SOLICITANTE_EMAIL),
     idpOperador: null,
     parametros,
-    filas: detalle.map((d) => mapDetalleFila(d, r.PROCESO as Solicitud["proceso"], lista)),
+    // Un borrador se retoma con las filas tal como se capturaron (PARAMETROS_JSON):
+    // el detalle no conserva el valor capturado (p. ej. el precio de Precio Base).
+    filas: r.ESTADO === "BORRADOR" && Array.isArray((parametros as { filas?: unknown }).filas)
+      ? (parametros as { filas: FilaResultado[] }).filas
+      : detalle.map((d) => mapDetalleFila(d, r.PROCESO as Solicitud["proceso"], lista)),
     archivoNombre: (r.ARCHIVO_NOMBRE as string) ?? null,
     archivoS3Key: (r.ARCHIVO_S3_KEY as string) ?? null,
     fechaEnvio: (() => {
@@ -467,6 +511,7 @@ export const requestsRepository = {
   find: obtenerSolicitud,
   nextCode: siguienteCodigoSolicitud,
   create: agregarSolicitud,
+  replaceDraft: reemplazarBorrador,
   update: actualizarSolicitud,
   setDetailError: actualizarMensajeErrorDetalles,
   markDetailsApplied: actualizarFactorAplicadoDetalles,

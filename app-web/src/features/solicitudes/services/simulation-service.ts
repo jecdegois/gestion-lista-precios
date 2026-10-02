@@ -1,12 +1,8 @@
 import "server-only";
 import * as XLSX from "xlsx";
 import {
-  construirFilaCompleta,
-  construirFilaDescuentoMasivo,
-  construirFilaMargenMasivo,
+  construirFilaSolicitud,
   construirFilasGestionGlobal,
-  construirFilaDesdeVariacion,
-  textoFactorCalculado,
 } from "@/features/solicitudes/utils/engine";
 import type { CriteriosArticulo, FilaPrecio, FilaResultado, ProcesoKey, TipoVariacion } from "@/shared/types/domain-types";
 import { fmtMonto } from "@/shared/utils/format";
@@ -31,6 +27,10 @@ const ENCABEZADO_ARTICULO = "articulo";
 const ENCABEZADO_PRECIO = "precio";
 const ENCABEZADO_PORCENTAJE = "porcentaje reduccion";
 const ENCABEZADO_LEGADO = "factor reduccion";
+
+function celda(v: unknown): string {
+  return v === undefined ? "" : String(v).trim();
+}
 
 function normalizarEncabezado(v: unknown): string {
   return String(v ?? "")
@@ -111,11 +111,7 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
     const maestros = nivelConsulta ? await pricingRepository.listCatalog(compania, nivelConsulta, codigos) : [];
     const contexto = crearContextoCatalogo(niveles, maestros, undefined, await monedaDe(compania));
     const filas = dataRows.map((r, idx) =>
-      construirFilaMargenMasivo({
-        fila: idx + 2,
-        codigo: r[0] !== undefined ? String(r[0]).trim() : "",
-        porcentajeReduccionRaw: r[1] !== undefined ? String(r[1]).trim() : "",
-      }, contexto),
+      construirFilaSolicitud(procesoKey, "excel", { fila: idx + 2, codigo: celda(r[0]), porcentajeReduccion: celda(r[1]) }, contexto),
     );
     return { ok: true, filas, archivoNombre: file.name, archivoS3Key };
   }
@@ -140,53 +136,12 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
   const contextosPorLista = await cargarContextosPorLista(compania, niveles, nivelesConsulta, codigosExcel);
   const contextoVacio = crearContextoCatalogo(niveles, []);
   const filas = dataRows.map((r, idx) => {
-    if (esDescuento) {
-      const listaCodigo = resolverNivelPrecio(niveles, String(r[0] ?? "").trim());
-      // Convertir descuento porcentual a multiplicador (10 -> 0.9000).
-      const porcentajeRaw = r[2] !== undefined ? String(r[2]).trim() : "";
-      const porcentaje = Number.parseFloat(porcentajeRaw.replace(",", "."));
-      const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(?:[.,]\d+)?$/.test(porcentajeRaw);
-      const factorConvertido = formatoValido ? 1 - (porcentaje / 100) : null;
-      const factorTexto = factorConvertido !== null ? textoFactorCalculado(factorConvertido) : porcentajeRaw;
-      
-      return construirFilaDescuentoMasivo(
-        {
-          fila: idx + 1,
-          listaCodigo: r[0] !== undefined ? String(r[0]).trim() : null,
-          codigo: r[1] !== undefined ? String(r[1]).trim() : "",
-          tipoVariacion: "DISMINUCION",
-          variacionPorcentaje: porcentajeRaw,
-          valorPropuestoRaw: factorTexto,
-        },
-        true, // factorDirecto = true, ahora valorPropuestoRaw contiene el factor convertido
-        listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
-      );
-    }
-    if (esPrecioBase) {
-      const precioRaw = r[1] !== undefined ? String(r[1]).trim() : "";
-      const listaCodigo = nivelesConsulta[0];
-      return construirFilaCompleta(
-        {
-          fila: idx + 1,
-          codigo: r[0] !== undefined ? String(r[0]).trim() : "",
-          listaCodigo,
-          valorPropuestoRaw: precioRaw,
-        },
-        "precio",
-        listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
-      );
-    }
-    const listaCodigo = nivelesConsulta[0];
-    return construirFilaCompleta(
-      {
-        fila: idx + 1,
-        codigo: r[0] !== undefined ? String(r[0]).trim() : "",
-        tipoVariacion: "DISMINUCION",
-        valorPropuestoRaw: r[1] !== undefined ? String(r[1]).trim() : "",
-      },
-      "factor",
-      listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio,
-    );
+    const listaCodigo = esDescuento ? resolverNivelPrecio(niveles, celda(r[0])) : nivelesConsulta[0];
+    const contexto = listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio;
+    const entrada = esDescuento
+      ? { fila: idx + 1, listaCodigo: r[0] !== undefined ? celda(r[0]) : null, codigo: celda(r[1]), variacionPorcentaje: celda(r[2]) }
+      : { fila: idx + 1, codigo: celda(r[0]), listaCodigo: esPrecioBase ? listaCodigo : undefined, valorPropuestoRaw: celda(r[1]) };
+    return construirFilaSolicitud(procesoKey, "excel", entrada, contexto);
   });
   return { ok: true, filas, archivoNombre: file.name, archivoS3Key };
 }
@@ -232,13 +187,7 @@ export async function simularManual(input: SimularManualParams): Promise<{ ok: b
     const filas = input.items.map((it, idx) => {
       const listaCodigo = resolverNivelPrecio(niveles, it.listaCodigo);
       const contexto = listaCodigo ? contextosPorLista.get(listaCodigo) ?? contextoVacio : contextoVacio;
-      return construirFilaDescuentoMasivo({
-        fila: idx + 1,
-        codigo: it.codigo,
-        listaCodigo: it.listaCodigo,
-        tipoVariacion: it.tipoVariacion,
-        variacionPorcentaje: it.variacionPorcentaje,
-      }, false, contexto);
+      return construirFilaSolicitud(input.proceso, "manual", { fila: idx + 1, ...it }, contexto);
     });
     return { ok: true, filas };
   }

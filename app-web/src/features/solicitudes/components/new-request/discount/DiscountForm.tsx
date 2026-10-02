@@ -172,7 +172,6 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
         tipoVariacion: "DISMINUCION",
         variacionPorcentaje: factor,
         nivelPrecio: level || undefined,
-        articulos: rows ?? [],
       },
       filas: (rows ?? []) as unknown as SolicitudInput["filas"],
       archivoNombre: file.name,

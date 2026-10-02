@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { notify } from "@/shared/notifications/notify";
 import type { Solicitud } from "@/shared/types/domain-types";
-import { enviarBorrador, enviarSolicitud, guardarBorrador } from "../api/solicitudes-api";
+import { enviarSolicitud, guardarBorrador } from "../api/solicitudes-api";
 import type { SolicitudInput } from "../schemas/solicitud-schema";
 
 /**
- * Guardar borrador / enviar a aprobación. Si se está retomando un borrador,
- * "enviar" solo lo transiciona a PENDIENTE.
+ * Guardar borrador / enviar a aprobación. Si se está retomando un borrador, se
+ * envía lo editado con `borradorId` y el servidor actualiza ese mismo borrador.
  */
 export function useRequestSubmission({
   draft,
@@ -26,7 +26,7 @@ export function useRequestSubmission({
 
   async function saveDraft(input: SolicitudInput) {
     setSavingDraft(true);
-    const res = await guardarBorrador(input);
+    const res = await guardarBorrador({ ...input, borradorId: draftId });
     setSavingDraft(false);
     if (!res.ok) {
       notify.error(res.error);
@@ -38,13 +38,13 @@ export function useRequestSubmission({
 
   async function submit(input: SolicitudInput) {
     setSending(true);
-    const res = draftId ? await enviarBorrador(draftId) : await enviarSolicitud(input);
+    const res = await enviarSolicitud({ ...input, borradorId: draftId });
     setSending(false);
     if (!res.ok) {
       notify.error(res.error);
       return;
     }
-    const id = draftId ?? ("solicitud" in res.data ? res.data.solicitud.id : "");
+    const id = res.data.solicitud.id;
     setSent(true);
     setDraftId(null);
     notify.success(`Solicitud ${id} enviada a aprobación · Estado: Pendiente de aprobación`);
