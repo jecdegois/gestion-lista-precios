@@ -485,19 +485,63 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
   }).filter((nivel) => nivel.codigo && nivel.version);
 }
 
-async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Articulo[]> {
+/** Por encima de este número de códigos se lee la lista completa (SQL Server admite ~2100 parámetros). */
+const MAX_CODIGOS_FILTRO = 2000;
+
+/**
+ * Catálogo de una lista. Con `codigos` (validación de filas: Excel / envío) solo trae esos artículos
+ * y omite clasificaciones y orden, que el motor de validación no usa.
+ */
+async function listarCatalogo(compania: string, nivelPrecio: string, codigos?: string[]): Promise<Articulo[]> {
   const nivel = nivelPrecio.trim();
   if (!nivel) throw new Error("Debe indicar una lista de precio para consultar el catálogo.");
-  if (esModoDemo()) return catalogoDemo(compania).map((articulo) => ({ ...articulo, nivelPrecio: nivel, version: 1 }));
+  const unicos = codigos ? [...new Set(codigos.map((c) => c.trim()).filter(Boolean))] : undefined;
+  if (unicos?.length === 0) return [];
+  if (esModoDemo()) {
+    const buscados = unicos && new Set(unicos.map((c) => c.toUpperCase()));
+    return catalogoDemo(compania)
+      .filter((articulo) => !buscados || buscados.has(articulo.codigo.trim().toUpperCase()))
+      .map((articulo) => ({ ...articulo, nivelPrecio: nivel, version: 1 }));
+  }
 
   const pool = await getPool(compania);
   const ap = objetoCalificado(compania, "tablaArticuloPrecio");
   const art = objetoCalificado(compania, "tablaArticulo");
   const versiones = objetoCalificado(compania, "tablaVersionNivel");
   const mssql = await import("mssql");
-  const q = await pool
-    .request()
-    .input("nivelPrecio", mssql.VarChar(50), nivel)
+  const request = pool.request().input("nivelPrecio", mssql.VarChar(50), nivel);
+
+  if (unicos) {
+    const filtrar = unicos.length <= MAX_CODIGOS_FILTRO;
+    if (filtrar) unicos.forEach((codigo, i) => request.input(`c${i}`, mssql.VarChar(50), codigo));
+    const q = await request.query(
+      `WITH VersionActiva AS
+       (
+         SELECT VN.NIVEL_PRECIO, MAX(VN.VERSION) AS VERSION
+           FROM ${versiones} VN WITH(NOLOCK)
+          WHERE VN.ESTADO = 'A'
+            AND VN.NIVEL_PRECIO = @nivelPrecio
+          GROUP BY VN.NIVEL_PRECIO
+       )
+       SELECT AP.ARTICULO AS codigo,
+              A.DESCRIPCION AS descripcion,
+              CAST(AP.PRECIO AS FLOAT) AS precioLista,
+              CAST(A.COSTO_PROM_DOL AS FLOAT) AS costoPromedio,
+              AP.NIVEL_PRECIO AS nivelPrecio,
+              AP.VERSION AS version,
+              CAST(AP.MARGEN_UTILIDAD_MIN AS FLOAT) AS margenUtilidadMinPorcentaje
+         FROM ${ap} AP WITH(NOLOCK)
+         INNER JOIN VersionActiva VA
+                 ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
+                AND VA.VERSION = AP.VERSION
+         INNER JOIN ${art} A WITH(NOLOCK) ON A.ARTICULO = AP.ARTICULO
+        WHERE AP.NIVEL_PRECIO = @nivelPrecio
+          ${filtrar ? `AND AP.ARTICULO IN (${unicos.map((_, i) => `@c${i}`).join(", ")})` : ""}`,
+    );
+    return q.recordset.map(mapearArticulo);
+  }
+
+  const q = await request
     .query(
       `WITH VersionActiva AS
        (
@@ -537,7 +581,11 @@ async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Ar
         WHERE AP.NIVEL_PRECIO = @nivelPrecio
         ORDER BY AP.ARTICULO`,
     );
-  return q.recordset.map((r: Record<string, unknown>) => ({
+  return q.recordset.map(mapearArticulo);
+}
+
+function mapearArticulo(r: Record<string, unknown>): Articulo {
+  return {
     codigo: String(r.codigo),
     descripcion: String(r.descripcion ?? ""),
     precioLista: Number(r.precioLista ?? 0),
@@ -555,7 +603,7 @@ async function listarCatalogo(compania: string, nivelPrecio: string): Promise<Ar
     clasificacion4Descripcion: r.clasificacion4Descripcion == null ? undefined : String(r.clasificacion4Descripcion),
     clasificacion5: r.clasificacion5 == null ? undefined : String(r.clasificacion5),
     clasificacion5Descripcion: r.clasificacion5Descripcion == null ? undefined : String(r.clasificacion5Descripcion),
-  }));
+  };
 }
 
 export interface PaginaCatalogo {

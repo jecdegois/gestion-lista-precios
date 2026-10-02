@@ -48,6 +48,7 @@ interface TablaImpactoDescuentoManualProps {
   nextOffset?: number | null;
   loadingMore?: boolean;
   onLoadMore?: (params: TableLoadParams) => void | Promise<void>;
+  ocultarDatosPorCorregir?: boolean;
 }
 
 export default function TablaImpactoDescuentoManual({
@@ -64,6 +65,7 @@ export default function TablaImpactoDescuentoManual({
   nextOffset = null,
   loadingMore = false,
   onLoadMore,
+  ocultarDatosPorCorregir,
 }: TablaImpactoDescuentoManualProps) {
   const totalHallazgosVisibles = filas.filter(esHallazgoDeNegocio).length;
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila)).length;
@@ -120,6 +122,7 @@ export default function TablaImpactoDescuentoManual({
         hallazgosLoadingMore={hallazgosLoadingMore}
         hallazgosCargando={hallazgosCargando}
         onLoadMoreHallazgos={onLoadMoreHallazgos}
+        ocultarDatosPorCorregir={ocultarDatosPorCorregir}
       />
     </div>
   );

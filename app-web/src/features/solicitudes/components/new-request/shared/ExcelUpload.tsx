@@ -16,6 +16,8 @@ export default function ExcelUpload({
   validCount,
   errorMessage,
   onParsed,
+  onClear,
+  fileName,
 }: {
   process: ProcesoKey;
   level?: string;
@@ -27,8 +29,14 @@ export default function ExcelUpload({
   validCount?: number;
   errorMessage: string;
   onParsed: (rows: FilaResultado[], fileName: string, s3Key: string) => void;
+  /** Si se provee, muestra "Eliminar archivo"; el padre la pasa solo cuando hay un archivo cargado. */
+  onClear?: () => void;
+  /** Nombre del archivo ya cargado (p. ej. al retomar un borrador). */
+  fileName?: string | null;
 }) {
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Cambiar la key remonta el dropzone: limpia nombre mostrado y permite volver a elegir el mismo archivo.
+  const [dropzoneKey, setDropzoneKey] = useState(0);
 
   return (
     <div className="space-y-4 mb-4">
@@ -39,7 +47,9 @@ export default function ExcelUpload({
         </a>
       </div>
       <ExcelDropzone
+        key={dropzoneKey}
         disabled={disabled}
+        initialFileName={fileName}
         process={process}
         level={level}
         onParsed={(rows, fileName, s3Key) => {
@@ -47,6 +57,11 @@ export default function ExcelUpload({
           onParsed(rows, fileName, s3Key);
         }}
         onError={setUploadError}
+        onClear={onClear && (() => {
+          setUploadError(null);
+          setDropzoneKey((k) => k + 1);
+          onClear();
+        })}
       />
       {uploadError && <p className="text-[11px] text-red-600">{uploadError}</p>}
       {errorCount > 0 && (validCount ?? 0) > 0 ? (

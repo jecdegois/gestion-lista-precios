@@ -94,7 +94,7 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Abra `http://localhost:5000`.
+Abra `http://localhost:5001`.
 
 Scripts disponibles dentro de `app-web/`:
 

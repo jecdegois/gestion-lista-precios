@@ -145,14 +145,20 @@ async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boole
     return { ok: true, solicitud };
   }
 
-  const contextosPorLista = await cargarContextosPorLista(input.compania, niveles, nivelesCanonicos);
-  const contieneArticulo = (listaCodigo: string, codigoArticulo: string): boolean => {
-    const contexto = contextosPorLista.get(listaCodigo);
-    const codigoNormalizado = codigoArticulo.trim().toUpperCase();
-    return Object.values(contexto?.articulos ?? {}).some(
-      (articulo) => articulo.codigo.trim().toUpperCase() === codigoNormalizado,
-    );
-  };
+  const contextosPorLista = await cargarContextosPorLista(
+    input.compania,
+    niveles,
+    nivelesCanonicos,
+    input.filas.map((fila) => fila.codigo),
+  );
+  const codigosPorLista = new Map(
+    [...contextosPorLista].map(([lista, contexto]) => [
+      lista,
+      new Set(Object.values(contexto.articulos).map((articulo) => articulo.codigo.trim().toUpperCase())),
+    ]),
+  );
+  const contieneArticulo = (listaCodigo: string, codigoArticulo: string): boolean =>
+    codigosPorLista.get(listaCodigo)?.has(codigoArticulo.trim().toUpperCase()) ?? false;
 
   // Para MAYOREOD_MASIVO se permite carga parcial: se descartan solo las filas con
   // error duro (código inválido, precio cero, formato incorrecto). Las filas con

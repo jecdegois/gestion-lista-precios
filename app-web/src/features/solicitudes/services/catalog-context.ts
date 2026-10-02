@@ -80,16 +80,18 @@ export async function monedaDe(compania: string): Promise<string> {
   return company?.currencySymbol ?? "";
 }
 
+/** Con `codigos` solo se cargan esos artículos (validación por filas); sin él, el catálogo completo. */
 export async function cargarContextosPorLista(
   compania: string,
   niveles: NivelPrecio[],
   listas: string[],
+  codigos?: string[],
 ): Promise<Map<string, CatalogoContext>> {
   const moneda = await monedaDe(compania);
   const contextos = await Promise.all(
     listas.map(async (lista) => [
       lista,
-      crearContextoCatalogo(niveles, await pricingRepository.listCatalog(compania, lista), lista, moneda),
+      crearContextoCatalogo(niveles, await pricingRepository.listCatalog(compania, lista, codigos), lista, moneda),
     ] as const),
   );
   return new Map(contextos);

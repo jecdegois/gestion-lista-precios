@@ -114,6 +114,12 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
           setSimulated(parsed.length > 0);
           submission.setSent(false);
         }}
+        fileName={file.name}
+        onClear={rows ? () => {
+          setRows(null);
+          setFile(EMPTY_FILE);
+          setSimulated(false);
+        } : undefined}
       />
 
       <RequestActions
@@ -168,7 +174,7 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
 
       {rows && rows.length > 0 && (
         <SimulationResult exporting={exporting} onExport={() => void exportRows(() => rows)}>
-          <TablaImpactoActualizacionMasiva filas={rows as FilaPrecio[]} />
+          <TablaImpactoActualizacionMasiva filas={rows as FilaPrecio[]} ocultarDatosPorCorregir />
         </SimulationResult>
       )}
     </ProcessFormLayout>

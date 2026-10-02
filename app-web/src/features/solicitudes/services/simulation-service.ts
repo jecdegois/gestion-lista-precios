@@ -24,6 +24,8 @@ import {
 
 /** Previsualizaciones (catálogo, Excel y simulaciones): solo leen Softland, NO escriben en la BD. */
 
+const MAX_BYTES_EXCEL = 10 * 1024 * 1024;
+
 const ENCABEZADO_CODIGO = "codigo articulo";
 const ENCABEZADO_ARTICULO = "articulo";
 const ENCABEZADO_PRECIO = "precio";
@@ -75,11 +77,15 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
   if (!file.name.toLowerCase().endsWith(".xlsx")) {
     return { ok: false, error: "Formato no soportado. Use un archivo .xlsx.", filas: [] };
   }
+  if (file.size > MAX_BYTES_EXCEL) {
+    return { ok: false, error: `El archivo supera el tamaño máximo de ${MAX_BYTES_EXCEL / 1024 / 1024} MB.`, filas: [] };
+  }
 
   let rows: unknown[][];
   try {
     const buf = Buffer.from(await file.arrayBuffer());
-    const wb = XLSX.read(buf, { type: "buffer" });
+    // Solo la primera hoja, sin estilos ni fórmulas.
+    const wb = XLSX.read(buf, { type: "buffer", sheets: 0, cellStyles: false, cellFormula: false, cellHTML: false });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false }) as unknown[][];
   } catch {
@@ -100,9 +106,10 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
     const nivelConsulta = resolverNivelPrecio(niveles, nivelPrecio)
       ?? resolverNivelPrecio(niveles, "MAYOREOD")
       ?? niveles[0]?.codigo;
-    const maestros = nivelConsulta ? await pricingRepository.listCatalog(compania, nivelConsulta) : [];
-    const contexto = crearContextoCatalogo(niveles, maestros, undefined, await monedaDe(compania));
     const dataRows = rows.slice(1).filter((r) => Array.isArray(r) && r.length > 0);
+    const codigos = dataRows.map((r) => String(r[0] ?? ""));
+    const maestros = nivelConsulta ? await pricingRepository.listCatalog(compania, nivelConsulta, codigos) : [];
+    const contexto = crearContextoCatalogo(niveles, maestros, undefined, await monedaDe(compania));
     const filas = dataRows.map((r, idx) =>
       construirFilaMargenMasivo({
         fila: idx + 2,
@@ -129,7 +136,8 @@ export async function parsearExcel(formData: FormData): Promise<ResultadoParseo>
       ? [nivelPrecio || "MAYOREOD"]
     : [nivelPrecio || niveles[0]?.codigo];
   const nivelesConsulta = nivelesSolicitadosCanonicos(niveles, nivelesConsultaRaw);
-  const contextosPorLista = await cargarContextosPorLista(compania, niveles, nivelesConsulta);
+  const codigosExcel = dataRows.map((r) => String((esDescuento ? r[1] : r[0]) ?? ""));
+  const contextosPorLista = await cargarContextosPorLista(compania, niveles, nivelesConsulta, codigosExcel);
   const contextoVacio = crearContextoCatalogo(niveles, []);
   const filas = dataRows.map((r, idx) => {
     if (esDescuento) {

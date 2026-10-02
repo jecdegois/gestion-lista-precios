@@ -35,6 +35,7 @@ export function ResumenValidaciones({
   hallazgosLoadingMore = false,
   hallazgosCargando = false,
   onLoadMoreHallazgos,
+  ocultarDatosPorCorregir = false,
 }: {
   filas: FilaResultado[];
   hallazgosExternos?: FilaResultado[];
@@ -44,6 +45,8 @@ export function ResumenValidaciones({
   /** true mientras la primera página de hallazgos está en vuelo. Muestra spinner en lugar de "sin hallazgos". */
   hallazgosCargando?: boolean;
   onLoadMoreHallazgos?: (params: TableLoadParams) => void | Promise<void>;
+  /** true = no muestra el cuadro "Datos por corregir" (Precio Base lo resume en su propio aviso). */
+  ocultarDatosPorCorregir?: boolean;
 }) {
   const hallazgos = hallazgosExternos ?? filas.filter(esHallazgoDeNegocio);
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila));
@@ -67,7 +70,7 @@ export function ResumenValidaciones({
           )}
         </div>
       )}
-      {datosPorCorregir.length > 0 && (
+      {!ocultarDatosPorCorregir && datosPorCorregir.length > 0 && (
         <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
           <p className="text-xs font-semibold text-amber-800 mb-1.5">Datos por corregir:</p>
           <ul className="text-xs text-amber-700 space-y-1">

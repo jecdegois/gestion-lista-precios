@@ -12,17 +12,21 @@ export default function ExcelDropzone({
   level,
   onParsed,
   onError,
+  onClear,
+  initialFileName,
 }: {
   disabled?: boolean;
   process: ProcesoKey;
   level?: string;
   onParsed: (rows: FilaResultado[], fileName: string, s3Key: string) => void;
   onError: (message: string) => void;
+  /** Solo se pasa cuando hay un archivo cargado; muestra el botón "Eliminar archivo". */
+  onClear?: () => void;
+  initialFileName?: string | null;
 }) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [s3Key, setS3Key] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(initialFileName ?? null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function upload(file: File) {
@@ -38,7 +42,6 @@ export default function ExcelDropzone({
       onError(res.error);
       return;
     }
-    setS3Key(res.data.archivoS3Key ?? null);
     onParsed(res.data.filas, res.data.archivoNombre ?? file.name, res.data.archivoS3Key ?? "");
   }
 
@@ -63,8 +66,23 @@ export default function ExcelDropzone({
         <Icon name="upload" className="w-6 h-6 mx-auto text-zinc-400 mb-2" />
         <p className="text-sm font-medium text-zinc-700">Arrastre el archivo .xlsx o haga clic para seleccionar</p>
         {loading && <p className="text-xs text-indigo-600 mt-1">Procesando…</p>}
-        {fileName && !loading && <p className="text-xs text-zinc-600 mt-2 mono">{fileName}</p>}
-        {s3Key && <p className="text-[10px] text-zinc-400 mt-1 mono">s3://{s3Key}</p>}
+        {fileName && !loading && (
+          <p className="text-xs text-zinc-600 mt-2 mono inline-flex items-center gap-1.5">
+            {fileName}
+            {onClear && !disabled && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-sans text-zinc-500 hover:bg-zinc-200 hover:text-red-600"
+                onClick={(e) => {
+                  e.stopPropagation(); // no abrir el selector de archivos
+                  onClear();
+                }}
+              >
+                <Icon name="x" className="w-3.5 h-3.5" /> Eliminar archivo
+              </button>
+            )}
+          </p>
+        )}
         <input
           ref={inputRef}
           type="file"
