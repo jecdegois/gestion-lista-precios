@@ -20,8 +20,8 @@ export const envs = {
 
   DEMO_MODE: get("DEMO_MODE").default("false").asBool(),
   // Por defecto en modo seguro: solo lectura y sin ejecución en Softland.
-  READ_ONLY_MODE: get("READ_ONLY_MODE").default("true").asBool(),
-  SOFTLAND_EXECUTION_BLOCKED: get("SOFTLAND_EXECUTION_BLOCKED").default("true").asBool(),
+  READ_ONLY_MODE: get("READ_ONLY_MODE").default("false").asBool(),
+  SOFTLAND_EXECUTION_BLOCKED: get("SOFTLAND_EXECUTION_BLOCKED").default("false").asBool(),
   PORTAL_ONLY_MODE: get("PORTAL_ONLY_MODE").default("false").asBool(),
 
   // Carpeta de archivos subidos (logos); relativa al directorio de arranque de la app.
