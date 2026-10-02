@@ -199,12 +199,6 @@ export interface ParametrosSolicitud {
   codigosArticulos?: string[];
   articulos?: FilaResultado[];
   /**
-   * Refleja GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_COSTO de la lista MAYOREOD.
-   * Si es true, la aprobación queda bloqueada cuando hay filas con ALERTA_MARGEN.
-   * Si es false (o ausente), las alertas de margen son solo advertencias.
-   */
-  validarPrecioBajoCosto?: boolean;
-  /**
    * Refleja GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN de la lista MAYOREOD.
    * Si es true, no se permite ENVIAR una solicitud de Precio Base con filas ALERTA_MARGEN.
    * El servidor lo lee de la BD al enviar (no confía en el valor del cliente).

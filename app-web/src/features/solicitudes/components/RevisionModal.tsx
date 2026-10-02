@@ -133,20 +133,24 @@ export default function RevisionModal({
 
   // Precio Base: re-lee GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (MAYOREOD) cada vez
   // que se abre el modal, para bloquear si el flag se activó después de enviar la solicitud.
-  // null = consultando / falló → no se permite aprobar (falla cerrado).
+  // null = consultando, "error" = falló → no se permite aprobar (falla cerrado) y se ofrece reintentar.
   const esPrecioBase = solicitud.proceso === "MAYOREOD_MASIVO";
-  const [margenMinVigente, setMargenMinVigente] = useState<boolean | null>(null);
+  const [margenMinVigente, setMargenMinVigente] = useState<boolean | null | "error">(null);
+  const [intentoMargen, setIntentoMargen] = useState(0);
   useEffect(() => {
     if (!esPrecioBase) return;
     let cancelado = false;
     setMargenMinVigente(null);
-    void getCatalogoGestionGlobal().then((res) => {
-      if (cancelado || !res.ok) return;
-      const config = (res.data?.listas ?? []).find((l) => l.codigo.trim().toUpperCase() === "MAYOREOD");
-      setMargenMinVigente(config?.validarPrecioBajoMargenMin === true);
-    });
+    getCatalogoGestionGlobal()
+      .then((res) => {
+        if (cancelado) return;
+        if (!res.ok) { setMargenMinVigente("error"); return; }
+        const config = (res.data?.listas ?? []).find((l) => l.codigo.trim().toUpperCase() === "MAYOREOD");
+        setMargenMinVigente(config?.validarPrecioBajoMargenMin === true);
+      })
+      .catch(() => { if (!cancelado) setMargenMinVigente("error"); });
     return () => { cancelado = true; };
-  }, [solicitud.id, esPrecioBase]);
+  }, [solicitud.id, esPrecioBase, intentoMargen]);
 
   // Para procesos no-GG: sincronizar filas cuando llega el detalle lazy del modal.
   useEffect(() => {
@@ -273,8 +277,9 @@ export default function RevisionModal({
     solicitud.filas.some((f) => f.validacion.estadoRedondeo === "ALERTA_MARGEN");
   // Mientras se verifica el flag (o si la consulta falla) no se habilita Procesar.
   const verificandoMargen = esPrecioBase && margenMinVigente === null;
+  const errorMargen = esPrecioBase && margenMinVigente === "error";
 
-  const puedeAprobar = puedeDecidir && !bloqueadoPorMargen && !verificandoMargen && (solicitud.filas.length > 0 || (esGestionGlobal && articulosCargados));
+  const puedeAprobar = puedeDecidir && !bloqueadoPorMargen && !verificandoMargen && !errorMargen && (solicitud.filas.length > 0 || (esGestionGlobal && articulosCargados));
   const enProceso = solicitud.estado === "EN_PROCESO";
   const puedeReintentar =
     !readOnly &&
@@ -531,6 +536,12 @@ export default function RevisionModal({
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Motivo de rechazo *</label>
               <textarea className="input" rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Obligatorio para rechazar" />
             </div>
+            {errorMargen && (
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 flex items-center justify-between gap-2">
+                <span>No fue posible verificar la validación de margen mínimo de la lista MAYOREOD. No se puede procesar hasta verificarla.</span>
+                <button className="btn btn-outline shrink-0" onClick={() => setIntentoMargen((n) => n + 1)}>Reintentar</button>
+              </div>
+            )}
             <div className="flex items-center justify-end gap-2">
               <button className="btn btn-outline" disabled={motivo.trim().length === 0} onClick={() => { onRechazar(solicitud.id, motivo.trim()); onClose(); }}>
                 Rechazar

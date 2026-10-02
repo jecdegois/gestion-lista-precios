@@ -26,24 +26,12 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
   const [simulated, setSimulated] = useState(Boolean(draft?.filas?.length));
   const [file, setFile] = useState<UploadedFile>(draftFile(draft));
 
-  // Flag leído desde GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_COSTO para MAYOREOD.
-  // Se persiste en parametros al enviar para que el aprobador pueda consultarlo sin
-  // re-consultar la BD — la decisión de bloqueo usa el valor capturado al momento del envío.
-  const [validarPrecioBajoCosto, setValidarPrecioBajoCosto] = useState<boolean>(
-    // Si hay un borrador, respetar el flag que ya fue capturado al guardarlo.
-    typeof draft?.parametros?.validarPrecioBajoCosto === "boolean"
-      ? draft.parametros.validarPrecioBajoCosto
-      : false,
-  );
-
   // Flag GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN para MAYOREOD.
   // Si está activo, no se permite enviar la solicitud con hallazgos de margen.
   // Siempre se consulta el valor vigente (el servidor también lo re-valida al enviar).
   const [validarPrecioBajoMargenMin, setValidarPrecioBajoMargenMin] = useState<boolean>(false);
 
   useEffect(() => {
-    // VALIDAR_PRECIO_BAJO_COSTO: respetar el valor capturado en el borrador, si existe.
-    const costoDesdeBorrador = typeof draft?.parametros?.validarPrecioBajoCosto === "boolean";
     let cancelled = false;
     // La API responde { ok, data: { listas, niveles } } — usar el cliente tipado.
     void getCatalogoGestionGlobal()
@@ -51,15 +39,11 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
         if (cancelled || !res.ok) return;
         const listas: GestionGlobalLista[] = res.data?.listas ?? [];
         const config = listas.find((l) => l.codigo.trim().toUpperCase() === LISTA_MAYOREOD);
-        if (!config) return;
-        if (!costoDesdeBorrador) setValidarPrecioBajoCosto(config.validarPrecioBajoCosto);
-        setValidarPrecioBajoMargenMin(config.validarPrecioBajoMargenMin);
+        if (config) setValidarPrecioBajoMargenMin(config.validarPrecioBajoMargenMin);
       })
       .catch(() => undefined); // flag queda en false si la consulta falla — comportamiento seguro
     return () => { cancelled = true; };
-  // Solo se ejecuta una vez al montar (o cuando el borrador cambia de ID).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.id]);
+  }, []);
 
   const { exporting, exportRows } = useSimulationExport("mayoreod_masivo", "Precio", "precioBase");
   const submission = useRequestSubmission({
@@ -90,9 +74,6 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
       parametros: {
         nivelPrecio: LISTA_MAYOREOD,
         listaBase: LISTA_MAYOREOD,
-        // Capturar el flag en el momento del envío para que la lógica de aprobación
-        // no dependa de re-consultar la configuración de la lista.
-        validarPrecioBajoCosto,
       },
       filas: (rows ?? []) as unknown as SolicitudInput["filas"],
       archivoNombre: file.name,
