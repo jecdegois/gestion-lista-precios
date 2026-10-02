@@ -1,5 +1,6 @@
 import { PROCESOS, estaEnAmbito } from "@/features/solicitudes/utils/catalog";
 import type { EstadoSolicitud, Solicitud } from "@/shared/types/domain-types";
+import { fmtFechaBd } from "@/shared/utils/format";
 
 export const ALL = "TODOS";
 
@@ -23,12 +24,9 @@ export function normalize(value: string): string {
     .toLowerCase();
 }
 
-/** Formatea un timestamp ISO o una cadena de fecha de BD a formato legible local. */
+/** Fecha de BD (ISO con la hora local del SQL Server) en formato legible; ver fmtFechaBd. */
 export function formatDbDate(raw: string | null | undefined): string {
-  if (!raw) return "—";
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return raw;
-  return d.toLocaleString("es-CR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return fmtFechaBd(raw, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 /** Orden por más reciente primero usando la fecha de creación cuando está disponible. */

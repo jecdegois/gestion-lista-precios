@@ -2,6 +2,20 @@
 
 import type { Identidad } from "@/shared/types/domain-types";
 
+/**
+ * Fecha/hora leída de SQL Server. Los datetime guardan la hora local del servidor (GETDATE()) y
+ * Prisma los entrega como si fueran UTC: se formatea en UTC para mostrar esa hora tal cual,
+ * sin importar el huso del servidor de la app ni del navegador.
+ */
+export function fmtFechaBd(
+  valor: Date | string | null | undefined,
+  opciones: Intl.DateTimeFormatOptions = { hour12: false },
+): string {
+  if (!valor) return "—";
+  const d = valor instanceof Date ? valor : new Date(valor);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("es-CR", { ...opciones, timeZone: "UTC" });
+}
+
 export function fmtMonto(n: number | null | undefined, moneda = ""): string {
   if (typeof n !== "number" || Number.isNaN(n)) return "—";
   const monto = n.toLocaleString("es-CR", { maximumFractionDigits: 2 });

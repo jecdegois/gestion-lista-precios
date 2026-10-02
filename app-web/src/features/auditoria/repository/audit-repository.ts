@@ -7,6 +7,7 @@ import {
   registrarEvento as demoRegistrarEvento,
 } from "@/features/solicitudes/repository/demo-store";
 import { AUDIT_PAGE_SIZE } from "../audit-constants";
+import { fmtFechaBd } from "@/shared/utils/format";
 
 export { AUDIT_PAGE_SIZE };
 
@@ -69,7 +70,7 @@ function mapRow(r: Record<string, unknown>, fallbackCompania: string): EventoAud
   const rol = r.ROL === "APROBADOR" || r.ROL === "OPERADOR" || r.ROL === "AUDITOR" ? r.ROL : "OPERADOR";
   return {
     id: String(r.ID_AUDITORIA),
-    fecha: new Date(r.FECHA_EVENTO as string).toLocaleString("es-CR", { hour12: false }),
+    fecha: fmtFechaBd(r.FECHA_EVENTO as Date),
     usuario: typeof payload.usuario === "string" ? payload.usuario : String(r.IDP_SUBJECT ?? ""),
     rol: rol as Rol,
     evento: r.EVENTO as EventoTipo,

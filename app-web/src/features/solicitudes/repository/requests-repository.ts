@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/sqlserver";
 import type { EstadoSolicitud, FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/shared/types/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
 import { ahoraServidor, plano, portalDb } from "@/server/db";
+import { fmtFechaBd } from "@/shared/utils/format";
 import {
   agregarSolicitud as demoAgregar,
   actualizarSolicitud as demoActualizar,
@@ -330,9 +331,7 @@ function mapSolicitudCabecera(r: Record<string, unknown>): Solicitud {
     archivoS3Key: (r.ARCHIVO_S3_KEY as string) ?? null,
     fechaEnvio: (() => {
       const v = r.FECHA_CREACION ?? r.FECHA_ENVIO;
-      if (!v) return "—";
-      const d = v instanceof Date ? v : new Date(v as string);
-      return isNaN(d.getTime()) ? "—" : d.toLocaleString("es-CR", { hour12: false });
+      return fmtFechaBd(v as Date | string);
     })(),
     fechaCreacion: (() => {
       const v = r.FECHA_CREACION ?? r.FECHA_ENVIO;
@@ -375,9 +374,7 @@ function mapSolicitud(r: Record<string, unknown>, detalle: Record<string, unknow
     archivoS3Key: (r.ARCHIVO_S3_KEY as string) ?? null,
     fechaEnvio: (() => {
       const v = r.FECHA_CREACION ?? r.FECHA_ENVIO;
-      if (!v) return "—";
-      const d = v instanceof Date ? v : new Date(v as string);
-      return isNaN(d.getTime()) ? "—" : d.toLocaleString("es-CR", { hour12: false });
+      return fmtFechaBd(v as Date | string);
     })(),
     fechaCreacion: (() => {
       const v = r.FECHA_CREACION ?? r.FECHA_ENVIO;

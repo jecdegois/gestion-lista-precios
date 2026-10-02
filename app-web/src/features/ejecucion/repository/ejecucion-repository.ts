@@ -29,8 +29,9 @@ function toEjecucionLog(row: Record<string, unknown>): EjecucionLog {
     compania: String(row.COMPANIA ?? ""),
     ejecutadoPor: String(row.EJECUTADO_POR_NOMBRE ?? ""),
     ejecutadoPorEmail: String(row.EJECUTADO_POR_EMAIL ?? ""),
-    fechaInicio: new Date(row.FECHA_INICIO as string).toLocaleString("es-VE"),
-    fechaFin: row.FECHA_FIN ? new Date(row.FECHA_FIN as string).toLocaleString("es-VE") : null,
+    // ISO con la hora local del SQL Server marcada como UTC; la UI la formatea con fmtFechaBd.
+    fechaInicio: (row.FECHA_INICIO as Date).toISOString(),
+    fechaFin: row.FECHA_FIN ? (row.FECHA_FIN as Date).toISOString() : null,
     estado: row.ESTADO as EstadoEjecucion,
     totalArticulos: row.TOTAL_ARTICULOS == null ? 0 : Number(row.TOTAL_ARTICULOS),
     exitosos:       row.EXITOSOS == null ? 0 : Number(row.EXITOSOS),
