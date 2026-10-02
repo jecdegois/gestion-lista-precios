@@ -1,6 +1,6 @@
 import "server-only";
 import { Prisma } from "@/generated/sqlserver";
-import type { FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/shared/types/domain-types";
+import type { EstadoSolicitud, FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/shared/types/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
 import { ahoraServidor, plano, portalDb } from "@/server/db";
 import {
@@ -198,11 +198,22 @@ async function reemplazarBorrador(s: Solicitud): Promise<boolean> {
   });
 }
 
-async function actualizarSolicitud(compania: string, codigo: string, patch: Partial<Solicitud>): Promise<void> {
+/**
+ * Con `desde`, solo actualiza si el estado actual está en esa lista (UPDATE
+ * condicionado, atómico): devuelve false si otra petición ya cambió el estado.
+ */
+async function actualizarSolicitud(
+  compania: string,
+  codigo: string,
+  patch: Partial<Solicitud>,
+  desde?: EstadoSolicitud[],
+): Promise<boolean> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) {
+    const actual = demoObtener(codigo);
+    if (!actual || (desde && !desde.includes(actual.estado))) return false;
     demoActualizar(codigo, patch);
-    return;
+    return true;
   }
   const db = portalDb(compania);
   const data: Prisma.SOLICITUDUpdateManyMutationInput = { FECHA_ULT_ESTADO: await ahoraServidor(db) };
@@ -217,7 +228,11 @@ async function actualizarSolicitud(compania: string, codigo: string, patch: Part
     data.FALLIDOS = patch.resultado.fallidos;
     data.LOG_S3_KEY = patch.resultado.logS3Key;
   }
-  await db.sOLICITUD.updateMany({ where: { CODIGO_SOLICITUD: codigo }, data });
+  const { count } = await db.sOLICITUD.updateMany({
+    where: { CODIGO_SOLICITUD: codigo, ...(desde ? { ESTADO: { in: desde } } : {}) },
+    data,
+  });
+  return count > 0;
 }
 
 /** Guarda el error del procesamiento en las líneas de la solicitud. */

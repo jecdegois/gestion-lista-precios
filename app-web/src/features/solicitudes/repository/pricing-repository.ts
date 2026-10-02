@@ -821,20 +821,21 @@ async function leerPorcentajeUdf(compania: string, codigo: string): Promise<numb
 }
 
 /**
- * Llena/actualiza (upsert) la UDF U_FACTOR_REDUCCION de la compania con
- * el factor normalizado capturado (0.10 = 10%). Usa el mapa configurable de
- * objeto y columnas. En DEMO_MODE actualiza el catalogo en memoria.
+ * Llena/actualiza (upsert) la UDF U_FACTOR_REDUCCION de la compania con el
+ * factor normalizado capturado (0.10 = 10%) de TODOS los artículos en una sola
+ * transacción: o se aplican todos o ninguno. El siguiente U_CODIGO se lee con
+ * UPDLOCK/HOLDLOCK, así dos aprobaciones simultáneas no generan el mismo código.
+ * Usa el mapa configurable de objeto y columnas. En DEMO_MODE actualiza el catalogo en memoria.
  */
-async function upsertUdf(
+async function upsertUdfs(
   compania: string,
-  codigo: string,
+  items: { codigo: string; porcentaje: number }[],
   descripcion: string,
-  porcentaje: number,
   usuario: string,
 ): Promise<void> {
   assertEscrituraSoftlandHabilitada();
   if (esModoDemo()) {
-    upsertUdfDemo(compania, codigo, porcentaje);
+    for (const item of items) upsertUdfDemo(compania, item.codigo, item.porcentaje);
     return;
   }
 
@@ -846,35 +847,49 @@ async function upsertUdf(
   const colActivo = nombreSql(compania, "colUdfActivo");
   const colArticulo = nombreSql(compania, "colUdfArticulo");
   const mssql = await import("mssql");
-  const siguienteCodigo = await pool
-    .request()
-    .query(
-      `SELECT CAST(COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.${colCodigo})), ''))), 0) + 1 AS VARCHAR(256)) AS siguienteCodigo
-         FROM ${udf} U WITH(NOLOCK)`,
+  const transaction = new mssql.Transaction(pool);
+  let committed = false;
+
+  await transaction.begin();
+  try {
+    const siguiente = await new mssql.Request(transaction).query(
+      `SELECT COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.${colCodigo})), ''))), 0) + 1 AS siguienteCodigo
+         FROM ${udf} U WITH(UPDLOCK, HOLDLOCK)`,
     );
-  const codigoRegistro = String(siguienteCodigo.recordset[0]?.siguienteCodigo ?? "1");
-  await pool
-    .request()
-    .input("codigo", mssql.VarChar(256), codigoRegistro)
-    .input("articulo", mssql.VarChar(20), codigo.trim())
-    .input("descrip", mssql.VarChar(260), descripcion)
-    .input("factor", mssql.Decimal(18, 8), porcentaje)
-    .input("usuario", mssql.VarChar(30), usuario)
-    .query(
-      `MERGE ${udf} AS T
-         USING (SELECT @articulo AS articulo, @descrip AS d) AS S
-       ON T.${colArticulo} = S.articulo
-       WHEN MATCHED THEN
-         UPDATE SET T.${colDescrip} = @descrip,
-                    T.${colFactor} = @factor, T.${colActivo} = 'S',
-                    T.RecordDate = GETDATE(), T.UpdatedBy = @usuario
-       WHEN NOT MATCHED THEN
-         INSERT (${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
-                 NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate,
-                 ${colArticulo})
-         VALUES (@codigo, @descrip, @factor, 'S',
-                 0, GETDATE(), NEWID(), @usuario, @usuario, GETDATE(), @articulo);`,
-    );
+    let siguienteCodigo = BigInt(String(siguiente.recordset[0]?.siguienteCodigo ?? "1"));
+
+    for (const item of items) {
+      const result = await new mssql.Request(transaction)
+        .input("codigo", mssql.VarChar(256), siguienteCodigo.toString())
+        .input("articulo", mssql.VarChar(20), item.codigo.trim())
+        .input("descrip", mssql.VarChar(260), descripcion)
+        .input("factor", mssql.Decimal(18, 8), item.porcentaje)
+        .input("usuario", mssql.VarChar(30), usuario)
+        .query(
+          `MERGE ${udf} WITH(HOLDLOCK) AS T
+             USING (SELECT @articulo AS articulo, @descrip AS d) AS S
+           ON T.${colArticulo} = S.articulo
+           WHEN MATCHED THEN
+             UPDATE SET T.${colDescrip} = @descrip,
+                        T.${colFactor} = @factor, T.${colActivo} = 'S',
+                        T.RecordDate = GETDATE(), T.UpdatedBy = @usuario
+           WHEN NOT MATCHED THEN
+             INSERT (${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
+                     NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate,
+                     ${colArticulo})
+             VALUES (@codigo, @descrip, @factor, 'S',
+                     0, GETDATE(), NEWID(), @usuario, @usuario, GETDATE(), @articulo)
+           OUTPUT $action AS accion;`,
+        );
+      if (result.recordset[0]?.accion === "INSERT") siguienteCodigo += BigInt(1);
+    }
+
+    await transaction.commit();
+    committed = true;
+  } catch (error) {
+    if (!committed) await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
 }
 
 /**
@@ -1097,7 +1112,7 @@ export const pricingRepository = {
   upsertArticleListFactors: upsertFactoresArticuloLista,
   updateBasePrices: actualizarPreciosBase,
   readUdfPercentage: leerPorcentajeUdf,
-  upsertUdf,
+  upsertUdfs,
   runMarginSp: ejecutarSpMargen,
   runListManagementSp: ejecutarSpGestionListas,
 };

@@ -47,6 +47,8 @@ function errorSoloPortal(): { ok: false; error: string } {
 
 const LISTA_PRECIO_BASE = "MAYOREOD";
 
+const ESTADO_CAMBIADO = { ok: false as const, error: "La solicitud cambió de estado mientras se procesaba (otro usuario ya actuó sobre ella). Actualice la vista." };
+
 /**
  * Lee GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN de MAYOREOD para la compañía.
  * Falla cerrado: si no se puede consultar la configuración, se lanza el error.
@@ -271,7 +273,9 @@ async function rechazarSolicitud(
   const s = await repo.find(compania, solicitudId);
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
   if (!motivo || motivo.trim().length === 0) return { ok: false, error: "El motivo de rechazo es obligatorio." };
-  await repo.update(compania, solicitudId, { estado: "RECHAZADO", motivoRechazo: motivo.trim() });
+  if (!(await repo.update(compania, solicitudId, { estado: "RECHAZADO", motivoRechazo: motivo.trim() }, ["PENDIENTE"]))) {
+    return ESTADO_CAMBIADO;
+  }
   await auditRepository.record({ event: "SOLICITUD_RECHAZADA", user: usuarioNombre, role: usuarioRol, company: s.compania, requestId: solicitudId });
   return { ok: true };
 }
@@ -349,13 +353,15 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
   }
 
   const idProcesoSP = nuevoIdProcesoSP();
-  await repo.update(s.compania, input.solicitudId, {
+  // Toma la solicitud de forma atómica: si dos aprobadores aprueban a la vez, solo uno ejecuta.
+  const tomada = await repo.update(s.compania, input.solicitudId, {
     estado: "EN_PROCESO",
     idProcesoSP,
     autorizadoPor: input.aprobadorNombre,
     autorizadoPorEmail: input.aprobadorEmail,
     ultimaActualizacion: new Date().toLocaleString("es-CR", { hour12: false }),
-  });
+  }, [input.reintento ? "ERROR_EJECUCION" : "PENDIENTE"]);
+  if (!tomada) return ESTADO_CAMBIADO;
   await auditRepository.record({ event: "EJECUCION_ENCOLADA", user: input.aprobadorNombre, role: input.aprobadorRol, company: s.compania, requestId: s.id, processId: idProcesoSP });
 
   // Este flujo no ejecuta SP/UDF ni instrucciones de modificación en Softland.
@@ -459,26 +465,17 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
         throw new Error("No existen filas válidas para actualizar el margen de utilidad.");
       }
 
-      for (const fila of filasValidas) {
+      // Se valida todo antes de escribir; la UDF se actualiza en una sola transacción.
+      const items = filasValidas.map((fila) => {
         const porcentaje = Number(fila.porcentajeReduccion);
         const factorNormalizado = Number(fila.factorReduccion ?? (porcentaje / 100));
         if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje >= 100 || !Number.isFinite(factorNormalizado) || factorNormalizado < 0 || factorNormalizado >= 1) {
           throw new Error(`El porcentaje de reducción del artículo '${fila.codigo}' no es válido.`);
         }
-        console.info("[MARGEN_UTILIDAD] Factor U_FACTOR_REDUCCION a persistir", {
-          solicitudId: s.id,
-          articulo: fila.codigo,
-          porcentajeSolicitado: porcentaje,
-          factorNormalizado,
-        });
-        await pricingRepository.upsertUdf(
-          s.compania,
-          fila.codigo,
-          `Solicitud ${s.id}`,
-          factorNormalizado,
-          input.aprobadorNombre,
-        );
-      }
+        return { codigo: fila.codigo, porcentaje: factorNormalizado };
+      });
+      console.info("[MARGEN_UTILIDAD] Factores U_FACTOR_REDUCCION a persistir", { solicitudId: s.id, items });
+      await pricingRepository.upsertUdfs(s.compania, items, `Solicitud ${s.id}`, input.aprobadorNombre);
 
       await repo.markDetailsApplied(s.compania, s.id);
       const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
@@ -591,10 +588,11 @@ async function solicitarCancelacion(
   if (!motivo || motivo.trim().length === 0) {
     return { ok: false, error: "El motivo de cancelación es obligatorio." };
   }
-  await repo.update(compania, solicitudId, {
+  const actualizada = await repo.update(compania, solicitudId, {
     estado: "CANCELACION_SOLICITADA",
     motivoRechazo: motivo.trim(),
-  });
+  }, ["PENDIENTE"]);
+  if (!actualizada) return ESTADO_CAMBIADO;
   await auditRepository.record({ event: "CANCELACION_SOLICITADA", user: usuarioNombre, role: usuarioRol, company: s.compania, requestId: solicitudId, userEmail: usuarioEmail });
   return { ok: true };
 }
@@ -618,7 +616,7 @@ async function decidirCancelacion(
   }
   const nuevoEstado = aprobada ? "CANCELADO" : "PENDIENTE";
   const evento = aprobada ? "CANCELACION_CONFIRMADA" : "CANCELACION_DENEGADA";
-  await repo.update(compania, solicitudId, { estado: nuevoEstado });
+  if (!(await repo.update(compania, solicitudId, { estado: nuevoEstado }, ["CANCELACION_SOLICITADA"]))) return ESTADO_CAMBIADO;
   await auditRepository.record({ event: evento, user: aprobadorNombre, role: aprobadorRol, company: s.compania, requestId: solicitudId, userEmail: aprobadorEmail });
   return { ok: true };
 }
