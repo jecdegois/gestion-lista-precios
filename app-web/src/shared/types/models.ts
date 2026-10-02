@@ -1,4 +1,5 @@
 import type { EstadoRedondeo } from "@/shared/utils/rounding";
+import type { TipoVariacion } from "@/shared/types/domain-types";
 
 /** Articulo del catalogo (precio de lista + costo para margen). */
 export interface Articulo {
@@ -32,6 +33,8 @@ export interface NivelPrecio {
 export interface GestionGlobalLista extends NivelPrecio {
   version: string;
   variacionPorc: number | null;
+  /** GESTION_LISTAS_PRECIOS.TIPO_VARIACION normalizado; null si vacío o desconocido. */
+  tipoVariacion: TipoVariacion | null;
   /** Moneda de la lista (GESTION_LISTAS_PRECIOS.MONEDA). */
   moneda: string | null;
   /**

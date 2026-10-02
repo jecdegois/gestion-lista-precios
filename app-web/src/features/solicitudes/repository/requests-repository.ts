@@ -441,10 +441,9 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
   const esMargen = proceso === "MARGEN_UTILIDAD_MASIVO";
   const causa = textoNoVacio(d.CAUSA) ?? textoNoVacio(d.MENSAJE_ERROR) ?? null;
   const causaNormalizada = causa?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() ?? "";
-  const esHallazgoMargen = !valido && (
-    causaNormalizada.includes("MARGEN")
-    || causaNormalizada.includes("COSTO")
-  );
+  // Solo las causas de precio bajo margen/costo del engine; no los errores de dato que
+  // mencionan "margen" (p. ej. "No fue posible calcular el margen (precio o costo inválido)").
+  const esHallazgoMargen = !valido && /MARGEN[ _]MINIMO|DEBAJO DEL COSTO|BAJO COSTO/.test(causaNormalizada);
   const factorAplicado = numero(d.FACTOR_APLICADO);
   const mensajeError = textoNoVacio(d.MENSAJE_ERROR);
   const validacionBase: ValidacionPrecio = {

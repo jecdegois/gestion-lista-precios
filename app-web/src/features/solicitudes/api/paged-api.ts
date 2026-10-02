@@ -4,6 +4,8 @@ export type GlobalManagementPage = {
   filas: FilaPrecio[];
   hasMore: boolean;
   nextOffset: number | null;
+  /** Total de artículos (o de hallazgos con findingsOnly) de la consulta completa. */
+  total?: number;
   /** Lista padre desde la cual se calcularon los precios (NIVEL_PRECIO_BASE). */
   nivelPrecioBase?: string;
 };

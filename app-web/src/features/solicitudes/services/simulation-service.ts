@@ -220,6 +220,8 @@ export interface PaginaSimulacionGestionGlobal {
   maxRecords: number;
   hasMore: boolean;
   nextOffset: number | null;
+  /** Total de artículos (o de hallazgos con soloHallazgos) de la consulta completa. */
+  total?: number;
   error?: string;
 }
 
@@ -283,6 +285,7 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
       maxRecords,
       hasMore: pagina.hasMore,
       nextOffset: pagina.nextOffset,
+      total: pagina.total,
     };
   }
   const pagina = await pricingRepository.listCatalogPage(input.compania, nivel, "", offset, maxRecords, input.nivelPrecioBase);
@@ -300,6 +303,7 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
     maxRecords: pagina.maxRecords,
     hasMore: pagina.hasMore,
     nextOffset: pagina.nextOffset,
+    total: pagina.total,
   };
 }
 

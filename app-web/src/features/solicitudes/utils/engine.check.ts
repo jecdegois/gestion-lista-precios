@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { FilaEntradaSchema } from "../schemas/solicitud-schema";
 import { calcularVariacion, construirFilaSolicitud, type CatalogoContext } from "./engine";
+import { esFilaProcesable } from "../../../shared/types/domain-types";
 
 const contexto: CatalogoContext = {
   articulos: {
@@ -41,5 +42,13 @@ assert.equal(margen.validacion.valido, false);
 // Gestión Global: DISMINUCION baja el factor (antes se aplicaba como aumento).
 assert.equal(calcularVariacion("DISMINUCION", "10").factor, 0.9);
 assert.equal(calcularVariacion("AUMENTO", "10").factor, 1.1);
+
+// Carga parcial: el hallazgo de margen se procesa (lo bloquea solo el flag de la lista);
+// código inexistente y lista inválida se descartan.
+assert.equal(esFilaProcesable(base), true);
+assert.equal(esFilaProcesable(construirFilaSolicitud("MAYOREOD_MASIVO", "excel", { codigo: "NOEXISTE", valorPropuestoRaw: "5" }, contexto)), false);
+const listaMala = construirFilaSolicitud("DESCUENTO_LISTA_PRECIO", "excel", { codigo: "A1", listaCodigo: "XX", variacionPorcentaje: "90" }, contexto);
+assert.equal(esFilaProcesable(listaMala), false);
+assert.equal(esFilaProcesable(margen), false);
 
 console.log("engine.check OK");

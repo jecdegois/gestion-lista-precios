@@ -5,16 +5,13 @@ import Icon from "@/shared/components/ui/Icon";
 import { EstadoRedondeoBadge } from "@/features/solicitudes/components/Badges";
 import { fmtPct, fmtFactor, fmtPorcentajeCapturado } from "@/shared/utils/format";
 import { TIPOS_VARIACION } from "@/features/solicitudes/utils/catalog";
-import { esFilaMargen } from "@/shared/types/domain-types";
+import { esFilaMargen, esHallazgoDeNegocio } from "@/shared/types/domain-types";
 import TablaHallazgosMargen from "@/features/solicitudes/components/tables/TablaHallazgosMargen";
 import type { FilaMargen, FilaPrecio, FilaResultado } from "@/shared/types/domain-types";
 import type { TableLoadParams } from "@/shared/components/ui/ResponsiveDataTable";
 import { Monto } from "@/shared/components/layout/PortalProviders";
 
-export function esHallazgoDeNegocio(fila: FilaResultado): boolean {
-  const validacion = fila.validacion;
-  return !validacion.valido && validacion.estadoRedondeo === "ALERTA_MARGEN" && Boolean(validacion.causa);
-}
+export { esHallazgoDeNegocio };
 
 export function EtiquetaValidacion({ fila }: { fila: FilaResultado }) {
   const validacion = fila.validacion;

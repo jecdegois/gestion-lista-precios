@@ -272,7 +272,7 @@ export function construirFilaDescuentoMasivo(
       ...fila,
       listaCodigo: null,
       lista: "—",
-      validacion: { ...fila.validacion, valido: false, causa: "La lista de precio no existe o no tiene un formato válido en la plantilla." },
+      validacion: { ...fila.validacion, valido: false, estadoRedondeo: null, causa: "La lista de precio no existe o no tiene un formato válido en la plantilla." },
     };
   }
   return { ...fila, listaCodigo, lista: context.nombresLista[listaCodigo] || listaCodigo };

@@ -12,7 +12,8 @@ import type {
   Rol,
   Solicitud,
 } from "@/shared/types/domain-types";
-import { esFilaMargen } from "@/shared/types/domain-types";
+import { esFilaMargen, esFilaProcesable, esHallazgoDeNegocio } from "@/shared/types/domain-types";
+import type { GestionGlobalLista } from "@/shared/types/models";
 import { calcularVariacion, construirFilaSolicitud } from "@/features/solicitudes/utils/engine";
 import { esModoDemo, esModoSoloLectura, esModoSoloPortal } from "@/server/companies";
 import { auditRepository } from "@/features/auditoria/repository/audit-repository";
@@ -49,18 +50,59 @@ const LISTA_PRECIO_BASE = "MAYOREOD";
 
 const ESTADO_CAMBIADO = { ok: false as const, error: "La solicitud cambió de estado mientras se procesaba (otro usuario ya actuó sobre ella). Actualice la vista." };
 
-/**
- * Lee GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN de MAYOREOD para la compañía.
- * Falla cerrado: si no se puede consultar la configuración, se lanza el error.
- */
-async function leerValidarPrecioBajoMargenMin(compania: string): Promise<boolean> {
-  const listas = await pricingRepository.listGlobalManagement(compania);
-  const config = listas.find((l) => l.codigo.trim().toUpperCase() === LISTA_PRECIO_BASE);
-  return config?.validarPrecioBajoMargenMin === true;
-}
+type MargenMin = { ok: false; error: string } | { ok: true; activo: boolean };
 
-function mensajeBloqueoMargenMin(filasConHallazgo: number): string {
-  return `No se puede enviar: la lista ${LISTA_PRECIO_BASE} tiene activada la validación de precio bajo margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN) y la solicitud contiene ${filasConHallazgo} fila(s) con precio por debajo del margen mínimo. Corrija los precios antes de enviar.`;
+/**
+ * Bloqueo por GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (valor vigente en BD).
+ * Con el flag activo en la lista afectada no se permite enviar ni aprobar con hallazgos de
+ * margen; apagado, los hallazgos se procesan. Precio Base y Margen de Utilidad usan MAYOREOD,
+ * Descuento la lista de cada fila y Gestión Global la lista de la solicitud (hallazgos en SQL).
+ * Falla cerrado: si no se puede leer la configuración, no se permite continuar.
+ */
+async function validarMargenMin(
+  accion: "enviar" | "aprobar",
+  compania: string,
+  proceso: ProcesoKey,
+  lista: string,
+  parametros: ParametrosSolicitud,
+  filas: FilaResultado[],
+): Promise<MargenMin> {
+  let config: Map<string, GestionGlobalLista>;
+  try {
+    const listas = await pricingRepository.listGlobalManagement(compania);
+    config = new Map(listas.map((l) => [l.codigo.trim().toUpperCase(), l]));
+  } catch (error) {
+    const detalle = error instanceof Error ? error.message : "Error no identificado.";
+    return { ok: false, error: `No fue posible verificar la configuración de margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN): ${detalle}` };
+  }
+  const activa = (codigo: string | null | undefined) => config.get(String(codigo ?? "").trim().toUpperCase())?.validarPrecioBajoMargenMin === true;
+  const bloqueo = (listas: string, hallazgos: number) => ({
+    ok: false as const,
+    error: `No se puede ${accion}: la lista ${listas} tiene activada la validación de precio bajo margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN) y la solicitud contiene ${hallazgos} artículo(s) con precio por debajo del margen mínimo. Corrija los precios y vuelva a enviar.`,
+  });
+
+  if (proceso === "FACTOR_PRECIO") {
+    if (!activa(lista)) return { ok: true, activo: false };
+    const variacion = calcularVariacion(parametros.tipoVariacion, parametros.factor);
+    const hallazgos = await pricingRepository.listFindings(
+      compania,
+      lista,
+      parametros.tipoVariacion === "DISMINUCION" ? "DISMINUCION" : "AUMENTO",
+      variacion.magnitud ?? 0,
+      0,
+      1,
+      config.get(lista.trim().toUpperCase())?.nivelPrecioBase,
+    );
+    return hallazgos.total > 0 ? bloqueo(lista, hallazgos.total) : { ok: true, activo: true };
+  }
+
+  const listaDeFila = (fila: FilaResultado) =>
+    proceso === "DESCUENTO_LISTA_PRECIO" ? ("listaCodigo" in fila && fila.listaCodigo) || fila.lista : LISTA_PRECIO_BASE;
+  const bloqueadas = filas.filter((fila) => esHallazgoDeNegocio(fila) && activa(listaDeFila(fila)));
+  if (bloqueadas.length > 0) {
+    return bloqueo([...new Set(bloqueadas.map(listaDeFila))].join(", "), bloqueadas.length);
+  }
+  return { ok: true, activo: filas.some((fila) => activa(listaDeFila(fila))) };
 }
 
 // ---------------------------------------------------------------------------
@@ -88,29 +130,24 @@ type Preparada = { ok: false; error: string } | { ok: true; solicitud: Omit<Soli
  */
 async function prepararSolicitud(input: EnviarSolicitudInput, estado: "PENDIENTE" | "BORRADOR"): Promise<Preparada> {
   const niveles = await pricingRepository.listPriceLevels(input.compania);
-  const listasEnFilas = input.filas.flatMap((fila) => fila.listaCodigo ? [fila.listaCodigo] : []);
-  const valoresNivel = [
-    input.parametros.nivelPrecio,
-    input.parametros.listaBase,
-    input.parametros.nivel,
-    ...listasEnFilas,
-  ];
-  const valoresNivelNoVacios = valoresNivel.filter((valor): valor is string => Boolean(valor?.trim()));
-  const nivelesCanonicos = nivelesSolicitadosCanonicos(niveles, valoresNivelNoVacios);
+  const listasEnFilas = input.proceso === "DESCUENTO_LISTA_PRECIO"
+    ? input.filas.flatMap((fila) => fila.listaCodigo ? [fila.listaCodigo] : [])
+    : [];
+  const valoresParametros = [input.parametros.nivelPrecio, input.parametros.listaBase, input.parametros.nivel]
+    .filter((valor): valor is string => Boolean(valor?.trim()));
+  const nivelesParametros = nivelesSolicitadosCanonicos(niveles, valoresParametros);
+  // Las listas de los parámetros deben existir; una lista inválida en una fila de Descuento
+  // solo invalida esa fila (se descarta igual que un código inválido).
+  const nivelesCanonicos = [...new Set([...nivelesParametros, ...nivelesSolicitadosCanonicos(niveles, listasEnFilas)])];
   if (
     nivelesCanonicos.length === 0 ||
-    nivelesCanonicos.length !== new Set(valoresNivelNoVacios.map((valor) => valor.trim().toLowerCase())).size
+    nivelesParametros.length !== new Set(valoresParametros.map((valor) => valor.trim().toLowerCase())).size
   ) {
     return { ok: false, error: "La solicitud contiene una lista que no existe en los maestros de Softland." };
   }
 
   // Precio Base escribe siempre en MAYOREOD (updateBasePrices): se valida contra esa lista.
-  const nivelSolicitud = input.proceso === "MAYOREOD_MASIVO" ? LISTA_PRECIO_BASE : [
-    input.parametros.nivelPrecio,
-    input.parametros.listaBase,
-    input.parametros.nivel,
-    ...(input.proceso === "DESCUENTO_LISTA_PRECIO" ? listasEnFilas : []),
-  ].find((valor): valor is string => Boolean(valor?.trim()));
+  const nivelSolicitud = input.proceso === "MAYOREOD_MASIVO" ? LISTA_PRECIO_BASE : nivelesParametros[0] ?? nivelesCanonicos[0];
   const listaPredeterminada = resolverNivelPrecio(niveles, nivelSolicitud);
   if (!listaPredeterminada) {
     return { ok: false, error: "La solicitud no contiene una lista de precio válida." };
@@ -144,7 +181,9 @@ async function prepararSolicitud(input: EnviarSolicitudInput, estado: "PENDIENTE
     if (!variacion.valido) {
       return { ok: false, error: variacion.causa ?? "La variación de Gestión Global no es válida." };
     }
-    const parametros = { ...input.parametros, multiplicador: variacion.factor };
+    const margen = await validarMargenMin("enviar", input.compania, input.proceso, listaPredeterminada, input.parametros, []);
+    if (!margen.ok) return margen;
+    const parametros = { ...input.parametros, multiplicador: variacion.factor, validarPrecioBajoMargenMin: margen.activo };
     // Gestión Global persiste una sola fila resumen con los parámetros de la
     // operación. El detalle artículo por artículo es informativo y se consulta
     // en tiempo real desde Softland al abrir el modal — no se persiste.
@@ -164,13 +203,9 @@ async function prepararSolicitud(input: EnviarSolicitudInput, estado: "PENDIENTE
     return { ...fila, lista };
   });
 
-  // Para MAYOREOD_MASIVO se permite carga parcial: se descartan solo las filas con
-  // error duro (código inválido, precio cero, formato incorrecto). Las filas con
-  // advertencia de margen mínimo (ALERTA_MARGEN) sí se incluyen — el aprobador
-  // es quien decide si autoriza el riesgo.
-  const filasParaProcesar = input.proceso === "MAYOREOD_MASIVO"
-    ? filas.filter((fila) => fila.validacion.valido || fila.validacion.estadoRedondeo === "ALERTA_MARGEN")
-    : filas;
+  // Carga parcial: se descartan las filas con error duro (código inválido, precio cero,
+  // formato incorrecto). Las de hallazgo de margen se incluyen salvo bloqueo por flag.
+  const filasParaProcesar = filas.filter(esFilaProcesable);
 
   const hayArticuloFueraDeLista = filasParaProcesar.some((fila) => {
     const contexto = fila.lista ? contextosPorLista.get(fila.lista) : undefined;
@@ -180,24 +215,9 @@ async function prepararSolicitud(input: EnviarSolicitudInput, estado: "PENDIENTE
     return { ok: false, error: "La solicitud contiene un artículo que no existe en la lista de precio seleccionada en Softland." };
   }
 
-  // Precio Base (MAYOREOD): si GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN está
-  // activo, no se permite enviar la solicitud con hallazgos de margen. El flag se lee de la BD.
-  let parametros = input.parametros;
-  if (input.proceso === "MAYOREOD_MASIVO") {
-    let validarMargenMin: boolean;
-    try {
-      validarMargenMin = await leerValidarPrecioBajoMargenMin(input.compania);
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : "Error no identificado.";
-      return { ok: false, error: `No fue posible verificar la configuración de margen mínimo de la lista ${LISTA_PRECIO_BASE}: ${detalle}` };
-    }
-    parametros = { ...input.parametros, validarPrecioBajoMargenMin: validarMargenMin };
-    const filasConHallazgo = filasParaProcesar.filter((fila) => fila.validacion.estadoRedondeo === "ALERTA_MARGEN").length;
-    if (validarMargenMin && filasConHallazgo > 0) {
-      return { ok: false, error: mensajeBloqueoMargenMin(filasConHallazgo) };
-    }
-  }
-
+  const margen = await validarMargenMin("enviar", input.compania, input.proceso, listaPredeterminada, input.parametros, filasParaProcesar);
+  if (!margen.ok) return margen;
+  const parametros = { ...input.parametros, validarPrecioBajoMargenMin: margen.activo };
   return { ok: true, solicitud: { ...base, parametros, filas: filasParaProcesar } };
 }
 
@@ -320,7 +340,7 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
   if (s.filas.length === 0) {
     return { ok: false, error: "La solicitud no tiene filas para procesar." };
   }
-  const fallidosPrevios = s.filas.filter((fila) => !fila.validacion.valido).length;
+  const fallidosPrevios = s.filas.filter((fila) => !esFilaProcesable(fila)).length;
   // Gestión Global conserva una página del impacto y completa el detalle bajo
   // demanda; no se puede concluir que todas las filas sean inválidas usando
   // únicamente esa página parcial.
@@ -331,26 +351,10 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
     return errorSoloPortal();
   }
 
-  // Bloqueo por GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (MAYOREOD_MASIVO).
-  // Se lee el valor VIGENTE en BD al aprobar (el flag pudo activarse después del envío).
-  let validarMargenMinVigente = false;
-  if (s.proceso === "MAYOREOD_MASIVO") {
-    try {
-      validarMargenMinVigente = await leerValidarPrecioBajoMargenMin(input.compania);
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : "Error no identificado.";
-      return { ok: false, error: `No fue posible verificar la configuración de margen mínimo de la lista ${LISTA_PRECIO_BASE}: ${detalle}` };
-    }
-  }
-  if (s.proceso === "MAYOREOD_MASIVO" && validarMargenMinVigente) {
-    const filasConAlertaMargen = s.filas.filter((fila) => fila.validacion.estadoRedondeo === "ALERTA_MARGEN").length;
-    if (filasConAlertaMargen > 0) {
-      return {
-        ok: false,
-        error: `No se puede aprobar: la lista MAYOREOD tiene activada la validación de precio bajo margen mínimo y la solicitud contiene ${filasConAlertaMargen} fila(s) con precio por debajo del margen mínimo. El solicitante debe corregir los precios y reenviar la solicitud.`,
-      };
-    }
-  }
+  // Se re-lee el flag VIGENTE al aprobar (pudo activarse después del envío).
+  const lista = s.lista.trim() || String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
+  const margen = await validarMargenMin("aprobar", s.compania, s.proceso, lista, s.parametros, s.filas);
+  if (!margen.ok) return margen;
 
   const idProcesoSP = nuevoIdProcesoSP();
   // Toma la solicitud de forma atómica: si dos aprobadores aprueban a la vez, solo uno ejecuta.
@@ -369,7 +373,6 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
   // un resultado simulado, visible y trazable en la aplicación.
   if (s.proceso === "FACTOR_PRECIO" && !esModoDemo()) {
     try {
-      const lista = s.lista.trim() || String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
       const factorPorcentajeOriginal = s.parametros.factor ?? "";
       // El factor capturado es una magnitud sin signo; el signo lo da tipoVariacion.
       const variacion = calcularVariacion(s.parametros.tipoVariacion, factorPorcentajeOriginal);
@@ -413,7 +416,7 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
         input.aprobadorNombre,
       );
       await repo.markDetailsApplied(s.compania, s.id);
-      const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
+      const fallidos = s.filas.filter((fila) => !esFilaProcesable(fila)).length;
       console.info("[DESCUENTO_ARTICULO_LISTA] Factores persistidos", {
         solicitudId: s.id,
         insertados: resultadoFactores.insertados,
@@ -440,7 +443,7 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
         s.filas,
         input.aprobadorNombre,
       );
-      const fallidos = s.filas.filter((fila) => !fila.validacion.valido && fila.validacion.estadoRedondeo !== "ALERTA_MARGEN").length;
+      const fallidos = s.filas.filter((fila) => !esFilaProcesable(fila)).length;
       console.info("[PRECIO_BASE] Precios de MAYOREOD persistidos", {
         solicitudId: s.id,
         actualizados: resultadoPrecios.actualizados,
@@ -459,8 +462,7 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
 
   if (s.proceso === "MARGEN_UTILIDAD_MASIVO" && !esModoDemo()) {
     try {
-      const lista = "MAYOREOD";
-      const filasValidas = s.filas.filter((fila): fila is FilaMargen => esFilaMargen(fila) && fila.validacion.valido);
+      const filasValidas = s.filas.filter((fila): fila is FilaMargen => esFilaMargen(fila) && esFilaProcesable(fila));
       if (filasValidas.length === 0) {
         throw new Error("No existen filas válidas para actualizar el margen de utilidad.");
       }
@@ -478,11 +480,11 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
       await pricingRepository.upsertUdfs(s.compania, items, `Solicitud ${s.id}`, input.aprobadorNombre);
 
       await repo.markDetailsApplied(s.compania, s.id);
-      const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
+      const fallidos = s.filas.filter((fila) => !esFilaProcesable(fila)).length;
       console.info("[MARGEN_UTILIDAD] Margen mínimo persistido", {
         solicitudId: s.id,
         compania: s.compania,
-        lista,
+        lista: LISTA_PRECIO_BASE,
         actualizados: filasValidas.length,
       });
       await finalizarProcesamiento(s.compania, s.id, [...s.filas], fallidos, input.aprobadorNombre);
@@ -508,7 +510,7 @@ async function simularProcesamientoDemo(compania: string, solicitudId: string): 
   if (!s) return;
   await new Promise((r) => setTimeout(r, 6000));
   const filas = [...s.filas];
-  const fallidos = filas.filter((f) => !f.validacion.valido).length;
+  const fallidos = filas.filter((f) => !esFilaProcesable(f)).length;
   await finalizarProcesamiento(compania, solicitudId, filas, fallidos, s.autorizadoPor ?? "Aprobador");
 }
 

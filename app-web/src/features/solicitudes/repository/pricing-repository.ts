@@ -1,5 +1,5 @@
 import "server-only";
-import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/shared/types/domain-types";
+import { esFilaMargen, esFilaProcesable, type FilaPrecio, type FilaResultado, type TipoVariacion } from "@/shared/types/domain-types";
 import type { Articulo, GestionGlobalLista, NivelPrecio } from "@/shared/types/models";
 import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "@/server/companies";
 import {
@@ -163,7 +163,8 @@ async function upsertFactoresArticuloLista(
     throw new Error("La compañía y el usuario son obligatorios para guardar factores por artículo.");
   }
 
-  const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && fila.validacion.valido);
+  // Hallazgos de margen incluidos: el bloqueo por VALIDAR_PRECIO_BAJO_MARGEN_MIN ya se evaluó al aprobar.
+  const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && esFilaProcesable(fila));
   const filasOmitidas = filas.length - filasValidas.length;
   if (filasValidas.length === 0) {
     throw new Error("No existen filas válidas para guardar en FACTOR_ARTICULO_LISTA.");
@@ -308,7 +309,7 @@ async function actualizarPreciosBase(
   const companiaNormalizada = compania.trim().toUpperCase();
   const lista = "MAYOREOD";
   const filasValidas = filas.filter((fila): fila is FilaPrecio =>
-    !esFilaMargen(fila) && (fila.validacion.valido || fila.validacion.estadoRedondeo === "ALERTA_MARGEN"),
+    !esFilaMargen(fila) && esFilaProcesable(fila),
   );
   if (filasValidas.length === 0) {
     throw new Error("No existen filas válidas para actualizar precios base.");
@@ -419,12 +420,21 @@ async function obtenerVersionActiva(compania: string, nivelPrecio: string): Prom
 }
 
 /** Lista y parámetros vigentes usados exclusivamente por Gestión Global. */
+/** TIPO_VARIACION admite texto o signo: AUMENTO/A/+ y DISMINUCION/DESCUENTO/D/-. */
+function normalizarTipoVariacion(valor: unknown): TipoVariacion | null {
+  const v = String(valor ?? "").trim().toUpperCase();
+  if (v.startsWith("A") || v === "+") return "AUMENTO";
+  if (v.startsWith("D") || v === "-") return "DISMINUCION";
+  return null;
+}
+
 async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista[]> {
   if (esModoDemo()) {
     return nivelesPrecioDemo(compania).map((nivel) => ({
       ...nivel,
       version: "1",
       variacionPorc: 0,
+      tipoVariacion: null,
       moneda: null,
       nivelPrecioBase: nivel.codigo,
       monedaBase: null,
@@ -446,6 +456,7 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       `SELECT A.NIVEL_PRECIO AS codigo,
               A.VERSION AS version,
               A.VARIACION_PORC AS variacionPorc,
+              LTRIM(RTRIM(A.TIPO_VARIACION)) AS tipoVariacion,
               LTRIM(RTRIM(A.MONEDA)) AS moneda,
               CONVERT(varchar(10), A.FECHA_INICIO, 23) AS fechaInicio,
               CONVERT(varchar(10), A.FECHA_CORTE, 23) AS fechaFin,
@@ -471,6 +482,7 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       nombre: codigo,
       version: String(r.version ?? "").trim(),
       variacionPorc: r.variacionPorc == null ? null : Number(r.variacionPorc),
+      tipoVariacion: normalizarTipoVariacion(r.tipoVariacion),
       moneda: r.moneda == null ? null : String(r.moneda).trim() || null,
       fechaInicio: r.fechaInicio == null ? null : String(r.fechaInicio).trim(),
       fechaFin: r.fechaFin == null ? null : String(r.fechaFin).trim(),
@@ -613,6 +625,8 @@ function mapearArticulo(r: Record<string, unknown>): Articulo {
 
 export interface PaginaCatalogo {
   items: Articulo[];
+  /** Total de artículos que cumplen el filtro (todas las páginas). */
+  total: number;
   offset: number;
   maxRecords: number;
   hasMore: boolean;
@@ -651,6 +665,7 @@ async function listarCatalogoPaginado(
     const hasMore = paginaExtendida.length > limite;
     return {
       items: paginaExtendida.slice(0, limite),
+      total: catalogo.length,
       offset: pagina,
       maxRecords: limite,
       hasMore,
@@ -695,7 +710,8 @@ async function listarCatalogoPaginado(
               A.CLASIFICACION_4 AS clasificacion4,
               C4.DESCRIPCION AS clasificacion4Descripcion,
               A.CLASIFICACION_5 AS clasificacion5,
-              C5.DESCRIPCION AS clasificacion5Descripcion
+              C5.DESCRIPCION AS clasificacion5Descripcion,
+              COUNT(1) OVER() AS total
          FROM ${ap} AP WITH(NOLOCK)
          INNER JOIN VersionActiva VA
                  ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
@@ -733,6 +749,8 @@ async function listarCatalogoPaginado(
   }));
   return {
     items,
+    // COUNT OVER se calcula antes del OFFSET; una página fuera de rango no trae filas.
+    total: Number(q.recordset[0]?.total ?? pagina),
     offset: pagina,
     maxRecords: limite,
     hasMore,

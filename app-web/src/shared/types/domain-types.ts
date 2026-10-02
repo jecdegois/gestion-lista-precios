@@ -199,9 +199,9 @@ export interface ParametrosSolicitud {
   codigosArticulos?: string[];
   articulos?: FilaResultado[];
   /**
-   * Refleja GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN de la lista MAYOREOD.
-   * Si es true, no se permite ENVIAR una solicitud de Precio Base con filas ALERTA_MARGEN.
-   * El servidor lo lee de la BD al enviar (no confía en el valor del cliente).
+   * GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN de la(s) lista(s) de la solicitud al enviar.
+   * Si es true, no se permite enviar ni aprobar con hallazgos de margen.
+   * El servidor lo lee de la BD (no confía en el valor del cliente).
    */
   validarPrecioBajoMargenMin?: boolean;
 }
@@ -304,4 +304,19 @@ export function esFilaMargen(fila: FilaResultado): fila is FilaMargen {
     !!fila &&
     Object.prototype.hasOwnProperty.call(fila, "porcentajeReduccion")
   );
+}
+
+/** Fila con precio por debajo del margen mínimo (advertencia, no error de dato). */
+export function esHallazgoDeNegocio(fila: FilaResultado): boolean {
+  const validacion = fila.validacion;
+  return !validacion.valido && validacion.estadoRedondeo === "ALERTA_MARGEN" && Boolean(validacion.causa);
+}
+
+/**
+ * Fila que se envía y procesa: válida o con hallazgo de margen. Las de error duro
+ * (código inexistente, formato, precio cero) se descartan. Las de hallazgo se bloquean
+ * solo si la lista tiene GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN activo.
+ */
+export function esFilaProcesable(fila: FilaResultado): boolean {
+  return fila.validacion.valido || esHallazgoDeNegocio(fila);
 }
