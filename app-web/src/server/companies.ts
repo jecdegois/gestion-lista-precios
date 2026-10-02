@@ -51,9 +51,15 @@ export interface CompaniaConfig {
 /**
  * Objeto del portal en el esquema de la empresa dentro de la base PORTAL_PRECIOS,
  * p. ej. [FEBECA].[SOLICITUD]. Cada empresa tiene sus propias tablas y secuencia.
+ * Se valida porque se interpola en SQL crudo: en el bundle de Next, Prisma.raw() dentro de
+ * $queryRaw`...` se envía como parámetro (FROM @P1 → error de sintaxis), así que se usa $queryRawUnsafe.
  */
 export function objetoPortal(compania: string, nombre: string): string {
-  return `[${resolverCompania(compania).schema}].[${nombre}]`;
+  const objeto = `[${resolverCompania(compania).schema}].[${nombre}]`;
+  if (!/^\[[A-Za-z0-9_]+\]\.\[[A-Za-z0-9_]+\]$/.test(objeto)) {
+    throw new Error(`Identificador SQL inválido: ${objeto}`);
+  }
+  return objeto;
 }
 
 /** Defaults de objetos SQL (coinciden con los scripts de backend/sql). */

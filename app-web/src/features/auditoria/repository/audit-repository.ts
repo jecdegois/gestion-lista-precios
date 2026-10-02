@@ -1,5 +1,4 @@
 import "server-only";
-import { Prisma } from "@/generated/sqlserver";
 import type { EventoAuditoria, EventoTipo, Rol } from "@/shared/types/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
 import { portalDb } from "@/server/db";
@@ -109,30 +108,29 @@ async function list(params: AuditListParams): Promise<AuditListResult> {
   }
 
   // Filtros sobre el JSON: Prisma no los soporta en SQL Server, queda en SQL (calificado por esquema).
-  const ae = Prisma.raw(objetoPortal(compania, "AUDITORIA_PRECIOS"));
-  const like = `%${search}%`;
-  const where = Prisma.join(
-    [
-      Prisma.sql`ISJSON(PAYLOAD_JSON) = 1`,
-      Prisma.sql`JSON_VALUE(PAYLOAD_JSON, '$.compania') = ${compania}`,
-      rol ? Prisma.sql`ROL = ${rol}` : null,
-      evento ? Prisma.sql`EVENTO = ${evento}` : null,
-      search
-        ? Prisma.sql`(IDP_SUBJECT LIKE ${like} OR JSON_VALUE(PAYLOAD_JSON, '$.usuario') LIKE ${like} OR JSON_VALUE(PAYLOAD_JSON, '$.solicitudId') LIKE ${like} OR ID_PROCESO LIKE ${like})`
-        : null,
-    ].filter((c): c is Prisma.Sql => c !== null),
-    " AND ",
-  );
+  // $queryRawUnsafe con parámetros @Pn: ver objetoPortal (Prisma.raw no sirve en el bundle de Next).
+  const ae = objetoPortal(compania, "AUDITORIA_PRECIOS");
+  const valores: unknown[] = [compania];
+  const where = ["ISJSON(PAYLOAD_JSON) = 1", "JSON_VALUE(PAYLOAD_JSON, '$.compania') = @P1"];
+  if (rol) where.push(`ROL = @P${valores.push(rol)}`);
+  if (evento) where.push(`EVENTO = @P${valores.push(evento)}`);
+  if (search) {
+    const p = `@P${valores.push(`%${search}%`)}`;
+    where.push(`(IDP_SUBJECT LIKE ${p} OR JSON_VALUE(PAYLOAD_JSON, '$.usuario') LIKE ${p} OR JSON_VALUE(PAYLOAD_JSON, '$.solicitudId') LIKE ${p} OR ID_PROCESO LIKE ${p})`);
+  }
+  const condicion = where.join(" AND ");
 
   const db = portalDb(compania);
   const [[{ total }], rows] = await Promise.all([
-    db.$queryRaw<{ total: number }[]>`SELECT COUNT(1) AS total FROM ${ae} WITH(NOLOCK) WHERE ${where}`,
-    db.$queryRaw<Record<string, unknown>[]>`
-      SELECT ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO
-        FROM ${ae} WITH(NOLOCK)
-       WHERE ${where}
-       ORDER BY FECHA_EVENTO DESC
-      OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`,
+    db.$queryRawUnsafe<{ total: number }[]>(`SELECT COUNT(1) AS total FROM ${ae} WITH(NOLOCK) WHERE ${condicion}`, ...valores),
+    db.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT ID_AUDITORIA, ID_PROCESO, IDP_SUBJECT, ROL, EVENTO, PAYLOAD_JSON, FECHA_EVENTO
+         FROM ${ae} WITH(NOLOCK)
+        WHERE ${condicion}
+        ORDER BY FECHA_EVENTO DESC
+       OFFSET @P${valores.length + 1} ROWS FETCH NEXT @P${valores.length + 2} ROWS ONLY`,
+      ...valores, offset, limit,
+    ),
   ]);
 
   const eventos = rows.map((r) => mapRow(r, compania));

@@ -115,19 +115,9 @@ async function siguienteCodigoSolicitud(compania: string): Promise<string> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return "SOL-" + (10450 + demoSeq());
   // Prisma no modela secuencias; el SQL crudo no toma el schema de la URL, por eso se califica.
-  // Se usa $queryRawUnsafe con identificador validado: en el bundle de Next, Prisma.raw()
-  // dentro de $queryRaw`...` terminaba enviándose como parámetro (NEXT VALUE FOR @P1 → error 102).
-  const seq = identificadorSeguro(objetoPortal(compania, "SEQ_SOLICITUD"));
+  const seq = objetoPortal(compania, "SEQ_SOLICITUD");
   const [q] = await portalDb(compania).$queryRawUnsafe<{ n: number | bigint }[]>(`SELECT NEXT VALUE FOR ${seq} AS n`);
   return "SOL-" + String(q.n);
-}
-
-/** Valida un objeto SQL calificado ([ESQUEMA].[OBJETO]) antes de interpolarlo en SQL crudo. */
-function identificadorSeguro(objeto: string): string {
-  if (!/^\[[A-Za-z0-9_]+\]\.\[[A-Za-z0-9_]+\]$/.test(objeto)) {
-    throw new Error(`Identificador SQL inválido: ${objeto}`);
-  }
-  return objeto;
 }
 
 async function agregarSolicitud(s: Solicitud): Promise<void> {
@@ -251,8 +241,8 @@ async function actualizarFactorAplicadoDetalles(compania: string, codigo: string
   if (esModoDemo()) return;
   // Asignación columna-a-columna: Prisma no la soporta, queda en SQL (calificado por esquema).
   // Mismo motivo que en siguienteCodigoSolicitud: identificadores validados + valor parametrizado (@P1).
-  const spd = identificadorSeguro(objetoPortal(compania, "SOLICITUD_DETALLE"));
-  const sp = identificadorSeguro(objetoPortal(compania, "SOLICITUD"));
+  const spd = objetoPortal(compania, "SOLICITUD_DETALLE");
+  const sp = objetoPortal(compania, "SOLICITUD");
   await portalDb(compania).$executeRawUnsafe(
     `UPDATE D
         SET D.FACTOR_APLICADO = D.FACTOR_SOLICITADO
