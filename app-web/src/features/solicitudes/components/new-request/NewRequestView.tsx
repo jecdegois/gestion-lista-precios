@@ -3,6 +3,7 @@
 import { type ComponentType } from "react";
 import MisSolicitudes from "@/features/solicitudes/components/new-request/MisSolicitudes";
 import RevisionModal from "@/features/solicitudes/components/RevisionModal";
+import { BORRADORES_HABILITADOS } from "@/features/solicitudes/utils/catalog";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
 import type { ProcesoKey } from "@/shared/types/domain-types";
 import { useMyRequests } from "../../hooks/useMyRequests";
@@ -43,7 +44,11 @@ export default function NewRequestView({
   }
 
   const actions = canAct
-    ? { onCancelar: mine.requestCancellation, onEnviarBorrador: mine.submitDraft, onRetomar: resumeDraft }
+    ? {
+        onCancelar: mine.requestCancellation,
+        onEnviarBorrador: BORRADORES_HABILITADOS ? mine.submitDraft : undefined,
+        onRetomar: BORRADORES_HABILITADOS ? resumeDraft : undefined,
+      }
     : { onCancelar: undefined, onEnviarBorrador: undefined, onRetomar: undefined };
 
   return (

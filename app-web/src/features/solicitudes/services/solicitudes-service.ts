@@ -1,5 +1,5 @@
 import "server-only";
-import { estaEnAmbito } from "@/features/solicitudes/utils/catalog";
+import { BORRADORES_HABILITADOS, estaEnAmbito } from "@/features/solicitudes/utils/catalog";
 import { nombreArchivoS3, nuevoIdProcesoSP } from "@/features/solicitudes/utils/ids";
 import type {
   CriteriosArticulo,
@@ -694,6 +694,7 @@ async function decidirCancelacion(
 // Servicio expuesto a los Route Handlers
 // ---------------------------------------------------------------------------
 const SIN_COMPANIA = { ok: false as const, error: "La sesión no tiene una compañía asignada." };
+const BORRADORES_DESHABILITADOS = { ok: false as const, error: "Los borradores están deshabilitados temporalmente. Envíe la solicitud directamente." };
 const NO_ENCONTRADA = { ok: false as const, error: "Solicitud no encontrada." };
 const SOLO_APROBADOR = { ok: false as const, error: "Solo un Aprobador puede realizar esta acción." };
 const AUTOAPROBACION = { ok: false as const, error: "No puede decidir sobre su propia solicitud (segregación de funciones)." };
@@ -877,11 +878,13 @@ export const solicitudesService = {
   },
 
   async guardarBorrador(identidad: Identidad, input: SolicitudInput) {
+    if (!BORRADORES_HABILITADOS) return BORRADORES_DESHABILITADOS;
     if (!identidad.compania) return SIN_COMPANIA;
     return guardarBorrador(aEnviarInput(identidad, identidad.compania, input));
   },
 
   async enviarBorrador(identidad: Identidad, solicitudId: string) {
+    if (!BORRADORES_HABILITADOS) return BORRADORES_DESHABILITADOS;
     if (!identidad.compania) return SIN_COMPANIA;
     return enviarBorrador(identidad.compania, solicitudId, identidad.email, identidad.nombre, identidad.rol);
   },

@@ -30,6 +30,10 @@ export const CATALOGO_ARTICULOS: Record<string, ArticuloCatalogo> = {
 
 export const MARGEN_MINIMO_GLOBAL = 0.2;
 
+// ponytail: borradores deshabilitados temporalmente (se saltan validaciones del envío directo
+// y al enviar ignoran lo editado). Reactivar cuando el envío de borrador revalide en servidor.
+export const BORRADORES_HABILITADOS = false;
+
 // NOMBRES_LISTA: clave lowercase -> display uppercase.
 const LISTAS_FIJAS = ["mayoreod", "mayoreob", "lparagua", "grupopico", "larab"];
 export const NOMBRES_LISTA: Record<string, string> = (() => {

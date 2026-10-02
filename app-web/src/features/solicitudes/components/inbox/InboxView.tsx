@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import RevisionModal from "@/features/solicitudes/components/RevisionModal";
+import { BORRADORES_HABILITADOS } from "@/features/solicitudes/utils/catalog";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
 import { useInbox } from "../../hooks/useInbox";
 import { resumeDraftRoute } from "../../routes";
@@ -59,7 +60,7 @@ export default function InboxView({ readOnly }: { readOnly: boolean }) {
           onRechazar={(id, reason) => void inbox.reject(id, reason)}
           onCancelar={(id, reason) => void inbox.requestCancellation(id, reason)}
           onDecidirCancelacion={(id, approved) => void inbox.decideCancellation(id, approved)}
-          onRetomar={isAuditor ? undefined : resume}
+          onRetomar={isAuditor || !BORRADORES_HABILITADOS ? undefined : resume}
           loadingDetail={inbox.loadingDetail}
         />
       )}

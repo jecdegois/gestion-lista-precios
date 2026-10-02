@@ -1,4 +1,5 @@
 import Icon from "@/shared/components/ui/Icon";
+import { BORRADORES_HABILITADOS } from "@/features/solicitudes/utils/catalog";
 import type { SubmissionState } from "../../../types";
 
 /** Botones de simular, guardar borrador y enviar a aprobación. */
@@ -36,7 +37,7 @@ export default function RequestActions({
           <><Icon name="search" className="w-3.5 h-3.5" /> {simulateLabel}</>
         )}
       </button>
-      <button
+      {BORRADORES_HABILITADOS && <button
         className="btn btn-outline"
         disabled={!canSave || savingDraft || sending}
         onClick={onSave}
@@ -47,7 +48,7 @@ export default function RequestActions({
         ) : (
           <><Icon name="save" className="w-3.5 h-3.5" /> Guardar borrador</>
         )}
-      </button>
+      </button>}
       <button className={"btn " + (destructive ? "btn-destructive" : "btn-default")} disabled={!canSubmit || sending} onClick={onSubmit}>
         {sending ? (
           <><Icon name="loader" className="w-3.5 h-3.5" spin /> Enviando…</>
