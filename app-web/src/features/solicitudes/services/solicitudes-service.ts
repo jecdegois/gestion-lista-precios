@@ -376,21 +376,20 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
       const factorPorcentajeOriginal = s.parametros.factor ?? "";
       // El factor capturado es una magnitud sin signo; el signo lo da tipoVariacion.
       const variacion = calcularVariacion(s.parametros.tipoVariacion, factorPorcentajeOriginal);
-      if (!variacion.valido || variacion.factor == null || variacion.porcentaje == null) {
+      const tipoVariacion = s.parametros.tipoVariacion;
+      if (!variacion.valido || variacion.factor == null || variacion.magnitud == null || !tipoVariacion) {
         throw new Error(variacion.causa ?? "La variación de Gestión Global no es válida.");
       }
-      const porcentaje = variacion.porcentaje;
       const factor = variacion.factor;
       console.info("[GESTION_GLOBAL] Parámetros recibidos para actualización", {
         solicitudId: s.id,
         compania: s.compania,
         lista,
-        factorPorcentajeOriginal,
-        porcentajeConvertido: porcentaje,
+        tipoVariacion,
+        variacionPorcentaje: variacion.magnitud,
         factorMultiplicador: factor,
-        variacionPorcentaje: porcentaje,
       });
-      await pricingRepository.updateGlobalManagement(s.compania, lista, factor, porcentaje, input.aprobadorNombre);
+      await pricingRepository.updateGlobalManagement(s.compania, lista, factor, tipoVariacion, variacion.magnitud, input.aprobadorNombre);
       await repo.markDetailsApplied(s.compania, s.id);
       // En Gestión Global la operación real es un único UPDATE de la cabecera
       // de la lista. Las filas del detalle son referenciales y no determinan

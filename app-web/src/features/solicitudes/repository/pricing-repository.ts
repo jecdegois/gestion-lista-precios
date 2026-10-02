@@ -41,18 +41,24 @@ export interface ResultadoFactorArticuloLista {
  * Actualiza el factor global de una lista. El procesamiento posterior de los
  * precios por artículo pertenece al SP externo que consume esta tabla.
  */
+/**
+ * VARIACION_PORC guarda la magnitud SIN signo (10, no -10); el sentido va en TIPO_VARIACION
+ * (AUMENTO / DISMINUCION), igual que el resto de filas de GESTION_LISTAS_PRECIOS.
+ */
 async function actualizarGestionGlobal(
   compania: string,
   lista: string,
   factor: number,
-  variacionPorcentaje: number,
+  tipoVariacion: TipoVariacion,
+  magnitud: number,
   usuario: string,
 ): Promise<ResultadoGestionGlobal> {
-  const variacion = Number(variacionPorcentaje.toFixed(8));
+  const variacion = Number(magnitud.toFixed(8));
   console.info("[GESTION_GLOBAL] Valores recibidos por pricing-repository", {
     compania,
     lista,
     factor,
+    tipoVariacion,
     variacionPorcentaje: variacion,
   });
   assertEscrituraSoftlandHabilitada();
@@ -66,8 +72,11 @@ async function actualizarGestionGlobal(
   if (!Number.isFinite(factor) || factor <= 0 || factor > 2) {
     throw new Error("El factor de Gestión Global debe ser mayor que 0 y menor o igual a 2.");
   }
-  if (!Number.isFinite(variacionPorcentaje)) {
+  if (!Number.isFinite(magnitud) || magnitud < 0) {
     throw new Error("La variación porcentual de Gestión Global no es válida.");
+  }
+  if (tipoVariacion !== "AUMENTO" && tipoVariacion !== "DISMINUCION") {
+    throw new Error("El tipo de variación de Gestión Global no es válido.");
   }
 
   const pool = await getPool(companiaNormalizada);
@@ -102,11 +111,13 @@ async function actualizarGestionGlobal(
       .input("version", mssql.VarChar(50), String(version))
       .input("factor", mssql.Decimal(28, 8), factor)
       .input("variacion", mssql.Decimal(28, 8), variacion)
+      .input("tipoVariacion", mssql.VarChar(12), tipoVariacion)
       .input("usuario", mssql.VarChar(50), usuario.trim())
       .query(
         `UPDATE A
             SET A.FACTOR_MULTIPLICADOR = @factor,
-                A.VARIACION_PORC = @variacion
+                A.VARIACION_PORC = @variacion,
+                A.TIPO_VARIACION = @tipoVariacion
            FROM [dbo].[GESTION_LISTAS_PRECIOS] A
           WHERE A.COMPANIA = @compania
             AND A.NIVEL_PRECIO = @lista
@@ -117,6 +128,7 @@ async function actualizarGestionGlobal(
       lista: listaNormalizada,
       version: String(version),
       factor,
+      tipoVariacion,
       variacionPorcentaje: variacion,
       filasAfectadas: updateResult.rowsAffected[0] ?? 0,
     });
