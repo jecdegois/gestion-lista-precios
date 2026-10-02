@@ -460,7 +460,9 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
               ISNULL(A.VALIDAR_PRECIO_BAJO_MARGEN_MIN, 0) AS validarPrecioBajoMargenMin
          FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
         WHERE A.COMPANIA = @compania
-        ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION), A.VERSION;`,
+        -- Versión más reciente primero: los consumidores buscan por código con .find y
+        -- deben obtener la vigente (misma regla TOP 1 DESC que actualizarGestionGlobal).
+        ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION) DESC, A.VERSION DESC;`,
     );
   return q.recordset.map((r: Record<string, unknown>) => {
     const codigo = String(r.codigo ?? "").trim();
@@ -482,7 +484,10 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       excepcionesArticulos:       r.excepcionesArticulos == null ? null : String(r.excepcionesArticulos),
       validarPrecioBajoMargenMin: Boolean(r.validarPrecioBajoMargenMin),
     };
-  }).filter((nivel) => nivel.codigo && nivel.version);
+  })
+    .filter((nivel) => nivel.codigo && nivel.version)
+    // Solo la versión vigente (primera por el ORDER BY DESC) de cada lista.
+    .filter((nivel, i, todas) => todas.findIndex((otra) => otra.codigo === nivel.codigo) === i);
 }
 
 /** Por encima de este número de códigos se lee la lista completa (SQL Server admite ~2100 parámetros). */
