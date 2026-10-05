@@ -1,8 +1,7 @@
 import "server-only";
-import { Prisma } from "@/generated/sqlserver";
 import type { EstadoSolicitud, FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/shared/types/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
-import { ahoraServidor, plano, portalDb } from "@/server/db";
+import { plano, portalDb } from "@/server/db";
 import { fmtFechaBd } from "@/shared/utils/format";
 import {
   agregarSolicitud as demoAgregar,
@@ -18,16 +17,9 @@ import {
  * auditoría vive en `features/auditoria/repository/audit-repository.ts`.
  *
  * En DEMO_MODE usa el store en memoria (demo-store); en modo real persiste
- * con Prisma en las tablas del esquema de la empresa (ver portalDb). Toda la
- * API es async para servir a ambos modos de forma uniforme.
+ * con $queryRawUnsafe calificando explícitamente el esquema de la empresa,
+ * porque Prisma SQL Server ignora el parámetro `schema=` de la URL para queries ORM.
  */
-
-const conDetalle = { SOLICITUD_DETALLE: { orderBy: { ID_DETALLE: "asc" } } } satisfies Prisma.SOLICITUDInclude;
-
-function mapConDetalle(r: Prisma.SOLICITUDGetPayload<{ include: typeof conDetalle }>): Solicitud {
-  const { SOLICITUD_DETALLE, ...cabecera } = r;
-  return mapSolicitud(plano(cabecera), SOLICITUD_DETALLE.map(plano));
-}
 
 async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
   const companiaNormalizada = compania.trim().toUpperCase();
@@ -35,12 +27,24 @@ async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
     return demoListarSolicitudes().filter((solicitud) => !companiaNormalizada || solicitud.compania === companiaNormalizada);
   }
 
-  const rows = await portalDb(companiaNormalizada).sOLICITUD.findMany({
-    where: { COMPANIA: companiaNormalizada },
-    include: conDetalle,
-    orderBy: { FECHA_CREACION: "desc" },
-  });
-  return rows.map(mapConDetalle);
+  const tabSol = objetoPortal(companiaNormalizada, "SOLICITUD");
+  const tabDet = objetoPortal(companiaNormalizada, "SOLICITUD_DETALLE");
+  const rows = await portalDb(companiaNormalizada).$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT S.*, D.*
+       FROM ${tabSol} S
+       LEFT JOIN ${tabDet} D ON D.ID_SOLICITUD = S.ID_SOLICITUD
+      WHERE S.COMPANIA = @P1
+      ORDER BY S.FECHA_CREACION DESC`,
+    companiaNormalizada,
+  );
+  // Agrupar filas por solicitud
+  const map = new Map<string, { cab: Record<string, unknown>; det: Record<string, unknown>[] }>();
+  for (const row of rows) {
+    const id = String(row.CODIGO_SOLICITUD ?? row.ID_SOLICITUD);
+    if (!map.has(id)) map.set(id, { cab: row, det: [] });
+    if (row.ID_DETALLE != null) map.get(id)!.det.push(row);
+  }
+  return [...map.values()].map(({ cab, det }) => mapSolicitud(cab, det));
 }
 
 export interface PaginaSolicitudes {
@@ -85,17 +89,36 @@ async function listarSolicitudesPaginado(
   }
 
   const db = portalDb(companiaNormalizada);
-  // La collation del portal es case-insensitive: igualdad simple equivale al LOWER() anterior.
-  const where: Prisma.SOLICITUDWhereInput = {
-    COMPANIA: companiaNormalizada,
-    ...(email?.trim() ? { SOLICITANTE_EMAIL: email.trim() } : {}),
-    ...(proceso?.trim() ? { PROCESO: proceso.trim() } : {}),
-  };
-  const [rows, total] = await Promise.all([
-    db.sOLICITUD.findMany({ where, orderBy: { FECHA_CREACION: "desc" }, skip: safeOffset, take: safeLimit }),
-    db.sOLICITUD.count({ where }),
+  const tabSol = objetoPortal(companiaNormalizada, "SOLICITUD");
+
+  // WHERE base
+  const params: unknown[] = [companiaNormalizada];
+  let where = `COMPANIA = @P1`;
+  if (email?.trim()) {
+    params.push(email.trim());
+    where += ` AND SOLICITANTE_EMAIL = @P${params.length}`;
+  }
+  if (proceso?.trim()) {
+    params.push(proceso.trim());
+    where += ` AND PROCESO = @P${params.length}`;
+  }
+
+  const [countRows, rows] = await Promise.all([
+    db.$queryRawUnsafe<{ n: number | bigint }[]>(
+      `SELECT COUNT(*) AS n FROM ${tabSol} WHERE ${where}`,
+      ...params,
+    ),
+    db.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT * FROM ${tabSol} WHERE ${where}
+       ORDER BY FECHA_CREACION DESC
+       OFFSET @P${params.length + 1} ROWS FETCH NEXT @P${params.length + 2} ROWS ONLY`,
+      ...params,
+      safeOffset,
+      safeLimit,
+    ),
   ]);
 
+  const total = Number(countRows[0].n);
   const solicitudes = rows.map((r) => mapSolicitudCabecera(plano(r)));
   const hasMore = safeOffset + solicitudes.length < total;
   return {
@@ -108,8 +131,22 @@ async function listarSolicitudesPaginado(
 
 async function obtenerSolicitud(compania: string, codigo: string): Promise<Solicitud | undefined> {
   if (esModoDemo()) return demoObtener(codigo);
-  const r = await portalDb(compania).sOLICITUD.findFirst({ where: { CODIGO_SOLICITUD: codigo }, include: conDetalle });
-  return r ? mapConDetalle(r) : undefined;
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+  const tabDet = objetoPortal(compania, "SOLICITUD_DETALLE");
+  const rows = await portalDb(compania).$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT S.*, D.ID_DETALLE, D.SKU, D.DESCRIPCION, D.PRECIO_ACTUAL, D.COSTO,
+            D.FACTOR_APLICADO, D.PRECIO_SIMULADO, D.PORCENTAJE_MARGEN,
+            D.ESTADO_FILA, D.MENSAJE_ERROR, D.FACTOR_SOLICITADO, D.LISTA_PRECIO, D.CAUSA
+       FROM ${tabSol} S
+       LEFT JOIN ${tabDet} D ON D.ID_SOLICITUD = S.ID_SOLICITUD
+      WHERE S.CODIGO_SOLICITUD = @P1
+      ORDER BY D.ID_DETALLE ASC`,
+    codigo,
+  );
+  if (!rows.length) return undefined;
+  const cab = rows[0];
+  const det = rows.filter((r) => r.ID_DETALLE != null);
+  return mapSolicitud(cab, det);
 }
 
 async function siguienteCodigoSolicitud(compania: string): Promise<string> {
@@ -128,24 +165,65 @@ async function agregarSolicitud(s: Solicitud): Promise<void> {
     return;
   }
   const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
-  // Cabecera + detalle en una sola transacción. La FK nullable a USUARIO (tabla
-  // heredada) queda en NULL: los usuarios viven en Postgres.
-  await portalDb(s.compania).sOLICITUD.create({
-    data: {
-      CODIGO_SOLICITUD: s.id,
-      COMPANIA: s.compania,
-      PROCESO: s.proceso,
-      TIPO_PROCESO: s.proceso,
-      MODALIDAD: s.modalidad,
-      LISTA_PRECIO: lista || null,
-      SOLICITANTE_EMAIL: s.solicitanteEmail,
-      SOLICITANTE_NOMBRE: s.solicitanteNombre,
-      ESTADO: s.estado ?? "PENDIENTE",
-      PARAMETROS_JSON: JSON.stringify({ ...s.parametros, filas: s.filas }),
-      ARCHIVO_NOMBRE: s.archivoNombre,
-      ARCHIVO_S3_KEY: s.archivoS3Key,
-      SOLICITUD_DETALLE: { createMany: { data: s.filas.map((f) => detalleData(f, s.proceso)) } },
-    },
+  // Prisma SQL Server no respeta el parámetro `schema=` de la URL para queries ORM
+  // (solo lo usa en $queryRaw). Se usa $executeRawUnsafe con esquema calificado explícitamente,
+  // igual que siguienteCodigoSolicitud y actualizarFactorAplicadoDetalles.
+  const tabSol = objetoPortal(s.compania, "SOLICITUD");
+  const tabDet = objetoPortal(s.compania, "SOLICITUD_DETALLE");
+  const db = portalDb(s.compania);
+  const parametrosJson = JSON.stringify({ ...s.parametros, filas: s.filas });
+
+  await db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(
+      `INSERT INTO ${tabSol}
+         (CODIGO_SOLICITUD, COMPANIA, PROCESO, TIPO_PROCESO, MODALIDAD,
+          LISTA_PRECIO, SOLICITANTE_EMAIL, SOLICITANTE_NOMBRE, ESTADO,
+          PARAMETROS_JSON, ARCHIVO_NOMBRE, ARCHIVO_S3_KEY)
+       VALUES (@P1, @P2, @P3, @P4, @P5, @P6, @P7, @P8, @P9, @P10, @P11, @P12)`,
+      s.id,
+      s.compania,
+      s.proceso,
+      s.proceso,
+      s.modalidad,
+      lista || null,
+      s.solicitanteEmail,
+      s.solicitanteNombre,
+      s.estado ?? "PENDIENTE",
+      parametrosJson,
+      s.archivoNombre ?? null,
+      s.archivoS3Key ?? null,
+    );
+
+    if (s.filas.length > 0) {
+      // Obtener el ID recién insertado para relacionar el detalle
+      const [{ id }] = await tx.$queryRawUnsafe<{ id: number }[]>(
+        `SELECT TOP 1 ID_SOLICITUD AS id FROM ${tabSol} WHERE CODIGO_SOLICITUD = @P1`,
+        s.id,
+      );
+      for (const f of s.filas) {
+        const d = detalleData(f, s.proceso);
+        await tx.$executeRawUnsafe(
+          `INSERT INTO ${tabDet}
+             (ID_SOLICITUD, SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO,
+              FACTOR_APLICADO, PRECIO_SIMULADO, PORCENTAJE_MARGEN,
+              ESTADO_FILA, MENSAJE_ERROR, FACTOR_SOLICITADO, LISTA_PRECIO, CAUSA)
+           VALUES (@P1, @P2, @P3, @P4, @P5, @P6, @P7, @P8, @P9, @P10, @P11, @P12, @P13)`,
+          id,
+          d.SKU,
+          d.DESCRIPCION ?? null,
+          d.PRECIO_ACTUAL,
+          d.COSTO,
+          d.FACTOR_APLICADO,
+          d.PRECIO_SIMULADO,
+          d.PORCENTAJE_MARGEN ?? null,
+          d.ESTADO_FILA,
+          d.MENSAJE_ERROR ?? null,
+          d.FACTOR_SOLICITADO ?? null,
+          d.LISTA_PRECIO ?? null,
+          d.CAUSA ?? null,
+        );
+      }
+    }
   });
 }
 
@@ -164,27 +242,64 @@ async function reemplazarBorrador(s: Solicitud): Promise<boolean> {
   }
   const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
   const db = portalDb(s.compania);
-  const ahora = await ahoraServidor(db);
+  const tabSol = objetoPortal(s.compania, "SOLICITUD");
+  const tabDet = objetoPortal(s.compania, "SOLICITUD_DETALLE");
+
   return db.$transaction(async (tx) => {
-    const actual = await tx.sOLICITUD.findFirst({ where: { CODIGO_SOLICITUD: s.id }, select: { ID_SOLICITUD: true } });
-    if (!actual) return false;
-    const { count } = await tx.sOLICITUD.updateMany({
-      where: { ID_SOLICITUD: actual.ID_SOLICITUD, ESTADO: "BORRADOR", SOLICITANTE_EMAIL: s.solicitanteEmail },
-      data: {
-        ESTADO: s.estado,
-        MODALIDAD: s.modalidad,
-        LISTA_PRECIO: lista || null,
-        PARAMETROS_JSON: JSON.stringify({ ...s.parametros, filas: s.filas }),
-        ARCHIVO_NOMBRE: s.archivoNombre,
-        ARCHIVO_S3_KEY: s.archivoS3Key,
-        FECHA_ULT_ESTADO: ahora,
-      },
-    });
-    if (count !== 1) return false;
-    await tx.sOLICITUD_DETALLE.deleteMany({ where: { ID_SOLICITUD: actual.ID_SOLICITUD } });
-    await tx.sOLICITUD_DETALLE.createMany({
-      data: s.filas.map((f) => ({ ...detalleData(f, s.proceso), ID_SOLICITUD: actual.ID_SOLICITUD })),
-    });
+    // Bloquear y verificar que existe y sigue en BORRADOR del mismo solicitante
+    const rows = await tx.$queryRawUnsafe<{ id: number }[]>(
+      `SELECT TOP 1 ID_SOLICITUD AS id FROM ${tabSol}
+       WHERE CODIGO_SOLICITUD = @P1 AND ESTADO = 'BORRADOR' AND SOLICITANTE_EMAIL = @P2`,
+      s.id,
+      s.solicitanteEmail,
+    );
+    if (!rows.length) return false;
+    const idSolicitud = rows[0].id;
+
+    const parametrosJson = JSON.stringify({ ...s.parametros, filas: s.filas });
+    await tx.$executeRawUnsafe(
+      `UPDATE ${tabSol}
+          SET ESTADO = @P1, MODALIDAD = @P2, LISTA_PRECIO = @P3,
+              PARAMETROS_JSON = @P4, ARCHIVO_NOMBRE = @P5, ARCHIVO_S3_KEY = @P6,
+              FECHA_ULT_ESTADO = GETDATE()
+        WHERE ID_SOLICITUD = @P7`,
+      s.estado,
+      s.modalidad,
+      lista || null,
+      parametrosJson,
+      s.archivoNombre ?? null,
+      s.archivoS3Key ?? null,
+      idSolicitud,
+    );
+
+    await tx.$executeRawUnsafe(
+      `DELETE FROM ${tabDet} WHERE ID_SOLICITUD = @P1`,
+      idSolicitud,
+    );
+
+    for (const f of s.filas) {
+      const d = detalleData(f, s.proceso);
+      await tx.$executeRawUnsafe(
+        `INSERT INTO ${tabDet}
+           (ID_SOLICITUD, SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO,
+            FACTOR_APLICADO, PRECIO_SIMULADO, PORCENTAJE_MARGEN,
+            ESTADO_FILA, MENSAJE_ERROR, FACTOR_SOLICITADO, LISTA_PRECIO, CAUSA)
+         VALUES (@P1, @P2, @P3, @P4, @P5, @P6, @P7, @P8, @P9, @P10, @P11, @P12, @P13)`,
+        idSolicitud,
+        d.SKU,
+        d.DESCRIPCION ?? null,
+        d.PRECIO_ACTUAL,
+        d.COSTO,
+        d.FACTOR_APLICADO,
+        d.PRECIO_SIMULADO,
+        d.PORCENTAJE_MARGEN ?? null,
+        d.ESTADO_FILA,
+        d.MENSAJE_ERROR ?? null,
+        d.FACTOR_SOLICITADO ?? null,
+        d.LISTA_PRECIO ?? null,
+        d.CAUSA ?? null,
+      );
+    }
     return true;
   });
 }
@@ -207,33 +322,60 @@ async function actualizarSolicitud(
     return true;
   }
   const db = portalDb(compania);
-  const data: Prisma.SOLICITUDUpdateManyMutationInput = { FECHA_ULT_ESTADO: await ahoraServidor(db) };
-  if (patch.estado !== undefined) data.ESTADO = patch.estado;
-  if (patch.motivoRechazo !== undefined) data.MOTIVO_RECHAZO = patch.motivoRechazo;
-  if (patch.idProcesoSP !== undefined) data.ID_PROCESO_SP = patch.idProcesoSP;
-  if (patch.autorizadoPor !== undefined) data.APROBADOR_NOMBRE = patch.autorizadoPor;
-  if (patch.autorizadoPorEmail !== undefined) data.APROBADOR_EMAIL = patch.autorizadoPorEmail;
-  if (patch.resultado) {
-    data.TOTAL_REGISTROS = patch.resultado.totalLote;
-    data.EXITOSOS = patch.resultado.exitosos;
-    data.FALLIDOS = patch.resultado.fallidos;
-    data.LOG_S3_KEY = patch.resultado.logS3Key;
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+
+  // Construir SET dinámico con parámetros posicionales
+  const setClauses: string[] = ["FECHA_ULT_ESTADO = GETDATE()"];
+  const params: unknown[] = [];
+
+  function addParam(clause: string, value: unknown) {
+    params.push(value);
+    setClauses.push(`${clause} = @P${params.length}`);
   }
-  const { count } = await db.sOLICITUD.updateMany({
-    where: { CODIGO_SOLICITUD: codigo, ...(desde ? { ESTADO: { in: desde } } : {}) },
-    data,
-  });
-  return count > 0;
+
+  if (patch.estado !== undefined) addParam("ESTADO", patch.estado);
+  if (patch.motivoRechazo !== undefined) addParam("MOTIVO_RECHAZO", patch.motivoRechazo);
+  if (patch.idProcesoSP !== undefined) addParam("ID_PROCESO_SP", patch.idProcesoSP);
+  if (patch.autorizadoPor !== undefined) addParam("APROBADOR_NOMBRE", patch.autorizadoPor);
+  if (patch.autorizadoPorEmail !== undefined) addParam("APROBADOR_EMAIL", patch.autorizadoPorEmail);
+  if (patch.resultado) {
+    addParam("TOTAL_REGISTROS", patch.resultado.totalLote);
+    addParam("EXITOSOS", patch.resultado.exitosos);
+    addParam("FALLIDOS", patch.resultado.fallidos);
+    addParam("LOG_S3_KEY", patch.resultado.logS3Key);
+  }
+
+  // WHERE con codigo y estados opcionales
+  params.push(codigo);
+  const pCodigo = params.length;
+  let where = `CODIGO_SOLICITUD = @P${pCodigo}`;
+  if (desde?.length) {
+    const placeholders = desde.map((_, i) => {
+      params.push(desde[i]);
+      return `@P${params.length}`;
+    });
+    where += ` AND ESTADO IN (${placeholders.join(", ")})`;
+  }
+
+  const sql = `UPDATE ${tabSol} SET ${setClauses.join(", ")} WHERE ${where}`;
+  const affected = await db.$executeRawUnsafe(sql, ...params);
+  return affected > 0;
 }
 
 /** Guarda el error del procesamiento en las líneas de la solicitud. */
 async function actualizarMensajeErrorDetalles(compania: string, codigo: string, mensaje: string): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return;
-  await portalDb(compania).sOLICITUD_DETALLE.updateMany({
-    where: { SOLICITUD: { CODIGO_SOLICITUD: codigo } },
-    data: { MENSAJE_ERROR: mensaje.slice(0, 400) },
-  });
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+  const tabDet = objetoPortal(compania, "SOLICITUD_DETALLE");
+  await portalDb(compania).$executeRawUnsafe(
+    `UPDATE D SET D.MENSAJE_ERROR = @P1
+       FROM ${tabDet} D
+       INNER JOIN ${tabSol} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
+      WHERE S.CODIGO_SOLICITUD = @P2`,
+    mensaje.slice(0, 400),
+    codigo,
+  );
 }
 
 /** Marca como aplicado el factor solicitado únicamente en filas exitosas. */
@@ -259,7 +401,12 @@ async function actualizarFactorAplicadoDetalles(compania: string, codigo: string
 // Helpers de mapeo
 // ---------------------------------------------------------------------------
 
-function detalleData(f: FilaResultado, proceso: Solicitud["proceso"]): Prisma.SOLICITUD_DETALLECreateManySOLICITUDInput {
+function detalleData(f: FilaResultado, proceso: Solicitud["proceso"]): {
+  SKU: string; DESCRIPCION: string | null; PRECIO_ACTUAL: number; COSTO: number;
+  FACTOR_APLICADO: number; PRECIO_SIMULADO: number; PORCENTAJE_MARGEN: number | null;
+  ESTADO_FILA: string; MENSAJE_ERROR: string | null; FACTOR_SOLICITADO: number | null;
+  LISTA_PRECIO: string | null; CAUSA: string | null;
+} {
   const v = f.validacion;
   const numero = (valor: unknown): number | null =>
     typeof valor === "number" && Number.isFinite(valor) ? valor : null;

@@ -2130,3 +2130,102 @@ MENSAJE_ERROR
 **Context**: CONSTRUCTION — RevisionModal.tsx, solicitudes-service.ts.
 
 ---
+## Incidente — Registro de solicitud con secuencia inválida
+**Timestamp**: 2026-10-05T00:00:00Z
+**User Input**: "No fue posible registrar la solicitud en el Portal: Invalid `prisma.$queryRawUnsafe()` invocation: Raw query failed. Code: `208`. Message: `Invalid object name 'SILLACA.SEQ_SOLICITUD'.`
+
+<EnvironmentContext>
+This information is provided as context about user environment. Only consider it if it's relevant to the user request ignore it otherwise.
+
+<OPEN-EDITOR-FILES>
+No files are open
+</OPEN-EDITOR-FILES>
+
+<ACTIVE-EDITOR-FILE>
+No file is active in editor
+</ACTIVE-EDITOR-FILES>
+</EnvironmentContext>"
+**AI Response**: "Se inició el diagnóstico del error SQL Server 208 durante el registro de solicitudes. Se identificó como hipótesis inicial una referencia a la secuencia `SILLACA.SEQ_SOLICITUD`; se revisará el repositorio y el esquema documentado antes de modificar código."
+**Context**: Incepción - Detección de Workspace / Análisis de Requerimientos
+
+---
+## Respuesta — Decisión sobre deuda técnica
+**Timestamp**: 2026-10-05T00:00:00Z
+**User Input**: "A
+
+<EnvironmentContext>
+This information is provided as context about user environment. Only consider it if it's relevant to the user request ignore it otherwise.
+
+<OPEN-EDITOR-FILES>
+<file name=\"c:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\aidlc-docs\\inception\\requirements\\sesion-deuda-tecnica-questions.md\" />
+</OPEN-EDITOR-FILES>
+
+<ACTIVE-EDITOR-FILE>
+<file name=\"c:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\aidlc-docs\\inception\\requirements\\sesion-deuda-tecnica-questions.md\" />
+</ACTIVE-EDITOR-FILE>
+</EnvironmentContext>"
+**AI Response**: "Se registra la opción A: no atender deuda técnica en esta sesión y continuar con el diagnóstico del error `SILLACA.SEQ_SOLICITUD`."
+**Context**: Incepción - Análisis de Requerimientos / decisión de deuda técnica
+
+---
+## Validación — Corrección de SEQ_SOLICITUD
+**Timestamp**: 2026-10-05T00:00:00Z
+**User Input**: "A"
+**AI Response**: "Se validó el cambio en `backend/sql/portal/09_seq_solicitud_por_empresa.sql`: `git diff --check` pasó, la validación estática confirmó `USE [PORTAL_PRECIOS]` y los bloques activos para FEBECA, BEVAL y SILLACA, y `npm run typecheck` en `app-web` terminó correctamente. No se ejecutó DDL contra la BD viva; no hay evidencia local de disponibilidad de `sqlcmd`."
+**Context**: CONSTRUCTION — corrección y validación del error SQL Server 208
+
+---
+## Solicitud — Log de INSERT en consola del navegador
+**Timestamp**: 2026-10-05T00:00:00Z
+**User Input**: "COLOCA UN LOG EN LA CONSOLA DE L NAVEGADOR PARA MOSTRAR LA SENTENCIA INSERT EN LA TABLA SOLICITUD AL ENVIAR CUALQUIER SOLICITUD
+
+<EnvironmentContext>
+This information is provided as context about user environment. Only consider it if it's relevant to the user request ignore it otherwise.
+
+<OPEN-EDITOR-FILES>
+<file name=\"c:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\aidlc-docs\\inception\\requirements\\sesion-deuda-tecnica-questions.md\" />
+<file name=\"c:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\backend\\sql\\portal\\09_seq_solicitud_por_empresa.sql\" />
+</OPEN-EDITOR-FILES>
+
+<ACTIVE-EDITOR-FILE>
+<file name=\"c:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\backend\\sql\\portal\\09_seq_solicitud_por_empresa.sql\" />
+</ACTIVE-EDITOR-FILES>
+</EnvironmentContext>"
+**AI Response**: "Se analizará el flujo de envío para agregar un log de diagnóstico en la consola del navegador que muestre la sentencia INSERT y sus parámetros, sin cambiar la persistencia ni exponer secretos."
+**Context**: CONSTRUCTION — diagnóstico y observabilidad temporal del registro de solicitudes
+
+---
+## Validación — Log de INSERT en navegador
+**Timestamp**: 2026-10-05T00:00:00Z
+**User Input**: "COLOCA UN LOG EN LA CONSOLA DE L NAVEGADOR PARA MOSTRAR LA SENTENCIA INSERT EN LA TABLA SOLICITUD AL ENVIAR CUALQUIER SOLICITUD"
+**AI Response**: "Se validó `app-web/src/features/solicitudes/api/solicitudes-api.ts`: `npm run typecheck` terminó correctamente y `git diff --check` no reportó errores. `npm run lint` no pudo completar porque Next.js solicitó configuración interactiva de ESLint al no existir configuración previa en el proyecto; no se modificó esa configuración. El diff confirma que el cambio solo agrega el preview parametrizado previo al POST."
+**Context**: CONSTRUCTION — validación de observabilidad temporal del registro de solicitudes
+
+---
+## Revalidación — Cobertura de altas de solicitudes y borradores
+**Timestamp**: 2026-10-05T00:00:00Z
+**User Input**: "COLOCA UN LOG EN LA CONSOLA DE L NAVEGADOR PARA MOSTRAR LA SENTENCIA INSERT EN LA TABLA SOLICITUD AL ENVIAR CUALQUIER SOLICITUD"
+**AI Response**: "Se amplió el preview para cubrir `enviarSolicitud()` y `guardarBorrador()`. La búsqueda confirmó ambas invocaciones, `npm run typecheck` terminó correctamente y `git diff --check` pasó. El log distingue INSERT de una solicitud nueva frente a UPDATE de un borrador existente."
+**Context**: CONSTRUCTION — revalidación de observabilidad temporal del registro de solicitudes
+
+---
+## Incidente — EPERM al escribir `.next/trace`
+**Timestamp**: 2026-10-05T00:00:00Z
+**User Input**: "[Error: EPERM: operation not permitted, open 'C:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\app-web\\.next\\trace'] {
+
+  errno: -4048,
+  code: 'EPERM',
+  syscall: 'open',
+  path: 'C:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\app-web\\.next\\trace'
+}"
+**AI Response**: "Se inició el diagnóstico del bloqueo Windows sobre `app-web/.next/trace`, revisando procesos Node/Next y atributos del archivo antes de aplicar una acción reversible."
+**Context**: CONSTRUCTION — diagnóstico de build/dev de Next.js
+
+---
+## Validación — Resolución de bloqueo `.next/trace`
+**Timestamp**: 2026-10-05T00:00:00Z
+**User Input**: "[Error: EPERM: operation not permitted, open 'C:\\Users\\erincon\\Documents\\Proyectos\\mv26020-calculo-de-listas-de-precio\\app-web\\.next\\trace']"
+**AI Response**: "Se detuvieron los dos árboles duplicados de Next.js que escuchaban en los puertos 3000 y 3001. `npm run build` terminó correctamente, regeneró `.next/trace` y la comprobación posterior abrió el archivo en modo lectura/escritura. No se modificó código ni se borró `.next`; `git diff --check` pasó."
+**Context**: CONSTRUCTION — validación del diagnóstico EPERM de Next.js
+
+---
