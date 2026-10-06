@@ -14,10 +14,13 @@ export function withIdentidad<C = unknown>(
 ): (req: Request, ctx: C) => Promise<Response> {
   return (req, ctx) =>
     withApiRoute(async (r: Request) => {
+      console.info("[withIdentidad] Iniciando verificación de sesión");
       const session = await getServerSession();
+      console.info("[withIdentidad] Sesión obtenida", { hasSession: !!session });
       if (!session) return apiUnauthorized("Sesión no válida");
       if (session.mustChangePassword) return apiError(MUST_CHANGE_PASSWORD_ERROR, 403);
       const identidad = getIdentidad(session);
+      console.info("[withIdentidad] Identidad resuelta", { email: identidad.email, rol: identidad.rol });
       if (identidad.rol === "SIN_PERMISO") return apiError("Acceso denegado", 403);
       return handler(r, identidad, ctx);
     })(req);

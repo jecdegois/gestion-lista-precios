@@ -62,6 +62,21 @@ export function objetoPortal(compania: string, nombre: string): string {
   return objeto;
 }
 
+/**
+ * Objeto del portal completamente calificado con nombre de base de datos para JOINs
+ * cross-database. Genera: [PORTAL_PRECIOS].[SCHEMA].[TABLA]
+ * Usar cuando se ejecuta una query en el pool de Softland pero se necesita acceder
+ * a tablas del Portal (ej: actualización masiva de ARTICULO_PRECIO desde SOLICITUD_DETALLE).
+ */
+export function objetoPortalFullyQualified(compania: string, nombre: string): string {
+  const schema = resolverCompania(compania).schema;
+  const objeto = `[${envs.PORTAL_DB_NAME}].[${schema}].[${nombre}]`;
+  if (!/^\[[A-Za-z0-9_]+\]\.\[[A-Za-z0-9_]+\]\.\[[A-Za-z0-9_]+\]$/.test(objeto)) {
+    throw new Error(`Identificador SQL cross-database inválido: ${objeto}`);
+  }
+  return objeto;
+}
+
 /** Defaults de objetos SQL (coinciden con los scripts de backend/sql). */
 function defaultsSql(): SqlObjetos {
   return {

@@ -82,7 +82,10 @@ function urlSqlServer(database: string, schema: string): string {
     `sqlserver://${e.PORTAL_DB_SERVER}:${e.SQL_PORT};` +
     `database=${database};user=${e.PORTAL_DB_USER};` +
     `password={${e.PORTAL_DB_PASSWORD}};encrypt=${e.SQL_ENCRYPT};` +
-    `trustServerCertificate=${e.SQL_TRUST_SERVER_CERTIFICATE};schema=${schema}`
+    `trustServerCertificate=${e.SQL_TRUST_SERVER_CERTIFICATE};schema=${schema};` +
+    // Pool: aumentar límite y timeout para evitar agotamiento durante carga concurrente
+    // socket_timeout: timeout máximo para queries (en segundos)
+    `connection_limit=15;pool_timeout=30;socket_timeout=120`
   );
 }
 

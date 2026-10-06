@@ -1,7 +1,7 @@
 import "server-only";
 import { esFilaMargen, esFilaProcesable, type FilaPrecio, type FilaResultado, type TipoVariacion } from "@/shared/types/domain-types";
 import type { Articulo, GestionGlobalLista, NivelPrecio } from "@/shared/types/models";
-import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "@/server/companies";
+import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, objetoPortal, objetoPortalFullyQualified, resolverCompania } from "@/server/companies";
 import {
   buscarArticuloDemo,
   catalogoDemo,
@@ -9,7 +9,7 @@ import {
   porcentajeUdfDemo,
   upsertUdfDemo,
 } from "./demo-catalog";
-import { getPool, softlandDb, softlandDbo } from "@/server/db";
+import { getPool, portalDb, softlandDb, softlandDbo } from "@/server/db";
 
 /**
  * Repositorio de precios/margen por compania. Enruta cada operacion a la base
@@ -1135,6 +1135,505 @@ async function listarHallazgosGestionGlobal(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Funciones BATCHED: leen directamente de SOLICITUD_DETALLE y procesan por lotes
+// para solicitudes grandes (10K-40K filas) sin cargar todo en memoria Node.js.
+// ---------------------------------------------------------------------------
+
+const BATCH_SIZE = 500;
+
+export interface ResultadoBatch {
+  total: number;
+  exitosos: number;
+  fallidos: number;
+}
+
+/**
+ * Obtiene la configuración de gestión global para una lista específica.
+ * Usado para validar el flag VALIDAR_PRECIO_BAJO_MARGEN_MIN sin cargar todas las listas.
+ */
+async function obtenerConfiguracionGestionGlobal(
+  compania: string,
+  lista: string,
+): Promise<GestionGlobalLista | null> {
+  if (esModoDemo()) {
+    const listas = await listarGestionGlobal(compania);
+    return listas.find((l) => l.codigo.trim().toUpperCase() === lista.trim().toUpperCase()) ?? null;
+  }
+
+  const pool = await getPool(compania);
+  const mssql = await import("mssql");
+  const q = await pool.request()
+    .input("compania", mssql.VarChar(20), compania.trim().toUpperCase())
+    .input("lista", mssql.VarChar(50), lista.trim())
+    .query(
+      `SELECT TOP (1)
+              A.NIVEL_PRECIO AS codigo,
+              A.VERSION AS version,
+              A.VARIACION_PORC AS variacionPorc,
+              LTRIM(RTRIM(A.TIPO_VARIACION)) AS tipoVariacion,
+              LTRIM(RTRIM(A.MONEDA)) AS moneda,
+              COALESCE(NULLIF(LTRIM(RTRIM(A.NIVEL_PRECIO_BASE)), ''), A.NIVEL_PRECIO) AS nivelPrecioBase,
+              ISNULL(A.VALIDAR_PRECIO_BAJO_MARGEN_MIN, 0) AS validarPrecioBajoMargenMin
+         FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
+        WHERE A.COMPANIA = @compania
+          AND A.NIVEL_PRECIO = @lista
+        ORDER BY TRY_CONVERT(INT, A.VERSION) DESC, A.VERSION DESC;`,
+    );
+  
+  const r = q.recordset[0];
+  if (!r) return null;
+  
+  const codigo = String(r.codigo ?? "").trim();
+  return {
+    codigo,
+    nombre: codigo,
+    version: String(r.version ?? "").trim(),
+    variacionPorc: r.variacionPorc == null ? null : Number(r.variacionPorc),
+    tipoVariacion: normalizarTipoVariacion(r.tipoVariacion),
+    moneda: r.moneda == null ? null : String(r.moneda).trim() || null,
+    fechaInicio: null,
+    fechaFin: null,
+    factorMultiplicador: null,
+    horasAtras: null,
+    nivelPrecioBase: String(r.nivelPrecioBase ?? codigo).trim() || codigo,
+    monedaBase: null,
+    exigirFactorConfigurado: false,
+    validarPrecioBajoCosto: false,
+    excepcionesArticulos: null,
+    validarPrecioBajoMargenMin: Boolean(r.validarPrecioBajoMargenMin),
+  };
+}
+
+/**
+ * Actualiza precios base en ARTICULO_PRECIO leyendo directamente de SOLICITUD_DETALLE.
+ * Usa UPDATE con JOIN para actualizar en masa (no fila por fila).
+ */
+async function actualizarPreciosBaseBatched(
+  compania: string,
+  solicitudId: string,
+  usuario: string,
+): Promise<ResultadoBatch> {
+  assertEscrituraSoftlandHabilitada();
+  if (esModoDemo()) throw new Error("PRECIO_BASE_BATCHED_NO_DISPONIBLE_EN_DEMO");
+
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const lista = "MAYOREOD";
+  const pool = await getPool(companiaNormalizada);
+  const ap = objetoCalificado(companiaNormalizada, "tablaArticuloPrecio");
+  const versiones = objetoCalificado(companiaNormalizada, "tablaVersionNivel");
+  // IMPORTANTE: Usar nombres completamente calificados con base de datos para el JOIN cross-database
+  // ya que el pool es de Softland pero las tablas SOLICITUD_DETALLE/SOLICITUD están en Portal
+  const tabDet = objetoPortalFullyQualified(companiaNormalizada, "SOLICITUD_DETALLE");
+  const tabSol = objetoPortalFullyQualified(companiaNormalizada, "SOLICITUD");
+  // Para el conteo posterior usamos objetoPortal normal ya que se ejecuta en portalDb
+  const tabDetPortal = objetoPortal(companiaNormalizada, "SOLICITUD_DETALLE");
+  const tabSolPortal = objetoPortal(companiaNormalizada, "SOLICITUD");
+  const mssql = await import("mssql");
+
+  // Obtener versión activa
+  const versionResult = await pool.request()
+    .input("lista", mssql.VarChar(50), lista)
+    .query(
+      `SELECT TOP (1) VN.VERSION AS version
+         FROM ${versiones} VN WITH(NOLOCK)
+        WHERE VN.NIVEL_PRECIO = @lista
+          AND VN.ESTADO = 'A'
+        ORDER BY TRY_CONVERT(INT, VN.VERSION) DESC, VN.VERSION DESC;`,
+    );
+  const version = versionResult.recordset[0]?.version;
+  if (version == null || String(version).trim() === "") {
+    throw new Error(`No existe una versión activa para la lista '${lista}'.`);
+  }
+
+  console.info("[PRECIO_BASE_BATCHED] Iniciando UPDATE masivo con JOIN cross-database", { 
+    solicitudId, 
+    lista, 
+    version: String(version),
+    tablaArticuloPrecio: ap,
+    tablaSolicitudDetalle: tabDet,
+    tablaSolicitud: tabSol,
+  });
+
+  // UPDATE masivo: actualiza ARTICULO_PRECIO directamente desde SOLICITUD_DETALLE con JOIN
+  // Esto es MUCHO más eficiente que hacer 10,000 UPDATEs individuales
+  // NOTA: tabDet y tabSol usan nombres fully qualified ([PORTAL_DB].[SCHEMA].[TABLA])
+  // porque el pool es de Softland pero las tablas están en Portal (cross-database JOIN)
+  const result = await pool.request()
+    .input("codigo", mssql.VarChar(50), solicitudId)
+    .input("lista", mssql.VarChar(50), lista)
+    .input("version", mssql.Int, Number(version))
+    .input("usuario", mssql.VarChar(50), usuario.trim())
+    .query(
+      `UPDATE AP
+          SET AP.PRECIO = D.PRECIO_SIMULADO,
+              AP.FECHA_ULT_MODIF = GETDATE(),
+              AP.USUARIO_ULT_MODIF = @usuario
+         FROM ${ap} AP
+         INNER JOIN ${tabDet} D ON D.SKU = AP.ARTICULO
+         INNER JOIN ${tabSol} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
+        WHERE S.CODIGO_SOLICITUD = @codigo
+          AND AP.NIVEL_PRECIO = @lista
+          AND AP.VERSION = @version
+          AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')
+          AND D.PRECIO_SIMULADO > 0;`,
+    );
+
+  const exitosos = result.rowsAffected[0] ?? 0;
+  
+  // Contar fallidos (filas que no se actualizaron por no existir en ARTICULO_PRECIO o precio inválido)
+  // Aquí usamos tabDetPortal/tabSolPortal porque la query se ejecuta en portalDb (no necesita fully qualified)
+  const countResult = await portalDb(companiaNormalizada).$queryRawUnsafe<{ n: bigint }[]>(
+    `SELECT COUNT(*) AS n FROM ${tabDetPortal} D
+     INNER JOIN ${tabSolPortal} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
+     WHERE S.CODIGO_SOLICITUD = @P1
+       AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')`,
+    solicitudId,
+  );
+  const total = Number(countResult[0]?.n ?? 0);
+  const fallidos = total - exitosos;
+
+  console.info("[PRECIO_BASE_BATCHED] Completado", { 
+    solicitudId, 
+    total, 
+    exitosos, 
+    fallidos,
+    tabla: ap,
+  });
+
+  return { total, exitosos, fallidos };
+}
+
+/**
+ * Upsert factores artículo-lista leyendo directamente de SOLICITUD_DETALLE
+ * en lotes, para solicitudes de Descuento (DESCUENTO_LISTA_PRECIO).
+ */
+async function upsertFactoresArticuloListaBatched(
+  compania: string,
+  solicitudId: string,
+  usuario: string,
+): Promise<ResultadoBatch> {
+  assertEscrituraSoftlandHabilitada();
+  if (esModoDemo()) throw new Error("FACTOR_ARTICULO_LISTA_BATCHED_NO_DISPONIBLE_EN_DEMO");
+
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const usuarioNormalizado = usuario.trim();
+  const pool = await getPool(companiaNormalizada);
+  const target = objetoCalificado(companiaNormalizada, "tablaFactorArticuloLista");
+  const gestion = `[dbo].[${nombreSql(companiaNormalizada, "tablaGestionListaPrecio")}]`;
+  const mssql = await import("mssql");
+
+  // Extraer ID_SOLICITUD numérico
+  const idNumerico = parseInt(solicitudId.replace(/^SOL-/i, ""), 10);
+  if (isNaN(idNumerico)) {
+    throw new Error(`ID de solicitud inválido: ${solicitudId}`);
+  }
+
+  // Contar total de filas
+  const countResult = await portalDb(companiaNormalizada).sOLICITUD_DETALLE.count({
+    where: { 
+      ID_SOLICITUD: idNumerico,
+      ESTADO_FILA: { in: ["OK", "HALLAZGO"] },
+    },
+  });
+  const total = countResult;
+
+  console.info("[FACTOR_ARTICULO_LISTA_BATCHED] Iniciando procesamiento", { 
+    solicitudId, 
+    total,
+    batchSize: BATCH_SIZE,
+  });
+
+  let exitosos = 0;
+  let fallidos = 0;
+  let offset = 0;
+
+  while (offset < total) {
+    // Leer batch de filas desde SOLICITUD_DETALLE
+    const filas = await portalDb(companiaNormalizada).sOLICITUD_DETALLE.findMany({
+      where: { 
+        ID_SOLICITUD: idNumerico,
+        ESTADO_FILA: { in: ["OK", "HALLAZGO"] },
+      },
+      select: {
+        ID_DETALLE: true,
+        SKU: true,
+        FACTOR_APLICADO: true,
+        LISTA_PRECIO: true,
+      },
+      skip: offset,
+      take: BATCH_SIZE,
+      orderBy: { ID_DETALLE: "asc" },
+    });
+
+    if (filas.length === 0) break;
+
+    const transaction = new mssql.Transaction(pool);
+    let committed = false;
+
+    await transaction.begin();
+    try {
+      for (const fila of filas) {
+        const articulo = fila.SKU.trim();
+        const factor = Number(fila.FACTOR_APLICADO);
+        const nivelPrecioSolicitado = (fila.LISTA_PRECIO ?? "").trim();
+        const descripcion = `Solicitud ${solicitudId}`;
+
+        if (!nivelPrecioSolicitado || !articulo) {
+          fallidos += 1;
+          continue;
+        }
+        if (!Number.isFinite(factor) || factor <= 0 || factor > 2) {
+          fallidos += 1;
+          continue;
+        }
+
+        try {
+          // Obtener nivel precio base y versión
+          const lookup = await new mssql.Request(transaction)
+            .input("compania", mssql.VarChar(20), companiaNormalizada)
+            .input("nivelPrecio", mssql.VarChar(50), nivelPrecioSolicitado)
+            .query(
+              `SELECT TOP (1)
+                      A.NIVEL_PRECIO_BASE AS nivelPrecioBase,
+                      A.NIVEL_PRECIO AS nivelPrecio,
+                      TRY_CONVERT(INT, A.VERSION) AS version
+                 FROM ${gestion} A WITH(NOLOCK)
+                WHERE A.COMPANIA = @compania
+                  AND A.NIVEL_PRECIO = @nivelPrecio
+                ORDER BY TRY_CONVERT(INT, A.VERSION) DESC, A.VERSION DESC;`,
+            );
+          const maestro = lookup.recordset[0] as Record<string, unknown> | undefined;
+          const nivelPrecioBase = String(maestro?.nivelPrecioBase ?? "").trim();
+          const nivelPrecio = String(maestro?.nivelPrecio ?? nivelPrecioSolicitado).trim();
+          const version = Number(maestro?.version);
+          
+          if (!nivelPrecioBase || !nivelPrecio || !Number.isInteger(version)) {
+            fallidos += 1;
+            continue;
+          }
+
+          // Intentar UPDATE primero
+          const update = await new mssql.Request(transaction)
+            .input("nivelPrecio", mssql.VarChar(20), nivelPrecio)
+            .input("version", mssql.Int, version)
+            .input("articulo", mssql.VarChar(20), articulo)
+            .input("factor", mssql.Decimal(28, 8), Number(factor.toFixed(8)))
+            .input("descripcion", mssql.VarChar(20), descripcion)
+            .input("usuario", mssql.VarChar(50), usuarioNormalizado)
+            .query(
+              `UPDATE T
+                  SET T.U_DESCRIP = @descripcion,
+                      T.U_FACTOR = @factor,
+                      T.U_NIVEL_PRECIO = @nivelPrecio,
+                      T.U_VERSION = @version,
+                      T.RecordDate = GETDATE(),
+                      T.UpdatedBy = @usuario
+                 FROM ${target} T
+                WHERE T.U_NIVEL_PRECIO = @nivelPrecio
+                  AND T.U_ARTICULO = @articulo;`,
+            );
+
+          if ((update.rowsAffected[0] ?? 0) > 0) {
+            exitosos += 1;
+            continue;
+          }
+
+          // INSERT si no existía
+          const siguienteCodigo = await new mssql.Request(transaction).query(
+            `SELECT CAST(COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.U_CODIGO)), ''))), 0) + 1 AS VARCHAR(10)) AS siguienteCodigo
+               FROM ${target} U WITH(NOLOCK);`,
+          );
+          const codigo = String(siguienteCodigo.recordset[0]?.siguienteCodigo ?? "1");
+          
+          await new mssql.Request(transaction)
+            .input("codigo", mssql.VarChar(10), codigo)
+            .input("nivelPrecio", mssql.VarChar(20), nivelPrecio)
+            .input("version", mssql.Int, version)
+            .input("articulo", mssql.VarChar(20), articulo)
+            .input("factor", mssql.Decimal(28, 8), Number(factor.toFixed(8)))
+            .input("descripcion", mssql.VarChar(20), descripcion)
+            .input("usuario", mssql.VarChar(50), usuarioNormalizado)
+            .query(
+              `INSERT INTO ${target} (
+                 U_CODIGO, U_DESCRIP, NoteExistsFlag, RecordDate, RowPointer,
+                 CreatedBy, UpdatedBy, CreateDate, U_ARTICULO, U_FACTOR,
+                 U_NIVEL_PRECIO, U_VERSION
+               ) VALUES (
+                 @codigo, @descripcion, 0, GETDATE(), NEWID(),
+                 @usuario, @usuario, GETDATE(), @articulo, @factor,
+                 @nivelPrecio, @version
+               );`,
+            );
+          exitosos += 1;
+        } catch (err) {
+          console.error("[FACTOR_ARTICULO_LISTA_BATCHED] Error en artículo", { articulo, error: err instanceof Error ? err.message : err });
+          fallidos += 1;
+        }
+      }
+
+      await transaction.commit();
+      committed = true;
+    } catch (error) {
+      if (!committed) await transaction.rollback().catch(() => undefined);
+      throw error;
+    }
+
+    offset += filas.length;
+    console.info("[FACTOR_ARTICULO_LISTA_BATCHED] Batch procesado", { offset, exitosos, fallidos });
+  }
+
+  console.info("[FACTOR_ARTICULO_LISTA_BATCHED] Completado", { 
+    solicitudId, 
+    total, 
+    exitosos, 
+    fallidos,
+  });
+
+  return { total, exitosos, fallidos };
+}
+
+/**
+ * Upsert UDFs de margen de utilidad leyendo directamente de SOLICITUD_DETALLE
+ * en lotes, para solicitudes de Margen (MARGEN_UTILIDAD_MASIVO).
+ */
+async function upsertUdfsBatched(
+  compania: string,
+  solicitudId: string,
+  usuario: string,
+): Promise<ResultadoBatch> {
+  assertEscrituraSoftlandHabilitada();
+  if (esModoDemo()) throw new Error("UDF_BATCHED_NO_DISPONIBLE_EN_DEMO");
+
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const pool = await getPool(companiaNormalizada);
+  const udf = objetoCalificado(companiaNormalizada, "udfFactorReduccion");
+  const colCodigo = nombreSql(companiaNormalizada, "colUdfCodigo");
+  const colDescrip = nombreSql(companiaNormalizada, "colUdfDescripcion");
+  const colFactor = nombreSql(companiaNormalizada, "colUdfFactor");
+  const colActivo = nombreSql(companiaNormalizada, "colUdfActivo");
+  const colArticulo = nombreSql(companiaNormalizada, "colUdfArticulo");
+  const mssql = await import("mssql");
+
+  // Extraer ID_SOLICITUD numérico
+  const idNumerico = parseInt(solicitudId.replace(/^SOL-/i, ""), 10);
+  if (isNaN(idNumerico)) {
+    throw new Error(`ID de solicitud inválido: ${solicitudId}`);
+  }
+
+  const descripcion = `Solicitud ${solicitudId}`;
+
+  // Contar total de filas
+  const countResult = await portalDb(companiaNormalizada).sOLICITUD_DETALLE.count({
+    where: { 
+      ID_SOLICITUD: idNumerico,
+      ESTADO_FILA: { in: ["OK", "HALLAZGO"] },
+    },
+  });
+  const total = countResult;
+
+  console.info("[UDF_BATCHED] Iniciando procesamiento", { 
+    solicitudId, 
+    total,
+    batchSize: BATCH_SIZE,
+  });
+
+  let exitosos = 0;
+  let fallidos = 0;
+  let offset = 0;
+
+  while (offset < total) {
+    // Leer batch de filas desde SOLICITUD_DETALLE
+    const filas = await portalDb(companiaNormalizada).sOLICITUD_DETALLE.findMany({
+      where: { 
+        ID_SOLICITUD: idNumerico,
+        ESTADO_FILA: { in: ["OK", "HALLAZGO"] },
+      },
+      select: {
+        ID_DETALLE: true,
+        SKU: true,
+        PORCENTAJE_MARGEN: true,
+      },
+      skip: offset,
+      take: BATCH_SIZE,
+      orderBy: { ID_DETALLE: "asc" },
+    });
+
+    if (filas.length === 0) break;
+
+    const transaction = new mssql.Transaction(pool);
+    let committed = false;
+
+    await transaction.begin();
+    try {
+      // Obtener siguiente código con lock
+      const siguiente = await new mssql.Request(transaction).query(
+        `SELECT COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.${colCodigo})), ''))), 0) + 1 AS siguienteCodigo
+           FROM ${udf} U WITH(UPDLOCK, HOLDLOCK)`,
+      );
+      let siguienteCodigo = BigInt(String(siguiente.recordset[0]?.siguienteCodigo ?? "1"));
+
+      for (const fila of filas) {
+        const articulo = fila.SKU.trim();
+        const porcentaje = Number(fila.PORCENTAJE_MARGEN ?? 0);
+
+        if (!articulo) {
+          fallidos += 1;
+          continue;
+        }
+
+        try {
+          const result = await new mssql.Request(transaction)
+            .input("codigo", mssql.VarChar(256), siguienteCodigo.toString())
+            .input("articulo", mssql.VarChar(20), articulo)
+            .input("descrip", mssql.VarChar(260), descripcion)
+            .input("factor", mssql.Decimal(18, 8), porcentaje)
+            .input("usuario", mssql.VarChar(30), usuario.trim())
+            .query(
+              `MERGE ${udf} WITH(HOLDLOCK) AS T
+                 USING (SELECT @articulo AS articulo, @descrip AS d) AS S
+               ON T.${colArticulo} = S.articulo
+               WHEN MATCHED THEN
+                 UPDATE SET T.${colDescrip} = @descrip,
+                            T.${colFactor} = @factor, T.${colActivo} = 'S',
+                            T.RecordDate = GETDATE(), T.UpdatedBy = @usuario
+               WHEN NOT MATCHED THEN
+                 INSERT (${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
+                         NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate,
+                         ${colArticulo})
+                 VALUES (@codigo, @descrip, @factor, 'S',
+                         0, GETDATE(), NEWID(), @usuario, @usuario, GETDATE(), @articulo)
+               OUTPUT $action AS accion;`,
+            );
+          if (result.recordset[0]?.accion === "INSERT") siguienteCodigo += BigInt(1);
+          exitosos += 1;
+        } catch (err) {
+          console.error("[UDF_BATCHED] Error en artículo", { articulo, error: err instanceof Error ? err.message : err });
+          fallidos += 1;
+        }
+      }
+
+      await transaction.commit();
+      committed = true;
+    } catch (error) {
+      if (!committed) await transaction.rollback().catch(() => undefined);
+      throw error;
+    }
+
+    offset += filas.length;
+    console.info("[UDF_BATCHED] Batch procesado", { offset, exitosos, fallidos });
+  }
+
+  console.info("[UDF_BATCHED] Completado", { 
+    solicitudId, 
+    total, 
+    exitosos, 
+    fallidos,
+  });
+
+  return { total, exitosos, fallidos };
+}
+
 export const pricingRepository = {
   listPriceLevels: listarNivelesPrecio,
   activePriceVersion: obtenerVersionActiva,
@@ -1150,4 +1649,9 @@ export const pricingRepository = {
   upsertUdfs,
   runMarginSp: ejecutarSpMargen,
   runListManagementSp: ejecutarSpGestionListas,
+  // Funciones BATCHED para solicitudes grandes (10K-40K filas)
+  getGlobalManagementConfig: obtenerConfiguracionGestionGlobal,
+  updateBasePricesBatched: actualizarPreciosBaseBatched,
+  upsertArticleListFactorsBatched: upsertFactoresArticuloListaBatched,
+  upsertUdfsBatched: upsertUdfsBatched,
 };

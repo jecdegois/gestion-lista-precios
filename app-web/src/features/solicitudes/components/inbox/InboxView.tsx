@@ -62,6 +62,18 @@ export default function InboxView({ readOnly }: { readOnly: boolean }) {
           onDecidirCancelacion={(id, approved) => void inbox.decideCancellation(id, approved)}
           onRetomar={isAuditor || !BORRADORES_HABILITADOS ? undefined : resume}
           loadingDetail={inbox.loadingDetail}
+          detailTotal={inbox.modalDetailTotal}
+          detailTotalHallazgos={inbox.modalDetailTotalHallazgos}
+          detailHasMore={inbox.modalDetailHasMore}
+          detailNextOffset={inbox.modalDetailNextOffset}
+          loadingDetailMore={inbox.loadingDetailMore}
+          onLoadMoreDetail={inbox.loadMoreDetail}
+          backendHallazgosFilas={inbox.modalHallazgosFilas}
+          backendHallazgosTotal={inbox.modalHallazgosTotal}
+          backendHallazgosHasMore={inbox.modalHallazgosHasMore}
+          backendHallazgosNextOffset={inbox.modalHallazgosNextOffset}
+          loadingBackendHallazgosMore={inbox.loadingHallazgosMore}
+          onLoadMoreBackendHallazgos={inbox.loadMoreHallazgos}
         />
       )}
     </>

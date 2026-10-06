@@ -29,6 +29,7 @@ export function useRequestSubmission({
     const res = await guardarBorrador({ ...input, borradorId: draftId });
     setSavingDraft(false);
     if (!res.ok) {
+      console.error("[saveDraft] Error al guardar borrador:", res.error);
       notify.error(res.error);
       return;
     }
@@ -41,6 +42,7 @@ export function useRequestSubmission({
     const res = await enviarSolicitud({ ...input, borradorId: draftId });
     setSending(false);
     if (!res.ok) {
+      console.error("[submit] Error al enviar solicitud:", res.error);
       notify.error(res.error);
       return;
     }
