@@ -78,6 +78,34 @@ export function getSolicitudDetalle(id: string) {
   return apiRequest<{ solicitud: Solicitud }>(`/api/bandeja/${encodeURIComponent(id)}`);
 }
 
+/** Obtiene solo la cabecera SIN filas de detalle (carga inicial rápida del modal). */
+export function getSolicitudCabecera(id: string) {
+  return apiRequest<{ solicitud: Solicitud }>(`/api/bandeja/${encodeURIComponent(id)}?headerOnly=1`);
+}
+
+/** Obtiene una página de filas del detalle de una solicitud. */
+export function getSolicitudDetallePaginado(id: string, offset = 0, limit = 50) {
+  const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  return apiRequest<{
+    filas: FilaResultado[];
+    total: number;
+    totalHallazgos: number;
+    hasMore: boolean;
+    nextOffset: number | null;
+  }>(`/api/bandeja/${encodeURIComponent(id)}/detalle?${q.toString()}`);
+}
+
+/** Obtiene una página de hallazgos (filas con advertencia de margen/costo) de una solicitud. */
+export function getSolicitudHallazgosPaginado(id: string, offset = 0, limit = 50) {
+  const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  return apiRequest<{
+    filas: FilaResultado[];
+    total: number;
+    hasMore: boolean;
+    nextOffset: number | null;
+  }>(`/api/bandeja/${encodeURIComponent(id)}/hallazgos?${q.toString()}`);
+}
+
 export function registrarRevision(id: string) {
   return apiRequest<Record<string, never>>(`/api/solicitudes/${encodeURIComponent(id)}/revision`, { method: "POST" });
 }

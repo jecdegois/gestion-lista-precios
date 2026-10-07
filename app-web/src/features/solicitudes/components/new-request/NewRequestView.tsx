@@ -84,6 +84,18 @@ export default function NewRequestView({
           onClose={mine.closeModal}
           onRechazar={noop}
           onAprobar={noop}
+          detailTotal={mine.modalDetailTotal}
+          detailTotalHallazgos={mine.modalDetailTotalHallazgos}
+          detailHasMore={mine.modalDetailHasMore}
+          detailNextOffset={mine.modalDetailNextOffset}
+          loadingDetailMore={mine.loadingDetailMore}
+          onLoadMoreDetail={mine.loadMoreDetail}
+          backendHallazgosFilas={mine.modalHallazgosFilas}
+          backendHallazgosTotal={mine.modalHallazgosTotal}
+          backendHallazgosHasMore={mine.modalHallazgosHasMore}
+          backendHallazgosNextOffset={mine.modalHallazgosNextOffset}
+          loadingBackendHallazgosMore={mine.loadingHallazgosMore}
+          onLoadMoreBackendHallazgos={mine.loadMoreHallazgos}
           {...actions}
         />
       )}

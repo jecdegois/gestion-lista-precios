@@ -45,19 +45,27 @@ const ESTADOS_FINALES: EstadoEjecucion[] = ["COMPLETADO", "COMPLETADO_CON_ERRORE
 
 async function crear(compania: string, email: string, nombre: string, input: CrearEjecucionInput): Promise<EjecucionLog> {
   assertEscrituraPortalHabilitada();
-  const row = await portalDb(compania).eJECUCION_LOG.create({
-    data: {
-      TIPO_EJECUCION: input.tipo,
-      COMPANIA: compania,
-      EJECUTADO_POR_EMAIL: email,
-      EJECUTADO_POR_NOMBRE: nombre,
-      PARAMETROS_JSON: JSON.stringify(input.parametros),
-      SP_NOMBRE: input.spNombre,
-      ESTADO: "EN_PROCESO",
-      OBSERVACIONES: input.observaciones ?? null,
-    },
-  });
-  return toEjecucionLog(plano(row));
+  try {
+    const row = await portalDb(compania).eJECUCION_LOG.create({
+      data: {
+        TIPO_EJECUCION: input.tipo,
+        COMPANIA: compania,
+        EJECUTADO_POR_EMAIL: email,
+        EJECUTADO_POR_NOMBRE: nombre,
+        PARAMETROS_JSON: JSON.stringify(input.parametros),
+        SP_NOMBRE: input.spNombre,
+        ESTADO: "EN_PROCESO",
+        OBSERVACIONES: input.observaciones ?? null,
+      },
+    });
+    return toEjecucionLog(plano(row));
+  } catch (error) {
+    // P2003: Foreign key constraint violated — la compañía no existe en tabla COMPANIA del Portal
+    if ((error as { code?: string }).code === "P2003") {
+      throw new Error(`La compañía '${compania}' no está registrada en el Portal. Contacte al administrador para agregarla a la tabla COMPANIA.`);
+    }
+    throw error;
+  }
 }
 
 async function actualizar(compania: string, id: string, input: ActualizarEjecucionInput): Promise<EjecucionLog> {

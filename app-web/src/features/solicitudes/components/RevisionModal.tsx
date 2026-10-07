@@ -67,6 +67,20 @@ export default function RevisionModal({
   onRetomar,
   onEnviarBorrador,
   loadingDetail = false,
+  // Props de paginación del detalle (para procesos no-GG)
+  detailTotal,
+  detailTotalHallazgos,
+  detailHasMore = false,
+  detailNextOffset = null,
+  loadingDetailMore = false,
+  onLoadMoreDetail,
+  // Props de paginación de hallazgos desde el backend (para procesos no-GG)
+  backendHallazgosFilas = [],
+  backendHallazgosTotal,
+  backendHallazgosHasMore = false,
+  backendHallazgosNextOffset = null,
+  loadingBackendHallazgosMore = false,
+  onLoadMoreBackendHallazgos,
 }: {
   solicitud: Solicitud;
   currentUser: Identidad;
@@ -81,6 +95,31 @@ export default function RevisionModal({
   onEnviarBorrador?: (id: string) => void;
   /** Mientras sea true, el detalle (filas) está cargando desde el servidor. */
   loadingDetail?: boolean;
+  /** Total de filas en el detalle (para procesos no-GG con paginación). */
+  detailTotal?: number;
+  /** Total de hallazgos en el backend (para procesos no-GG con paginación). */
+  detailTotalHallazgos?: number;
+  /** Indica si hay más filas por cargar (para procesos no-GG). */
+  detailHasMore?: boolean;
+  /** Offset de la siguiente página (para procesos no-GG). */
+  detailNextOffset?: number | null;
+  /** Indica si está cargando más filas (para procesos no-GG). */
+  loadingDetailMore?: boolean;
+  /** Callback para cargar más filas del detalle (para procesos no-GG). */
+  onLoadMoreDetail?: () => void;
+  // Props de paginación de hallazgos desde el backend (para procesos no-GG)
+  /** Filas de hallazgos paginadas desde el backend. */
+  backendHallazgosFilas?: FilaResultado[];
+  /** Total de hallazgos en el backend. */
+  backendHallazgosTotal?: number;
+  /** Indica si hay más hallazgos por cargar. */
+  backendHallazgosHasMore?: boolean;
+  /** Offset de la siguiente página de hallazgos. */
+  backendHallazgosNextOffset?: number | null;
+  /** Indica si está cargando más hallazgos. */
+  loadingBackendHallazgosMore?: boolean;
+  /** Callback para cargar más hallazgos. */
+  onLoadMoreBackendHallazgos?: () => void;
 }) {
   const [motivo, setMotivo] = useState("");
   const [motivoCancelacion, setMotivoCancelacion] = useState("");
@@ -290,7 +329,12 @@ export default function RevisionModal({
     listasMargenMin instanceof Set && listasMargenMin.has(String(lista ?? "").trim().toUpperCase());
   const listaDeFila = (f: FilaResultado) =>
     solicitud.proceso === "DESCUENTO_LISTA_PRECIO" ? ("listaCodigo" in f && f.listaCodigo) || f.lista : "MAYOREOD";
-  const filasConHallazgo = esGestionGlobal ? [] : filas.filter(esHallazgoDeNegocio);
+  // Para procesos no-GG: usar hallazgos del backend si están disponibles, sino filtrar localmente
+  const filasConHallazgo = esGestionGlobal
+    ? []
+    : backendHallazgosFilas.length > 0
+      ? backendHallazgosFilas
+      : filas.filter(esHallazgoDeNegocio);
   const listasBloqueadas = esGestionGlobal
     ? (margenMinActivo(nivelConsulta) && (totalHallazgos ?? 0) > 0 ? [nivelConsulta] : [])
     : [...new Set(filasConHallazgo.filter((f) => margenMinActivo(listaDeFila(f))).map(listaDeFila))];
@@ -298,7 +342,10 @@ export default function RevisionModal({
   // Mientras se verifica el flag (o si la consulta falla) no se habilita Procesar.
   const verificandoMargen = listasMargenMin === null || (esGestionGlobal && margenMinActivo(nivelConsulta) && totalHallazgos === null);
   const errorMargen = listasMargenMin === "error";
-  const cantidadHallazgos = esGestionGlobal ? totalHallazgos ?? hallazgosDetalle.length : filasConHallazgo.length;
+  // Usar total de hallazgos del backend para procesos no-GG si está disponible
+  const cantidadHallazgos = esGestionGlobal
+    ? totalHallazgos ?? hallazgosDetalle.length
+    : (backendHallazgosTotal ?? detailTotalHallazgos ?? filasConHallazgo.length);
 
   const [slugExportacion, columnaExportacion, modoExportacion] = EXPORTACION[solicitud.proceso];
   const { exporting, exportRows } = useSimulationExport(slugExportacion, columnaExportacion, modoExportacion);
@@ -366,7 +413,11 @@ export default function RevisionModal({
 
         {/* Cards resumen */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <Card label="Filas evaluadas" value={esGestionGlobal && totalArticulos == null ? "…" : String(esGestionGlobal ? totalArticulos : filas.length)} />
+          <Card label="Filas evaluadas" value={
+            esGestionGlobal && totalArticulos == null
+              ? "…"
+              : String(esGestionGlobal ? totalArticulos : (detailTotal ?? filas.length))
+          } />
           <Card label="Con hallazgo" value={esGestionGlobal && totalHallazgos == null && cargandoHallazgos ? "…" : String(cantidadHallazgos)} />
           <Card label="Lista de precios" value={listaPrecio} />
           <Card label="Modalidad" value={solicitud.modalidad} />
@@ -499,19 +550,47 @@ export default function RevisionModal({
               filas={filas as FilaPrecio[]}
               soloPrecioSolicitado
               mostrarErrores={filas.some((f) => !f.validacion.valido)}
+              hasMore={detailHasMore}
+              nextOffset={detailNextOffset}
+              loadingMore={loadingDetailMore}
+              onLoadMore={onLoadMoreDetail}
+              hallazgos={backendHallazgosFilas as FilaPrecio[]}
+              hallazgosHasMore={backendHallazgosHasMore}
+              hallazgosNextOffset={backendHallazgosNextOffset}
+              hallazgosLoadingMore={loadingBackendHallazgosMore}
+              hallazgosCargando={loadingBackendHallazgosMore}
+              onLoadMoreHallazgos={onLoadMoreBackendHallazgos}
             />
           ) : solicitud.proceso === "MARGEN_UTILIDAD_MASIVO" ? (
             <TablaImpactoMargen
               filas={filas as FilaMargen[]}
-              hasMore={detalleHasMore}
-              nextOffset={detalleNextOffset}
-              loadingMore={cargandoDetalle}
-              onLoadMore={cargarDetalle}
+              hasMore={detailHasMore}
+              nextOffset={detailNextOffset}
+              loadingMore={loadingDetailMore}
+              onLoadMore={onLoadMoreDetail ? () => onLoadMoreDetail() : undefined}
+              hallazgos={backendHallazgosFilas}
+              hallazgosTotal={backendHallazgosTotal}
+              hallazgosHasMore={backendHallazgosHasMore}
+              hallazgosNextOffset={backendHallazgosNextOffset}
+              hallazgosLoadingMore={loadingBackendHallazgosMore}
+              hallazgosCargando={loadingBackendHallazgosMore}
+              onLoadMoreHallazgos={onLoadMoreBackendHallazgos}
             />
           ) : (
             <TablaResultadoModal
               filas={filas}
               modo={solicitud.proceso === "DESCUENTO_LISTA_PRECIO" ? "descuentoArticuloLista" : "general"}
+              hasMore={detailHasMore}
+              nextOffset={detailNextOffset}
+              loadingMore={loadingDetailMore}
+              onLoadMore={onLoadMoreDetail}
+              hallazgos={backendHallazgosFilas}
+              hallazgosTotal={backendHallazgosTotal}
+              hallazgosHasMore={backendHallazgosHasMore}
+              hallazgosNextOffset={backendHallazgosNextOffset}
+              hallazgosLoadingMore={loadingBackendHallazgosMore}
+              hallazgosCargando={loadingBackendHallazgosMore}
+              onLoadMoreHallazgos={onLoadMoreBackendHallazgos}
             />
           )
         ) : (

@@ -106,7 +106,10 @@ function urlSqlServer({ server, user, password, database }: SqlTarget, schema: s
     `sqlserver://${server}:${envs.SQL_PORT};` +
     `database=${database};user=${user};` +
     `password={${password}};encrypt=${envs.SQL_ENCRYPT};` +
-    `trustServerCertificate=${envs.SQL_TRUST_SERVER_CERTIFICATE};schema=${schema}`
+    `trustServerCertificate=${envs.SQL_TRUST_SERVER_CERTIFICATE};schema=${schema};` +
+    // Pool: aumentar límite y timeout para evitar agotamiento durante carga concurrente
+    // socket_timeout: timeout máximo para queries (en segundos)
+    `connection_limit=15;pool_timeout=30;socket_timeout=120`
   );
 }
 

@@ -1,8 +1,7 @@
 import "server-only";
-import { Prisma } from "@/generated/sqlserver";
 import type { EstadoSolicitud, FilaMargen, FilaPrecio, FilaResultado, Solicitud, ValidacionPrecio } from "@/shared/types/domain-types";
 import { assertEscrituraPortalHabilitada, esModoDemo, objetoPortal } from "@/server/companies";
-import { ahoraServidor, plano, portalDb } from "@/server/db";
+import { plano, portalDb } from "@/server/db";
 import { fmtFechaBd } from "@/shared/utils/format";
 import {
   agregarSolicitud as demoAgregar,
@@ -18,16 +17,9 @@ import {
  * auditoría vive en `features/auditoria/repository/audit-repository.ts`.
  *
  * En DEMO_MODE usa el store en memoria (demo-store); en modo real persiste
- * con Prisma en las tablas del esquema de la empresa (ver portalDb). Toda la
- * API es async para servir a ambos modos de forma uniforme.
+ * con $queryRawUnsafe calificando explícitamente el esquema de la empresa,
+ * porque Prisma SQL Server ignora el parámetro `schema=` de la URL para queries ORM.
  */
-
-const conDetalle = { SOLICITUD_DETALLE: { orderBy: { ID_DETALLE: "asc" } } } satisfies Prisma.SOLICITUDInclude;
-
-function mapConDetalle(r: Prisma.SOLICITUDGetPayload<{ include: typeof conDetalle }>): Solicitud {
-  const { SOLICITUD_DETALLE, ...cabecera } = r;
-  return mapSolicitud(plano(cabecera), SOLICITUD_DETALLE.map(plano));
-}
 
 async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
   const companiaNormalizada = compania.trim().toUpperCase();
@@ -35,12 +27,24 @@ async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
     return demoListarSolicitudes().filter((solicitud) => !companiaNormalizada || solicitud.compania === companiaNormalizada);
   }
 
-  const rows = await portalDb(companiaNormalizada).sOLICITUD.findMany({
-    where: { COMPANIA: companiaNormalizada },
-    include: conDetalle,
-    orderBy: { FECHA_CREACION: "desc" },
-  });
-  return rows.map(mapConDetalle);
+  const tabSol = objetoPortal(companiaNormalizada, "SOLICITUD");
+  const tabDet = objetoPortal(companiaNormalizada, "SOLICITUD_DETALLE");
+  const rows = await portalDb(companiaNormalizada).$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT S.*, D.*
+       FROM ${tabSol} S
+       LEFT JOIN ${tabDet} D ON D.ID_SOLICITUD = S.ID_SOLICITUD
+      WHERE S.COMPANIA = @P1
+      ORDER BY S.FECHA_CREACION DESC`,
+    companiaNormalizada,
+  );
+  // Agrupar filas por solicitud
+  const map = new Map<string, { cab: Record<string, unknown>; det: Record<string, unknown>[] }>();
+  for (const row of rows) {
+    const id = String(row.CODIGO_SOLICITUD ?? row.ID_SOLICITUD);
+    if (!map.has(id)) map.set(id, { cab: row, det: [] });
+    if (row.ID_DETALLE != null) map.get(id)!.det.push(row);
+  }
+  return [...map.values()].map(({ cab, det }) => mapSolicitud(cab, det));
 }
 
 export interface PaginaSolicitudes {
@@ -85,17 +89,36 @@ async function listarSolicitudesPaginado(
   }
 
   const db = portalDb(companiaNormalizada);
-  // La collation del portal es case-insensitive: igualdad simple equivale al LOWER() anterior.
-  const where: Prisma.SOLICITUDWhereInput = {
-    COMPANIA: companiaNormalizada,
-    ...(email?.trim() ? { SOLICITANTE_EMAIL: email.trim() } : {}),
-    ...(proceso?.trim() ? { PROCESO: proceso.trim() } : {}),
-  };
-  const [rows, total] = await Promise.all([
-    db.sOLICITUD.findMany({ where, orderBy: { FECHA_CREACION: "desc" }, skip: safeOffset, take: safeLimit }),
-    db.sOLICITUD.count({ where }),
+  const tabSol = objetoPortal(companiaNormalizada, "SOLICITUD");
+
+  // WHERE base
+  const params: unknown[] = [companiaNormalizada];
+  let where = `COMPANIA = @P1`;
+  if (email?.trim()) {
+    params.push(email.trim());
+    where += ` AND SOLICITANTE_EMAIL = @P${params.length}`;
+  }
+  if (proceso?.trim()) {
+    params.push(proceso.trim());
+    where += ` AND PROCESO = @P${params.length}`;
+  }
+
+  const [countRows, rows] = await Promise.all([
+    db.$queryRawUnsafe<{ n: number | bigint }[]>(
+      `SELECT COUNT(*) AS n FROM ${tabSol} WHERE ${where}`,
+      ...params,
+    ),
+    db.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT * FROM ${tabSol} WHERE ${where}
+       ORDER BY FECHA_CREACION DESC
+       OFFSET @P${params.length + 1} ROWS FETCH NEXT @P${params.length + 2} ROWS ONLY`,
+      ...params,
+      safeOffset,
+      safeLimit,
+    ),
   ]);
 
+  const total = Number(countRows[0].n);
   const solicitudes = rows.map((r) => mapSolicitudCabecera(plano(r)));
   const hasMore = safeOffset + solicitudes.length < total;
   return {
@@ -107,9 +130,245 @@ async function listarSolicitudesPaginado(
 }
 
 async function obtenerSolicitud(compania: string, codigo: string): Promise<Solicitud | undefined> {
+  console.info("[obtenerSolicitud] Iniciando", { compania, codigo });
   if (esModoDemo()) return demoObtener(codigo);
-  const r = await portalDb(compania).sOLICITUD.findFirst({ where: { CODIGO_SOLICITUD: codigo }, include: conDetalle });
-  return r ? mapConDetalle(r) : undefined;
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+  const tabDet = objetoPortal(compania, "SOLICITUD_DETALLE");
+  console.info("[obtenerSolicitud] Ejecutando query con JOIN...");
+  const rows = await portalDb(compania).$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT S.*, D.ID_DETALLE, D.SKU, D.DESCRIPCION, D.PRECIO_ACTUAL, D.COSTO,
+            D.FACTOR_APLICADO, D.PRECIO_SIMULADO, D.PORCENTAJE_MARGEN,
+            D.ESTADO_FILA, D.MENSAJE_ERROR, D.FACTOR_SOLICITADO, D.LISTA_PRECIO, D.CAUSA
+       FROM ${tabSol} S
+       LEFT JOIN ${tabDet} D ON D.ID_SOLICITUD = S.ID_SOLICITUD
+      WHERE S.CODIGO_SOLICITUD = @P1
+      ORDER BY D.ID_DETALLE ASC`,
+    codigo,
+  );
+  console.info("[obtenerSolicitud] Query completada", { filas: rows.length });
+  if (!rows.length) return undefined;
+  const cab = rows[0];
+  const det = rows.filter((r) => r.ID_DETALLE != null);
+  return mapSolicitud(cab, det);
+}
+
+export interface PaginaDetalleSolicitud {
+  filas: FilaResultado[];
+  total: number;
+  totalHallazgos: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+}
+
+export interface PaginaHallazgosSolicitud {
+  filas: FilaResultado[];
+  total: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+}
+
+/**
+ * Detalle paginado de una solicitud. Retorna solo las filas del rango solicitado
+ * junto con el conteo total para que el frontend pueda cargar bajo demanda.
+ * La cabecera se obtiene por separado con `obtenerSolicitudCabecera`.
+ */
+async function obtenerSolicitudDetallePaginado(
+  compania: string,
+  codigo: string,
+  offset: number,
+  limit: number,
+): Promise<PaginaDetalleSolicitud | undefined> {
+  const safeOffset = Math.max(0, offset);
+  const safeLimit = Math.min(Math.max(limit, 1), 200);
+
+  if (esModoDemo()) {
+    const sol = demoObtener(codigo);
+    if (!sol) return undefined;
+    const filas = sol.filas.slice(safeOffset, safeOffset + safeLimit);
+    const hasMore = safeOffset + filas.length < sol.filas.length;
+    // En modo demo, contar hallazgos = filas no válidas
+    return {
+      filas,
+      total: sol.filas.length,
+      totalHallazgos: sol.filas.filter((f) => !f.validacion.valido).length,
+      hasMore,
+      nextOffset: hasMore ? safeOffset + filas.length : null,
+    };
+  }
+
+  const db = portalDb(compania);
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+  const tabDet = objetoPortal(compania, "SOLICITUD_DETALLE");
+
+  // Obtener ID_SOLICITUD y PROCESO para el mapeo de filas
+  const cabRows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT TOP 1 ID_SOLICITUD, PROCESO, LISTA_PRECIO, PARAMETROS_JSON
+       FROM ${tabSol}
+      WHERE CODIGO_SOLICITUD = @P1`,
+    codigo,
+  );
+  if (!cabRows.length) return undefined;
+  const cab = cabRows[0];
+  const idSolicitud = cab.ID_SOLICITUD as number;
+  const proceso = cab.PROCESO as Solicitud["proceso"];
+  const listaSolicitud = String(cab.LISTA_PRECIO ?? "");
+
+  // Query optimizada: obtiene filas + total + totalHallazgos en una sola consulta
+  // Usa COUNT(*) OVER() para obtener el total sin query adicional
+  // y SUM con CASE para contar hallazgos
+  const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT ID_DETALLE, SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO,
+            FACTOR_APLICADO, PRECIO_SIMULADO, PORCENTAJE_MARGEN,
+            ESTADO_FILA, MENSAJE_ERROR, FACTOR_SOLICITADO, LISTA_PRECIO, CAUSA,
+            COUNT(*) OVER() AS _total,
+            SUM(CASE WHEN ${HALLAZGO_WHERE_CLAUSE} THEN 1 ELSE 0 END) OVER() AS _hallazgos
+       FROM ${tabDet}
+      WHERE ID_SOLICITUD = @P1
+      ORDER BY ID_DETALLE ASC
+      OFFSET @P2 ROWS FETCH NEXT @P3 ROWS ONLY`,
+    idSolicitud,
+    safeOffset,
+    safeLimit,
+  );
+
+  // Si no hay filas, hacer query de counts para saber si la solicitud existe pero está vacía
+  if (rows.length === 0) {
+    const countRows = await db.$queryRawUnsafe<{ n: number | bigint }[]>(
+      `SELECT COUNT(*) AS n FROM ${tabDet} WHERE ID_SOLICITUD = @P1`,
+      idSolicitud,
+    );
+    const total = Number(countRows[0]?.n ?? 0);
+    return {
+      filas: [],
+      total,
+      totalHallazgos: 0,
+      hasMore: safeOffset < total,
+      nextOffset: null,
+    };
+  }
+
+  const total = Number(rows[0]._total ?? 0);
+  const totalHallazgos = Number(rows[0]._hallazgos ?? 0);
+  const filas = rows.map((d) => mapDetalleFila(plano(d), proceso, listaSolicitud));
+  const hasMore = safeOffset + filas.length < total;
+
+  return {
+    filas,
+    total,
+    totalHallazgos,
+    hasMore,
+    nextOffset: hasMore ? safeOffset + filas.length : null,
+  };
+}
+
+/** Condición SQL para identificar hallazgos (filas con ESTADO_FILA = ERROR o HALLAZGO). */
+const HALLAZGO_WHERE_CLAUSE = `ESTADO_FILA IN ('ERROR', 'HALLAZGO')`;
+
+/** Función para identificar hallazgos en modo demo (ESTADO_FILA = ERROR). */
+const esHallazgoDemo = (f: FilaResultado): boolean => {
+  return !f.validacion.valido;
+};
+
+/**
+ * Hallazgos paginados de una solicitud.
+ * Retorna SOLO las filas que son hallazgos (advertencias de margen/costo),
+ * paginadas de forma independiente a las filas totales.
+ */
+async function obtenerSolicitudHallazgosPaginado(
+  compania: string,
+  codigo: string,
+  offset: number,
+  limit: number,
+): Promise<PaginaHallazgosSolicitud | undefined> {
+  const safeOffset = Math.max(0, offset);
+  const safeLimit = Math.min(Math.max(limit, 1), 200);
+
+  if (esModoDemo()) {
+    const sol = demoObtener(codigo);
+    if (!sol) return undefined;
+    const hallazgos = sol.filas.filter(esHallazgoDemo);
+    const filas = hallazgos.slice(safeOffset, safeOffset + safeLimit);
+    const hasMore = safeOffset + filas.length < hallazgos.length;
+    return {
+      filas,
+      total: hallazgos.length,
+      hasMore,
+      nextOffset: hasMore ? safeOffset + filas.length : null,
+    };
+  }
+
+  const db = portalDb(compania);
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+  const tabDet = objetoPortal(compania, "SOLICITUD_DETALLE");
+
+  // Obtener cabecera para proceso y lista
+  const cabRows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT TOP 1 ID_SOLICITUD, PROCESO, LISTA_PRECIO
+       FROM ${tabSol}
+      WHERE CODIGO_SOLICITUD = @P1`,
+    codigo,
+  );
+  if (!cabRows.length) return undefined;
+  const cab = cabRows[0];
+  const idSolicitud = cab.ID_SOLICITUD as number;
+  const proceso = cab.PROCESO as Solicitud["proceso"];
+  const listaSolicitud = String(cab.LISTA_PRECIO ?? "");
+
+  // Query optimizada: filas + total en una sola consulta con COUNT(*) OVER()
+  const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT ID_DETALLE, SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO,
+            FACTOR_APLICADO, PRECIO_SIMULADO, PORCENTAJE_MARGEN,
+            ESTADO_FILA, MENSAJE_ERROR, FACTOR_SOLICITADO, LISTA_PRECIO, CAUSA,
+            COUNT(*) OVER() AS _total
+       FROM ${tabDet}
+      WHERE ID_SOLICITUD = @P1 AND ${HALLAZGO_WHERE_CLAUSE}
+      ORDER BY ID_DETALLE ASC
+      OFFSET @P2 ROWS FETCH NEXT @P3 ROWS ONLY`,
+    idSolicitud,
+    safeOffset,
+    safeLimit,
+  );
+
+  // Si no hay filas, el total es 0
+  if (rows.length === 0) {
+    return {
+      filas: [],
+      total: 0,
+      hasMore: false,
+      nextOffset: null,
+    };
+  }
+
+  const total = Number(rows[0]._total ?? 0);
+  const filas = rows.map((d) => mapDetalleFila(plano(d), proceso, listaSolicitud));
+  const hasMore = safeOffset + filas.length < total;
+
+  return {
+    filas,
+    total,
+    hasMore,
+    nextOffset: hasMore ? safeOffset + filas.length : null,
+  };
+}
+
+/**
+ * Obtiene solo la cabecera de una solicitud SIN filas de detalle.
+ * Útil para mostrar el modal mientras se carga el detalle paginado.
+ */
+async function obtenerSolicitudCabecera(compania: string, codigo: string): Promise<Solicitud | undefined> {
+  if (esModoDemo()) {
+    const sol = demoObtener(codigo);
+    if (!sol) return undefined;
+    return { ...sol, filas: [] };
+  }
+  const db = portalDb(compania);
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+  const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT TOP 1 * FROM ${tabSol} WHERE CODIGO_SOLICITUD = @P1`,
+    codigo,
+  );
+  if (!rows.length) return undefined;
+  return mapSolicitudCabecera(plano(rows[0]));
 }
 
 async function siguienteCodigoSolicitud(compania: string): Promise<string> {
@@ -128,25 +387,42 @@ async function agregarSolicitud(s: Solicitud): Promise<void> {
     return;
   }
   const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
-  // Cabecera + detalle en una sola transacción. La FK nullable a USUARIO (tabla
-  // heredada) queda en NULL: los usuarios viven en Postgres.
-  await portalDb(s.compania).sOLICITUD.create({
-    data: {
-      CODIGO_SOLICITUD: s.id,
-      COMPANIA: s.compania,
-      PROCESO: s.proceso,
-      TIPO_PROCESO: s.proceso,
-      MODALIDAD: s.modalidad,
-      LISTA_PRECIO: lista || null,
-      SOLICITANTE_EMAIL: s.solicitanteEmail,
-      SOLICITANTE_NOMBRE: s.solicitanteNombre,
-      ESTADO: s.estado ?? "PENDIENTE",
-      PARAMETROS_JSON: JSON.stringify({ ...s.parametros, filas: s.filas }),
-      ARCHIVO_NOMBRE: s.archivoNombre,
-      ARCHIVO_S3_KEY: s.archivoS3Key,
-      SOLICITUD_DETALLE: { createMany: { data: s.filas.map((f) => detalleData(f, s.proceso)) } },
-    },
-  });
+  // Prisma SQL Server no respeta el parámetro `schema=` de la URL para queries ORM
+  // (solo lo usa en $queryRaw). Se usa $executeRawUnsafe con esquema calificado explícitamente,
+  // igual que siguienteCodigoSolicitud y actualizarFactorAplicadoDetalles.
+  const tabSol = objetoPortal(s.compania, "SOLICITUD");
+  const tabDet = objetoPortal(s.compania, "SOLICITUD_DETALLE");
+  const db = portalDb(s.compania);
+  const parametrosJson = JSON.stringify({ ...s.parametros, filas: s.filas });
+
+  // Se evita $transaction interactivo de Prisma porque caduca a los 5 s con SQL Server.
+  // El detalle usa valores interpolados (sqlVal) para no superar el límite de 2100 parámetros.
+  const sql = `
+    BEGIN TRY
+      BEGIN TRAN;
+        DECLARE @_sol_id INT;
+        INSERT INTO ${tabSol}
+          (CODIGO_SOLICITUD, COMPANIA, PROCESO, TIPO_PROCESO, MODALIDAD,
+           LISTA_PRECIO, SOLICITANTE_EMAIL, SOLICITANTE_NOMBRE, ESTADO,
+           PARAMETROS_JSON, ARCHIVO_NOMBRE, ARCHIVO_S3_KEY)
+        VALUES (@P1, @P2, @P3, @P4, @P5, @P6, @P7, @P8, @P9, @P10, @P11, @P12);
+        SET @_sol_id = SCOPE_IDENTITY();
+        ${detalleInserts(s.filas, s.proceso, tabDet)}
+      COMMIT TRAN;
+    END TRY
+    BEGIN CATCH
+      IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+      THROW;
+    END CATCH;
+  `;
+
+  await db.$executeRawUnsafe(
+    sql,
+    s.id, s.compania, s.proceso, s.proceso, s.modalidad,
+    lista || null, s.solicitanteEmail, s.solicitanteNombre,
+    s.estado ?? "PENDIENTE", parametrosJson,
+    s.archivoNombre ?? null, s.archivoS3Key ?? null,
+  );
 }
 
 /**
@@ -164,29 +440,65 @@ async function reemplazarBorrador(s: Solicitud): Promise<boolean> {
   }
   const lista = String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
   const db = portalDb(s.compania);
-  const ahora = await ahoraServidor(db);
-  return db.$transaction(async (tx) => {
-    const actual = await tx.sOLICITUD.findFirst({ where: { CODIGO_SOLICITUD: s.id }, select: { ID_SOLICITUD: true } });
-    if (!actual) return false;
-    const { count } = await tx.sOLICITUD.updateMany({
-      where: { ID_SOLICITUD: actual.ID_SOLICITUD, ESTADO: "BORRADOR", SOLICITANTE_EMAIL: s.solicitanteEmail },
-      data: {
-        ESTADO: s.estado,
-        MODALIDAD: s.modalidad,
-        LISTA_PRECIO: lista || null,
-        PARAMETROS_JSON: JSON.stringify({ ...s.parametros, filas: s.filas }),
-        ARCHIVO_NOMBRE: s.archivoNombre,
-        ARCHIVO_S3_KEY: s.archivoS3Key,
-        FECHA_ULT_ESTADO: ahora,
-      },
-    });
-    if (count !== 1) return false;
-    await tx.sOLICITUD_DETALLE.deleteMany({ where: { ID_SOLICITUD: actual.ID_SOLICITUD } });
-    await tx.sOLICITUD_DETALLE.createMany({
-      data: s.filas.map((f) => ({ ...detalleData(f, s.proceso), ID_SOLICITUD: actual.ID_SOLICITUD })),
-    });
-    return true;
-  });
+  const tabSol = objetoPortal(s.compania, "SOLICITUD");
+  const tabDet = objetoPortal(s.compania, "SOLICITUD_DETALLE");
+
+  // Obtener ID fuera de transacción (lectura simple)
+  const rowsId = await db.$queryRawUnsafe<{ id: number }[]>(
+    `SELECT TOP 1 ID_SOLICITUD AS id FROM ${tabSol}
+     WHERE CODIGO_SOLICITUD = @P1 AND ESTADO = 'BORRADOR' AND SOLICITANTE_EMAIL = @P2`,
+    s.id,
+    s.solicitanteEmail,
+  );
+  if (!rowsId.length) return false;
+  const idSolicitud = rowsId[0].id;
+
+  // Construir detalle con valores interpolados para no superar el límite de 2100 parámetros
+  const detalleInsertsSql = detalleInserts(s.filas, s.proceso, tabDet);
+
+  const parametrosJson = JSON.stringify({ ...s.parametros, filas: s.filas });
+  const sql = `
+    BEGIN TRY
+      BEGIN TRAN;
+        IF NOT EXISTS (
+          SELECT 1 FROM ${tabSol}
+          WHERE ID_SOLICITUD = @P1 AND ESTADO = 'BORRADOR' AND SOLICITANTE_EMAIL = @P3
+        )
+        BEGIN
+          ROLLBACK TRAN;
+          SELECT 0 AS ok;
+          RETURN;
+        END;
+        UPDATE ${tabSol}
+           SET ESTADO = @P4, MODALIDAD = @P5, LISTA_PRECIO = @P6,
+               PARAMETROS_JSON = @P7, ARCHIVO_NOMBRE = @P8, ARCHIVO_S3_KEY = @P9,
+               FECHA_ULT_ESTADO = GETDATE()
+         WHERE ID_SOLICITUD = @P1;
+        DELETE FROM ${tabDet} WHERE ID_SOLICITUD = @P1;
+        DECLARE @_sol_id INT = @P1;
+        ${detalleInsertsSql}
+      COMMIT TRAN;
+      SELECT 1 AS ok;
+    END TRY
+    BEGIN CATCH
+      IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+      THROW;
+    END CATCH;
+  `;
+
+  const result = await db.$queryRawUnsafe<{ ok: number }[]>(
+    sql,
+    idSolicitud,              // @P1 — ID_SOLICITUD
+    s.id,                     // @P2 — (reservado, no usado en el SQL)
+    s.solicitanteEmail,       // @P3
+    s.estado,                 // @P4
+    s.modalidad,              // @P5
+    lista || null,            // @P6
+    parametrosJson,           // @P7
+    s.archivoNombre ?? null,  // @P8
+    s.archivoS3Key ?? null,   // @P9
+  );
+  return result[0]?.ok === 1;
 }
 
 /**
@@ -199,6 +511,8 @@ async function actualizarSolicitud(
   patch: Partial<Solicitud>,
   desde?: EstadoSolicitud[],
 ): Promise<boolean> {
+  const t0 = Date.now();
+  console.info("[REPO.UPDATE] Iniciando actualización", { compania, codigo, patch: Object.keys(patch), desde });
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) {
     const actual = demoObtener(codigo);
@@ -207,33 +521,105 @@ async function actualizarSolicitud(
     return true;
   }
   const db = portalDb(compania);
-  const data: Prisma.SOLICITUDUpdateManyMutationInput = { FECHA_ULT_ESTADO: await ahoraServidor(db) };
-  if (patch.estado !== undefined) data.ESTADO = patch.estado;
-  if (patch.motivoRechazo !== undefined) data.MOTIVO_RECHAZO = patch.motivoRechazo;
-  if (patch.idProcesoSP !== undefined) data.ID_PROCESO_SP = patch.idProcesoSP;
-  if (patch.autorizadoPor !== undefined) data.APROBADOR_NOMBRE = patch.autorizadoPor;
-  if (patch.autorizadoPorEmail !== undefined) data.APROBADOR_EMAIL = patch.autorizadoPorEmail;
-  if (patch.resultado) {
-    data.TOTAL_REGISTROS = patch.resultado.totalLote;
-    data.EXITOSOS = patch.resultado.exitosos;
-    data.FALLIDOS = patch.resultado.fallidos;
-    data.LOG_S3_KEY = patch.resultado.logS3Key;
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+
+  // Construir SET dinámico con parámetros posicionales
+  const setClauses: string[] = ["FECHA_ULT_ESTADO = GETDATE()"];
+  const params: unknown[] = [];
+
+  function addParam(clause: string, value: unknown) {
+    params.push(value);
+    setClauses.push(`${clause} = @P${params.length}`);
   }
-  const { count } = await db.sOLICITUD.updateMany({
-    where: { CODIGO_SOLICITUD: codigo, ...(desde ? { ESTADO: { in: desde } } : {}) },
-    data,
-  });
-  return count > 0;
+
+  if (patch.estado !== undefined) addParam("ESTADO", patch.estado);
+  if (patch.motivoRechazo !== undefined) addParam("MOTIVO_RECHAZO", patch.motivoRechazo);
+  if (patch.idProcesoSP !== undefined) addParam("ID_PROCESO_SP", patch.idProcesoSP);
+  if (patch.autorizadoPor !== undefined) addParam("APROBADOR_NOMBRE", patch.autorizadoPor);
+  if (patch.autorizadoPorEmail !== undefined) addParam("APROBADOR_EMAIL", patch.autorizadoPorEmail);
+  if (patch.resultado) {
+    addParam("TOTAL_REGISTROS", patch.resultado.totalLote);
+    addParam("EXITOSOS", patch.resultado.exitosos);
+    addParam("FALLIDOS", patch.resultado.fallidos);
+    addParam("LOG_S3_KEY", patch.resultado.logS3Key);
+  }
+
+  // WHERE con codigo y estados opcionales
+  params.push(codigo);
+  const pCodigo = params.length;
+  let where = `CODIGO_SOLICITUD = @P${pCodigo}`;
+  if (desde?.length) {
+    const placeholders = desde.map((_, i) => {
+      params.push(desde[i]);
+      return `@P${params.length}`;
+    });
+    where += ` AND ESTADO IN (${placeholders.join(", ")})`;
+  }
+
+  const sql = `UPDATE ${tabSol} SET ${setClauses.join(", ")} WHERE ${where}`;
+  console.info("[REPO.UPDATE] Ejecutando SQL", { sql: sql.substring(0, 200), paramsCount: params.length });
+  
+  // Usar $transaction con timeout para asegurar que la conexión se libere
+  // incluso si algo falla o se interrumpe
+  const affected = await db.$transaction(
+    async (tx) => {
+      const result = await tx.$executeRawUnsafe(sql, ...params);
+      return result;
+    },
+    { timeout: 30000 } // 30 segundos máximo
+  );
+  
+  console.info("[REPO.UPDATE] SQL completado", { affected, duracionMs: Date.now() - t0 });
+  return affected > 0;
 }
 
 /** Guarda el error del procesamiento en las líneas de la solicitud. */
 async function actualizarMensajeErrorDetalles(compania: string, codigo: string, mensaje: string): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) return;
-  await portalDb(compania).sOLICITUD_DETALLE.updateMany({
-    where: { SOLICITUD: { CODIGO_SOLICITUD: codigo } },
-    data: { MENSAJE_ERROR: mensaje.slice(0, 400) },
-  });
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+  const tabDet = objetoPortal(compania, "SOLICITUD_DETALLE");
+  await portalDb(compania).$executeRawUnsafe(
+    `UPDATE D SET D.MENSAJE_ERROR = @P1
+       FROM ${tabDet} D
+       INNER JOIN ${tabSol} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
+      WHERE S.CODIGO_SOLICITUD = @P2`,
+    mensaje.slice(0, 400),
+    codigo,
+  );
+}
+
+/**
+ * Escapa un valor para interpolación directa en T-SQL.
+ * - null/undefined → NULL
+ * - número         → literal numérico (seguro, no necesita comillas)
+ * - string         → 'valor' con comillas simples internas duplicadas
+ * Se usa para el detalle de solicitudes cuando la cantidad de filas supera
+ * el límite de 2100 parámetros de SQL Server.
+ */
+function sqlVal(v: unknown): string {
+  if (v === null || v === undefined) return "NULL";
+  if (typeof v === "number") return String(v);
+  return "'" + String(v).replace(/'/g, "''") + "'";
+}
+
+/**
+ * Genera el bloque de INSERTs de detalle con valores interpolados (sin @P),
+ * usando SCOPE_IDENTITY() referenciado por la variable T-SQL @_sol_id.
+ */
+function detalleInserts(filas: FilaResultado[], proceso: Solicitud["proceso"], tabDet: string): string {
+  if (!filas.length) return "";
+  return filas.map((f) => {
+    const d = detalleData(f, proceso);
+    return `INSERT INTO ${tabDet}
+       (ID_SOLICITUD, SKU, DESCRIPCION, PRECIO_ACTUAL, COSTO,
+        FACTOR_APLICADO, PRECIO_SIMULADO, PORCENTAJE_MARGEN,
+        ESTADO_FILA, MENSAJE_ERROR, FACTOR_SOLICITADO, LISTA_PRECIO, CAUSA)
+     VALUES (@_sol_id, ${sqlVal(d.SKU)}, ${sqlVal(d.DESCRIPCION)}, ${sqlVal(d.PRECIO_ACTUAL)}, ${sqlVal(d.COSTO)},
+       ${sqlVal(d.FACTOR_APLICADO)}, ${sqlVal(d.PRECIO_SIMULADO)}, ${sqlVal(d.PORCENTAJE_MARGEN)},
+       ${sqlVal(d.ESTADO_FILA)}, ${sqlVal(d.MENSAJE_ERROR)}, ${sqlVal(d.FACTOR_SOLICITADO)},
+       ${sqlVal(d.LISTA_PRECIO)}, ${sqlVal(d.CAUSA)});`;
+  }).join("\n");
 }
 
 /** Marca como aplicado el factor solicitado únicamente en filas exitosas. */
@@ -259,7 +645,12 @@ async function actualizarFactorAplicadoDetalles(compania: string, codigo: string
 // Helpers de mapeo
 // ---------------------------------------------------------------------------
 
-function detalleData(f: FilaResultado, proceso: Solicitud["proceso"]): Prisma.SOLICITUD_DETALLECreateManySOLICITUDInput {
+function detalleData(f: FilaResultado, proceso: Solicitud["proceso"]): {
+  SKU: string; DESCRIPCION: string | null; PRECIO_ACTUAL: number; COSTO: number;
+  FACTOR_APLICADO: number; PRECIO_SIMULADO: number; PORCENTAJE_MARGEN: number | null;
+  ESTADO_FILA: string; MENSAJE_ERROR: string | null; FACTOR_SOLICITADO: number | null;
+  LISTA_PRECIO: string | null; CAUSA: string | null;
+} {
   const v = f.validacion;
   const numero = (valor: unknown): number | null =>
     typeof valor === "number" && Number.isFinite(valor) ? valor : null;
@@ -505,11 +896,43 @@ function mapDetalleFila(d: Record<string, unknown>, proceso?: Solicitud["proceso
   };
 }
 
+/** Cuenta filas totales y hallazgos de una solicitud sin cargarlas en memoria. */
+async function contarDetalles(compania: string, codigo: string): Promise<{ total: number; totalHallazgos: number }> {
+  if (esModoDemo()) {
+    const sol = demoObtener(codigo);
+    if (!sol) return { total: 0, totalHallazgos: 0 };
+    return {
+      total: sol.filas.length,
+      totalHallazgos: sol.filas.filter((f) => !f.validacion.valido).length,
+    };
+  }
+  const tabSol = objetoPortal(compania, "SOLICITUD");
+  const tabDet = objetoPortal(compania, "SOLICITUD_DETALLE");
+  const result = await portalDb(compania).$queryRawUnsafe<{ total: bigint; totalHallazgos: bigint }[]>(
+    `SELECT 
+       COUNT(*) AS total,
+       SUM(CASE WHEN ${HALLAZGO_WHERE_CLAUSE} THEN 1 ELSE 0 END) AS totalHallazgos
+     FROM ${tabDet} D
+     INNER JOIN ${tabSol} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
+     WHERE S.CODIGO_SOLICITUD = @P1`,
+    codigo,
+  );
+  const row = result[0];
+  return {
+    total: Number(row?.total ?? 0),
+    totalHallazgos: Number(row?.totalHallazgos ?? 0),
+  };
+}
+
 export const requestsRepository = {
   list: listarSolicitudes,
   listPaged: (compania: string, offset: number, limit: number, email?: string | null, proceso?: string | null) =>
     listarSolicitudesPaginado(compania, offset, limit, email, proceso),
   find: obtenerSolicitud,
+  findHeader: obtenerSolicitudCabecera,
+  findDetailPaged: obtenerSolicitudDetallePaginado,
+  findHallazgosPaged: obtenerSolicitudHallazgosPaginado,
+  countDetails: contarDetalles,
   nextCode: siguienteCodigoSolicitud,
   create: agregarSolicitud,
   replaceDraft: reemplazarBorrador,
