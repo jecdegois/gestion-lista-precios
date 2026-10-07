@@ -4,10 +4,10 @@ import { prisma } from "@/server/prisma";
 import type { CompaniaInfo } from "@/shared/types/models";
 
 /**
- * Configuración lógica de compañías sobre una base SQL Server compartida.
+ * Configuración lógica de compañías sobre SQL Server.
  * Las compañías se gestionan en Postgres (`companies`, módulo Configuración): su
- * `sql_schema` define el esquema en Softland y en PORTAL_PRECIOS. La conexión
- * única se toma de las variables PORTAL_DB_*.
+ * `sql_schema` define el esquema en Softland y en PORTAL_PRECIOS, y su `country`
+ * la instancia de Softland (CR → MAR/MARQA, resto → SOFTLANDPRD/QA; ver db.ts).
  */
 
 /** Nombres de objetos SQL configurables por compania (con defaults). */
@@ -45,6 +45,7 @@ export interface CompaniaConfig {
   codigo: string;
   label: string;
   schema: string; // esquema operativo de la empresa (FEBECA, COFER, …)
+  country: string; // ISO alfa-2; elige la instancia de Softland
   sql: SqlObjetos;
 }
 
@@ -104,13 +105,16 @@ export async function cargarCompanias(force = false): Promise<void> {
   if (!force && cargando) return cargando;
   cargando = (async () => {
     const result: Record<string, CompaniaConfig> = {};
-    const rows = await prisma.company.findMany({ where: { isActive: true }, select: { code: true, name: true, sqlSchema: true } });
+    const rows = await prisma.company.findMany({
+      where: { isActive: true },
+      select: { code: true, name: true, sqlSchema: true, country: true },
+    });
     for (const row of rows) {
       const codigo = row.code.toUpperCase();
-      result[codigo] = { codigo, label: row.name, schema: row.sqlSchema.toUpperCase(), sql: defaultsSql() };
+      result[codigo] = { codigo, label: row.name, schema: row.sqlSchema.toUpperCase(), country: row.country.toUpperCase(), sql: defaultsSql() };
     }
     if (Object.keys(result).length === 0 && esModoDemo()) {
-      result.COFER = { codigo: "COFER", label: "COFERSA", schema: "COFER", sql: defaultsSql() };
+      result.COFER = { codigo: "COFER", label: "COFERSA", schema: "COFER", country: "CR", sql: defaultsSql() };
     }
     cache = result;
     cargadoEn = Date.now();

@@ -8,7 +8,7 @@ export const envs = {
   APP_ENV,
   DATABASE_URL: get("DATABASE_URL").required().asString(),
 
-  // SQL Server (PORTAL_PRECIOS y Softland, mismo servidor y login).
+  // SQL Server de Venezuela (PORTAL_PRECIOS y Softland, mismo servidor y login).
   SOFTLAND_DB_NAME: APP_ENV === "prod" ? "SOFTLANDPRD" : "SOFTLANDQA",
   PORTAL_DB_NAME: get("PORTAL_DB_NAME").default("PORTAL_PRECIOS").asString(),
   PORTAL_DB_SERVER: get("PORTAL_DB_SERVER").required().asString(),
@@ -17,6 +17,12 @@ export const envs = {
   SQL_PORT: get("SQL_PORT").default("1433").asPortNumber(),
   SQL_ENCRYPT: get("SQL_ENCRYPT").default("false").asBool(),
   SQL_TRUST_SERVER_CERTIFICATE: get("SQL_TRUST_SERVER_CERTIFICATE").default("true").asBool(),
+
+  // Softland de Costa Rica (país CR): otro servidor, base MAR o MARQA según APP_ENV. Opcionales.
+  SOFTLAND_CR_DB_NAME: APP_ENV === "prod" ? "MAR" : "MARQA",
+  SOFTLAND_CR_SERVER: get("SOFTLAND_CR_SERVER").asString(),
+  SOFTLAND_CR_USER: get("SOFTLAND_CR_USER").asString(),
+  SOFTLAND_CR_PASSWORD: get("SOFTLAND_CR_PASSWORD").asString(),
 
   DEMO_MODE: get("DEMO_MODE").default("false").asBool(),
   // Por defecto en modo seguro: solo lectura y sin ejecución en Softland.

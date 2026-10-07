@@ -9,7 +9,7 @@ import {
   porcentajeUdfDemo,
   upsertUdfDemo,
 } from "./demo-catalog";
-import { getPool, softlandDb, softlandDbo } from "@/server/db";
+import { getPool, softlandDb } from "@/server/db";
 
 /**
  * Repositorio de precios/margen por compania. Enruta cada operacion a la base

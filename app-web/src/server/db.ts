@@ -6,21 +6,39 @@ import { envs } from "@/config/envs";
 import { resolverCompania } from "./companies";
 
 /**
- * Dos bases en el mismo servidor y con el mismo login (PORTAL_DB_*):
+ * Bases SQL Server:
  * - PORTAL_DB_NAME (PORTAL_PRECIOS): estado del portal, un esquema por empresa (Prisma, ver portalDb).
- * - Softland (SOFTLANDQA o SOFTLANDPRD según APP_ENV): catálogos de Softland, solo lectura (mssql).
+ * - Softland de Venezuela (SOFTLANDQA o SOFTLANDPRD según APP_ENV): mismo servidor y login (PORTAL_DB_*).
+ * - Softland de Costa Rica (MARQA o MAR): otro servidor y login (SOFTLAND_CR_*), para compañías con país CR.
  */
-const SOFTLAND_DB = envs.SOFTLAND_DB_NAME;
-const PORTAL_DB = envs.PORTAL_DB_NAME;
+type SqlTarget = { server: string; user: string; password: string; database: string };
+
+const PORTAL: SqlTarget = {
+  server: envs.PORTAL_DB_SERVER,
+  user: envs.PORTAL_DB_USER,
+  password: envs.PORTAL_DB_PASSWORD,
+  database: envs.PORTAL_DB_NAME,
+};
+const SOFTLAND_VE: SqlTarget = { ...PORTAL, database: envs.SOFTLAND_DB_NAME };
+const SOFTLAND_CR: SqlTarget | null =
+  envs.SOFTLAND_CR_SERVER && envs.SOFTLAND_CR_USER && envs.SOFTLAND_CR_PASSWORD
+    ? { server: envs.SOFTLAND_CR_SERVER, user: envs.SOFTLAND_CR_USER, password: envs.SOFTLAND_CR_PASSWORD, database: envs.SOFTLAND_CR_DB_NAME }
+    : null;
+
+const esCostaRica = (country: string) => country.toUpperCase() === "CR";
+
+/** Instancia de Softland de la compañía según su país. */
+function softlandDe(compania: string): SqlTarget {
+  if (!esCostaRica(resolverCompania(compania).country)) return SOFTLAND_VE;
+  if (!SOFTLAND_CR) throw new Error("Faltan SOFTLAND_CR_SERVER/USER/PASSWORD para las compañías de Costa Rica.");
+  return SOFTLAND_CR;
+}
 
 const pools = new Map<string, Promise<MssqlConnectionPool>>();
 
-function buildSqlConfig(database: string) {
+function buildSqlConfig(target: SqlTarget) {
   return {
-    server: envs.PORTAL_DB_SERVER,
-    database,
-    user: envs.PORTAL_DB_USER,
-    password: envs.PORTAL_DB_PASSWORD,
+    ...target,
     port: envs.SQL_PORT,
     options: {
       encrypt: envs.SQL_ENCRYPT,
@@ -30,33 +48,40 @@ function buildSqlConfig(database: string) {
   };
 }
 
-async function poolFor(database: string): Promise<MssqlConnectionPool> {
-  const existing = await pools.get(database)?.catch(() => null);
+async function poolFor(target: SqlTarget): Promise<MssqlConnectionPool> {
+  const key = `${target.server}/${target.database}`;
+  const existing = await pools.get(key)?.catch(() => null);
   if (existing?.connected) return existing;
-  const connecting = import("mssql").then((mssql) => new mssql.ConnectionPool(buildSqlConfig(database)).connect());
-  pools.set(database, connecting);
-  connecting.catch(() => pools.delete(database));
+  const connecting = import("mssql").then((mssql) => new mssql.ConnectionPool(buildSqlConfig(target)).connect());
+  pools.set(key, connecting);
+  connecting.catch(() => pools.delete(key));
   return connecting;
 }
 
 /** Pool de Softland para los catálogos de una compañía (valida que la compañía exista). */
 export async function getPool(compania: string): Promise<MssqlConnectionPool> {
-  resolverCompania(compania);
-  return poolFor(SOFTLAND_DB);
+  return poolFor(softlandDe(compania));
 }
 
-async function leerEsquemas(database: string): Promise<Set<string>> {
-  const { recordset } = await (await poolFor(database)).request().query<{ name: string }>("SELECT name FROM sys.schemas");
+async function leerEsquemas(target: SqlTarget): Promise<Set<string>> {
+  const { recordset } = await (await poolFor(target)).request().query<{ name: string }>("SELECT name FROM sys.schemas");
   return new Set(recordset.map((r) => r.name.toUpperCase()));
 }
 
-/** Esquemas que existen en la BD de Softland y en la del portal (diagnóstico de Configuración). */
-export async function esquemasExistentes(): Promise<{ softland: Set<string>; portal: Set<string> }> {
-  const [softland, portal] = await Promise.all([
-    leerEsquemas(SOFTLAND_DB),
-    leerEsquemas(PORTAL_DB),
+/** Esquemas que existen en el portal y en el Softland de cada país (diagnóstico de Configuración). */
+export async function esquemasExistentes(): Promise<{ portal: Set<string>; enSoftland: (country: string, schema: string) => boolean }> {
+  const [portal, ve, cr] = await Promise.all([
+    leerEsquemas(PORTAL),
+    leerEsquemas(SOFTLAND_VE),
+    // Si Costa Rica no responde se sigue verificando Venezuela; sus compañías quedan como sin esquema.
+    SOFTLAND_CR
+      ? leerEsquemas(SOFTLAND_CR).catch((error) => {
+          console.error("[sql] no se pudieron leer los esquemas del Softland de Costa Rica:", error);
+          return new Set<string>();
+        })
+      : new Set<string>(),
   ]);
-  return { softland, portal };
+  return { portal, enSoftland: (country, schema) => (esCostaRica(country) ? cr : ve).has(schema.toUpperCase()) };
 }
 
 /** Igual que esquemasExistentes, cacheado 1 min (se consulta en cada request de sesión). */
@@ -75,14 +100,13 @@ export function esquemaDe(compania: string): string {
   return `[${resolverCompania(compania).schema}]`;
 }
 
-/** URL de Prisma (SQL Server) con el login PORTAL_DB_*. SQL Server no tiene search_path: el esquema va en `schema`. */
-function urlSqlServer(database: string, schema: string): string {
-  const e = envs;
+/** URL de Prisma (SQL Server). SQL Server no tiene search_path: el esquema va en `schema`. */
+function urlSqlServer({ server, user, password, database }: SqlTarget, schema: string): string {
   return (
-    `sqlserver://${e.PORTAL_DB_SERVER}:${e.SQL_PORT};` +
-    `database=${database};user=${e.PORTAL_DB_USER};` +
-    `password={${e.PORTAL_DB_PASSWORD}};encrypt=${e.SQL_ENCRYPT};` +
-    `trustServerCertificate=${e.SQL_TRUST_SERVER_CERTIFICATE};schema=${schema}`
+    `sqlserver://${server}:${envs.SQL_PORT};` +
+    `database=${database};user=${user};` +
+    `password={${password}};encrypt=${envs.SQL_ENCRYPT};` +
+    `trustServerCertificate=${envs.SQL_TRUST_SERVER_CERTIFICATE};schema=${schema}`
   );
 }
 
@@ -93,11 +117,11 @@ function urlSqlServer(database: string, schema: string): string {
 const globalClients = globalThis as unknown as { prismaSqlServer?: Map<string, PortalClient | SoftlandClient> };
 const clients = (globalClients.prismaSqlServer ??= new Map());
 
-function cliente<T extends PortalClient | SoftlandClient>(Client: new (o: { datasourceUrl: string }) => T, database: string, schema: string): T {
-  const key = `${database}.${schema}`;
+function cliente<T extends PortalClient | SoftlandClient>(Client: new (o: { datasourceUrl: string }) => T, target: SqlTarget, schema: string): T {
+  const key = `${target.server}/${target.database}.${schema}`;
   let c = clients.get(key) as T | undefined;
   if (!c) {
-    c = new Client({ datasourceUrl: urlSqlServer(database, schema) });
+    c = new Client({ datasourceUrl: urlSqlServer(target, schema) });
     clients.set(key, c);
   }
   return c;
@@ -105,17 +129,12 @@ function cliente<T extends PortalClient | SoftlandClient>(Client: new (o: { data
 
 /** BD del portal (PORTAL_PRECIOS), esquema de la compañía. */
 export function portalDb(compania: string): PortalClient {
-  return cliente(PortalClient, PORTAL_DB, resolverCompania(compania).schema);
+  return cliente(PortalClient, PORTAL, resolverCompania(compania).schema);
 }
 
-/** Softland, esquema de la compañía (NIVEL_PRECIO, VERSION_NIVEL). */
+/** Softland del país de la compañía, en su esquema (NIVEL_PRECIO, VERSION_NIVEL). */
 export function softlandDb(compania: string): SoftlandClient {
-  return cliente(SoftlandClient, SOFTLAND_DB, resolverCompania(compania).schema);
-}
-
-/** Softland, esquema dbo (GESTION_LISTAS_PRECIOS, compartida por las empresas). */
-export function softlandDbo(): SoftlandClient {
-  return cliente(SoftlandClient, SOFTLAND_DB, "dbo");
+  return cliente(SoftlandClient, softlandDe(compania), resolverCompania(compania).schema);
 }
 
 /**

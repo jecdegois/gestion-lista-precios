@@ -1,6 +1,6 @@
-// Softland (SOFTLANDQA o SOFTLANDPRD según APP_ENV): solo las tablas que el portal lee con Prisma.
+// Softland (SOFTLANDQA/PRD en Venezuela, MARQA/MAR en Costa Rica, según APP_ENV): solo las tablas que el portal lee con Prisma.
 // Escrito a mano (cada esquema tiene ~900 tablas; NO usar `db pull`, `db push` ni `migrate`).
-// El esquema (FEBECA, BEVAL, ... o dbo) lo pone la URL de cada cliente: ver src/server/db.ts.
+// La base y el esquema (FEBECA, COFER, ...) los pone la URL de cada cliente: ver src/server/db.ts.
 
 generator client {
   provider = "prisma-client-js"

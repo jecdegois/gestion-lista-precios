@@ -16,8 +16,8 @@ type Esquemas = Awaited<ReturnType<typeof esquemasExistentesCache>>;
 function operable(company: string, esquemas: Esquemas | null): boolean {
   if (!esquemas) return true;
   try {
-    const { schema } = resolverCompania(company);
-    return esquemas.softland.has(schema) && esquemas.portal.has(schema);
+    const { schema, country } = resolverCompania(company);
+    return esquemas.enSoftland(country, schema) && esquemas.portal.has(schema);
   } catch {
     return false;
   }

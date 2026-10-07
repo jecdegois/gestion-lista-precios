@@ -21,7 +21,7 @@ export const settingsService = {
     const companies: CompanyListItem[] = rows.map((c) => ({
       ...c,
       schemaStatus: schemas && {
-        softland: schemas.softland.has(c.sqlSchema.toUpperCase()),
+        softland: schemas.enSoftland(c.country, c.sqlSchema),
         portal: schemas.portal.has(c.sqlSchema.toUpperCase()),
       },
     }));
