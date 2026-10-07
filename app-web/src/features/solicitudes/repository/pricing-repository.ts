@@ -1,7 +1,7 @@
 import "server-only";
 import { esFilaMargen, esFilaProcesable, type FilaPrecio, type FilaResultado, type TipoVariacion } from "@/shared/types/domain-types";
 import type { Articulo, GestionGlobalLista, NivelPrecio } from "@/shared/types/models";
-import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, objetoPortal, objetoPortalFullyQualified, resolverCompania } from "@/server/companies";
+import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, objetoPortal, resolverCompania } from "@/server/companies";
 import {
   buscarArticuloDemo,
   catalogoDemo,
@@ -1136,8 +1136,8 @@ async function listarHallazgosGestionGlobal(
 }
 
 // ---------------------------------------------------------------------------
-// Funciones BATCHED: leen directamente de SOLICITUD_DETALLE y procesan por lotes
-// para solicitudes grandes (10K-40K filas) sin cargar todo en memoria Node.js.
+// Funciones BATCHED: aplican SOLICITUD_DETALLE en masa (UPDATE/INSERT con JOIN)
+// para solicitudes grandes (10K-40K filas) en lugar de fila por fila.
 // ---------------------------------------------------------------------------
 
 const BATCH_SIZE = 500;
@@ -1146,6 +1146,76 @@ export interface ResultadoBatch {
   total: number;
   exitosos: number;
   fallidos: number;
+}
+
+type FilaDetalleAplicable = {
+  SKU: string;
+  LISTA_PRECIO: string | null;
+  FACTOR_APLICADO: unknown;
+  PRECIO_SIMULADO: unknown;
+  PORCENTAJE_MARGEN: unknown;
+};
+
+/**
+ * Corre `aplicar` en una transacción de Softland con las filas aplicables (OK/HALLAZGO) de la
+ * solicitud cargadas en la tabla temporal #DET. Se leen del portal y se suben por bulk en vez de
+ * un JOIN entre bases: el Softland de Costa Rica (MAR/MARQA) está en otro servidor.
+ */
+async function conDetalleEnSoftland<T>(
+  compania: string,
+  solicitudId: string,
+  aplicar: (request: () => import("mssql").Request) => Promise<T>,
+): Promise<T> {
+  const filas = await portalDb(compania).$queryRawUnsafe<FilaDetalleAplicable[]>(
+    `SELECT D.SKU, D.LISTA_PRECIO, D.FACTOR_APLICADO, D.PRECIO_SIMULADO, D.PORCENTAJE_MARGEN
+       FROM ${objetoPortal(compania, "SOLICITUD_DETALLE")} D
+       INNER JOIN ${objetoPortal(compania, "SOLICITUD")} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
+      WHERE S.CODIGO_SOLICITUD = @P1
+        AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')`,
+    solicitudId,
+  );
+
+  const mssql = await import("mssql");
+  const transaction = new mssql.Transaction(await getPool(compania));
+  const request = () => new mssql.Request(transaction);
+  const decimal = (v: unknown) => (v == null ? null : Number(v));
+
+  await transaction.begin();
+  try {
+    // batch y no query: una tabla temporal creada dentro de sp_executesql muere al terminar.
+    // COLLATE DATABASE_DEFAULT: tempdb puede tener otra intercalación que la base de Softland.
+    await request().batch(
+      `IF OBJECT_ID('tempdb..#DET') IS NOT NULL DROP TABLE #DET;
+       CREATE TABLE #DET (
+         SKU               VARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
+         LISTA_PRECIO      VARCHAR(40) COLLATE DATABASE_DEFAULT NULL,
+         FACTOR_APLICADO   DECIMAL(8, 4) NOT NULL,
+         PRECIO_SIMULADO   DECIMAL(18, 4) NOT NULL,
+         PORCENTAJE_MARGEN DECIMAL(18, 4) NULL
+       );`,
+    );
+    if (filas.length) {
+      const tabla = new mssql.Table("#DET");
+      tabla.columns.add("SKU", mssql.VarChar(50), { nullable: false });
+      tabla.columns.add("LISTA_PRECIO", mssql.VarChar(40), { nullable: true });
+      tabla.columns.add("FACTOR_APLICADO", mssql.Decimal(8, 4), { nullable: false });
+      tabla.columns.add("PRECIO_SIMULADO", mssql.Decimal(18, 4), { nullable: false });
+      tabla.columns.add("PORCENTAJE_MARGEN", mssql.Decimal(18, 4), { nullable: true });
+      for (const f of filas) {
+        tabla.rows.add(f.SKU, f.LISTA_PRECIO, decimal(f.FACTOR_APLICADO), decimal(f.PRECIO_SIMULADO), decimal(f.PORCENTAJE_MARGEN));
+      }
+      await request().bulk(tabla);
+    }
+
+    const resultado = await aplicar(request);
+    // La conexión vuelve al pool: la tabla temporal no debe sobrevivir al commit.
+    await request().batch("DROP TABLE #DET;");
+    await transaction.commit();
+    return resultado;
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
 }
 
 /**
@@ -1219,90 +1289,69 @@ async function actualizarPreciosBaseBatched(
 
   const companiaNormalizada = compania.trim().toUpperCase();
   const lista = "MAYOREOD";
-  const pool = await getPool(companiaNormalizada);
   const ap = objetoCalificado(companiaNormalizada, "tablaArticuloPrecio");
   const versiones = objetoCalificado(companiaNormalizada, "tablaVersionNivel");
-  // IMPORTANTE: Usar nombres completamente calificados con base de datos para el JOIN cross-database
-  // ya que el pool es de Softland pero las tablas SOLICITUD_DETALLE/SOLICITUD están en Portal
-  const tabDet = objetoPortalFullyQualified(companiaNormalizada, "SOLICITUD_DETALLE");
-  const tabSol = objetoPortalFullyQualified(companiaNormalizada, "SOLICITUD");
-  // Para el conteo posterior usamos objetoPortal normal ya que se ejecuta en portalDb
-  const tabDetPortal = objetoPortal(companiaNormalizada, "SOLICITUD_DETALLE");
-  const tabSolPortal = objetoPortal(companiaNormalizada, "SOLICITUD");
   const mssql = await import("mssql");
 
   try {
-    // Obtener versión activa
-    const versionResult = await pool.request()
-      .input("lista", mssql.VarChar(50), lista)
-      .query(
-        `SELECT TOP (1) VN.VERSION AS version
-           FROM ${versiones} VN WITH(NOLOCK)
-          WHERE VN.NIVEL_PRECIO = @lista
-            AND VN.ESTADO = 'A'
-          ORDER BY TRY_CONVERT(INT, VN.VERSION) DESC, VN.VERSION DESC;`,
-      );
-    const version = versionResult.recordset[0]?.version;
-    if (version == null || String(version).trim() === "") {
-      throw new Error(`No existe una versión activa para la lista '${lista}'.`);
-    }
+    return await conDetalleEnSoftland(companiaNormalizada, solicitudId, async (request) => {
+      // Obtener versión activa
+      const versionResult = await request()
+        .input("lista", mssql.VarChar(50), lista)
+        .query(
+          `SELECT TOP (1) VN.VERSION AS version
+             FROM ${versiones} VN WITH(NOLOCK)
+            WHERE VN.NIVEL_PRECIO = @lista
+              AND VN.ESTADO = 'A'
+            ORDER BY TRY_CONVERT(INT, VN.VERSION) DESC, VN.VERSION DESC;`,
+        );
+      const version = versionResult.recordset[0]?.version;
+      if (version == null || String(version).trim() === "") {
+        throw new Error(`No existe una versión activa para la lista '${lista}'.`);
+      }
 
-    console.info("[PRECIO_BASE_BATCHED] Iniciando UPDATE masivo con JOIN cross-database", { 
-      solicitudId, 
-      lista, 
-      version: String(version),
-      tablaArticuloPrecio: ap,
-      tablaSolicitudDetalle: tabDet,
-      tablaSolicitud: tabSol,
+      console.info("[PRECIO_BASE_BATCHED] Iniciando UPDATE masivo", {
+        solicitudId,
+        lista,
+        version: String(version),
+        tablaArticuloPrecio: ap,
+      });
+
+      // UPDATE masivo: actualiza ARTICULO_PRECIO desde #DET con JOIN
+      // Esto es MUCHO más eficiente que hacer 10,000 UPDATEs individuales
+      const result = await request()
+        .input("lista", mssql.VarChar(50), lista)
+        .input("version", mssql.Int, Number(version))
+        .input("usuario", mssql.VarChar(50), usuario.trim())
+        .query(
+          `UPDATE AP
+              SET AP.PRECIO = D.PRECIO_SIMULADO,
+                  AP.FECHA_ULT_MODIF = GETDATE(),
+                  AP.USUARIO_ULT_MODIF = @usuario
+             FROM ${ap} AP
+             INNER JOIN #DET D ON D.SKU = AP.ARTICULO
+            WHERE AP.NIVEL_PRECIO = @lista
+              AND AP.VERSION = @version
+              AND D.PRECIO_SIMULADO > 0;`,
+        );
+
+      const exitosos = result.rowsAffected[0] ?? 0;
+
+      // Contar fallidos (filas que no se actualizaron por no existir en ARTICULO_PRECIO o precio inválido)
+      const countResult = await request().query<{ n: number }>(`SELECT COUNT(*) AS n FROM #DET`);
+      const total = Number(countResult.recordset[0]?.n ?? 0);
+      const fallidos = total - exitosos;
+
+      console.info("[PRECIO_BASE_BATCHED] Completado", {
+        solicitudId,
+        total,
+        exitosos,
+        fallidos,
+        tabla: ap,
+      });
+
+      return { total, exitosos, fallidos };
     });
-
-    // UPDATE masivo: actualiza ARTICULO_PRECIO directamente desde SOLICITUD_DETALLE con JOIN
-    // Esto es MUCHO más eficiente que hacer 10,000 UPDATEs individuales
-    // NOTA: tabDet y tabSol usan nombres fully qualified ([PORTAL_DB].[SCHEMA].[TABLA])
-    // porque el pool es de Softland pero las tablas están en Portal (cross-database JOIN)
-    const result = await pool.request()
-      .input("codigo", mssql.VarChar(50), solicitudId)
-      .input("lista", mssql.VarChar(50), lista)
-      .input("version", mssql.Int, Number(version))
-      .input("usuario", mssql.VarChar(50), usuario.trim())
-      .query(
-        `UPDATE AP
-            SET AP.PRECIO = D.PRECIO_SIMULADO,
-                AP.FECHA_ULT_MODIF = GETDATE(),
-                AP.USUARIO_ULT_MODIF = @usuario
-           FROM ${ap} AP
-           INNER JOIN ${tabDet} D ON D.SKU = AP.ARTICULO
-           INNER JOIN ${tabSol} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
-          WHERE S.CODIGO_SOLICITUD = @codigo
-            AND AP.NIVEL_PRECIO = @lista
-            AND AP.VERSION = @version
-            AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')
-            AND D.PRECIO_SIMULADO > 0;`,
-      );
-
-    const exitosos = result.rowsAffected[0] ?? 0;
-    
-    // Contar fallidos (filas que no se actualizaron por no existir en ARTICULO_PRECIO o precio inválido)
-    // Aquí usamos tabDetPortal/tabSolPortal porque la query se ejecuta en portalDb (no necesita fully qualified)
-    const countResult = await portalDb(companiaNormalizada).$queryRawUnsafe<{ n: bigint }[]>(
-      `SELECT COUNT(*) AS n FROM ${tabDetPortal} D
-       INNER JOIN ${tabSolPortal} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
-       WHERE S.CODIGO_SOLICITUD = @P1
-         AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')`,
-      solicitudId,
-    );
-    const total = Number(countResult[0]?.n ?? 0);
-    const fallidos = total - exitosos;
-
-    console.info("[PRECIO_BASE_BATCHED] Completado", { 
-      solicitudId, 
-      total, 
-      exitosos, 
-      fallidos,
-      tabla: ap,
-    });
-
-    return { total, exitosos, fallidos };
   } catch (error) {
     // Re-lanzar error de BD con mensaje descriptivo para que el servicio lo capture
     const mensaje = error instanceof Error ? error.message : String(error);
@@ -1330,157 +1379,139 @@ async function upsertFactoresArticuloListaBatched(
 
   const companiaNormalizada = compania.trim().toUpperCase();
   const usuarioNormalizado = usuario.trim();
-  const pool = await getPool(companiaNormalizada);
   const target = objetoCalificado(companiaNormalizada, "tablaFactorArticuloLista");
   // GESTION_LISTAS_PRECIOS siempre está en esquema dbo, no en el esquema de la compañía
   const gestion = `[dbo].[${nombreSql(companiaNormalizada, "tablaGestionListaPrecio")}]`;
-  
-  // Cross-database JOINs: pool es Softland, tablas de detalle están en Portal
-  const tabDet = objetoPortalFullyQualified(companiaNormalizada, "SOLICITUD_DETALLE");
-  const tabSol = objetoPortalFullyQualified(companiaNormalizada, "SOLICITUD");
-  // Para conteos en portalDb (sin fully qualified)
-  const tabDetPortal = objetoPortal(companiaNormalizada, "SOLICITUD_DETALLE");
-  const tabSolPortal = objetoPortal(companiaNormalizada, "SOLICITUD");
-  
+
   const mssql = await import("mssql");
   const descripcion = `Solicitud ${solicitudId}`;
 
-  console.info("[FACTOR_ARTICULO_LISTA_BATCHED] Iniciando MERGE masivo con cross-DB JOIN", { 
+  console.info("[FACTOR_ARTICULO_LISTA_BATCHED] Iniciando MERGE masivo", {
     solicitudId,
     tablaTarget: target,
-    tablaDetalle: tabDet,
   });
 
   try {
-    // PASO 1: UPDATE masivo de registros existentes
-    // Actualiza U_FACTOR para combinaciones (ARTICULO, NIVEL_PRECIO) que ya existen
-    const updateResult = await pool.request()
-      .input("codigo", mssql.VarChar(50), solicitudId)
-      .input("compania", mssql.VarChar(20), companiaNormalizada)
-      .input("descripcion", mssql.VarChar(20), descripcion)
-      .input("usuario", mssql.VarChar(50), usuarioNormalizado)
-      .query(
-        `UPDATE T
-            SET T.U_DESCRIP = @descripcion,
-                T.U_FACTOR = D.FACTOR_APLICADO,
-                T.U_VERSION = G.VERSION,
-                T.RecordDate = GETDATE(),
-                T.UpdatedBy = @usuario
-           FROM ${target} T
-           INNER JOIN ${tabDet} D ON D.SKU = T.U_ARTICULO
-           INNER JOIN ${tabSol} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
-           INNER JOIN (
-             SELECT G1.NIVEL_PRECIO, G1.VERSION
-               FROM ${gestion} G1 WITH(NOLOCK)
-              WHERE G1.COMPANIA = @compania
-                AND G1.VERSION = (
-                  SELECT MAX(TRY_CONVERT(INT, G2.VERSION))
-                    FROM ${gestion} G2 WITH(NOLOCK)
-                   WHERE G2.COMPANIA = @compania
-                     AND G2.NIVEL_PRECIO = G1.NIVEL_PRECIO
-                )
-           ) G ON G.NIVEL_PRECIO = D.LISTA_PRECIO AND G.NIVEL_PRECIO = T.U_NIVEL_PRECIO
-          WHERE S.CODIGO_SOLICITUD = @codigo
-            AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')
-            AND D.FACTOR_APLICADO > 0
+    return await conDetalleEnSoftland(companiaNormalizada, solicitudId, async (request) => {
+      // PASO 1: UPDATE masivo de registros existentes
+      // Actualiza U_FACTOR para combinaciones (ARTICULO, NIVEL_PRECIO) que ya existen
+      const updateResult = await request()
+        .input("compania", mssql.VarChar(20), companiaNormalizada)
+        .input("descripcion", mssql.VarChar(20), descripcion)
+        .input("usuario", mssql.VarChar(50), usuarioNormalizado)
+        .query(
+          `UPDATE T
+              SET T.U_DESCRIP = @descripcion,
+                  T.U_FACTOR = D.FACTOR_APLICADO,
+                  T.U_VERSION = G.VERSION,
+                  T.RecordDate = GETDATE(),
+                  T.UpdatedBy = @usuario
+             FROM ${target} T
+             INNER JOIN #DET D ON D.SKU = T.U_ARTICULO
+             INNER JOIN (
+               SELECT G1.NIVEL_PRECIO, G1.VERSION
+                 FROM ${gestion} G1 WITH(NOLOCK)
+                WHERE G1.COMPANIA = @compania
+                  AND G1.VERSION = (
+                    SELECT MAX(TRY_CONVERT(INT, G2.VERSION))
+                      FROM ${gestion} G2 WITH(NOLOCK)
+                     WHERE G2.COMPANIA = @compania
+                       AND G2.NIVEL_PRECIO = G1.NIVEL_PRECIO
+                  )
+             ) G ON G.NIVEL_PRECIO = D.LISTA_PRECIO AND G.NIVEL_PRECIO = T.U_NIVEL_PRECIO
+            WHERE D.FACTOR_APLICADO > 0
+              AND D.FACTOR_APLICADO <= 2
+              AND D.LISTA_PRECIO IS NOT NULL
+              AND LEN(LTRIM(RTRIM(D.LISTA_PRECIO))) > 0;`,
+        );
+      const actualizados = updateResult.rowsAffected[0] ?? 0;
+
+      // PASO 2: INSERT masivo de registros nuevos
+      // Inserta combinaciones (ARTICULO, NIVEL_PRECIO) que no existen en la tabla target
+      // Usa ROW_NUMBER para generar códigos secuenciales; UPDLOCK/HOLDLOCK evita que otra
+      // transacción tome los mismos códigos (igual que upsertUdfs).
+      const insertResult = await request()
+        .input("compania", mssql.VarChar(20), companiaNormalizada)
+        .input("descripcion", mssql.VarChar(20), descripcion)
+        .input("usuario", mssql.VarChar(50), usuarioNormalizado)
+        .query(
+          `WITH MaxCodigo AS (
+             SELECT COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U_CODIGO)), ''))), 0) AS maxCod
+               FROM ${target} WITH(UPDLOCK, HOLDLOCK)
+           ),
+           NuevosRegistros AS (
+             SELECT
+               D.SKU AS articulo,
+               D.FACTOR_APLICADO AS factor,
+               G.NIVEL_PRECIO AS nivelPrecio,
+               G.VERSION AS version,
+               ROW_NUMBER() OVER (ORDER BY D.SKU, G.NIVEL_PRECIO) AS rn
+             FROM #DET D
+             INNER JOIN (
+               SELECT G1.NIVEL_PRECIO, G1.VERSION
+                 FROM ${gestion} G1 WITH(NOLOCK)
+                WHERE G1.COMPANIA = @compania
+                  AND G1.VERSION = (
+                    SELECT MAX(TRY_CONVERT(INT, G2.VERSION))
+                      FROM ${gestion} G2 WITH(NOLOCK)
+                     WHERE G2.COMPANIA = @compania
+                       AND G2.NIVEL_PRECIO = G1.NIVEL_PRECIO
+                  )
+             ) G ON G.NIVEL_PRECIO = D.LISTA_PRECIO
+             LEFT JOIN ${target} T ON T.U_ARTICULO = D.SKU AND T.U_NIVEL_PRECIO = G.NIVEL_PRECIO
+            WHERE D.FACTOR_APLICADO > 0
+              AND D.FACTOR_APLICADO <= 2
+              AND D.LISTA_PRECIO IS NOT NULL
+              AND LEN(LTRIM(RTRIM(D.LISTA_PRECIO))) > 0
+              AND T.U_ARTICULO IS NULL  -- No existe en target
+           )
+           INSERT INTO ${target} (
+             U_CODIGO, U_DESCRIP, NoteExistsFlag, RecordDate, RowPointer,
+             CreatedBy, UpdatedBy, CreateDate, U_ARTICULO, U_FACTOR,
+             U_NIVEL_PRECIO, U_VERSION
+           )
+           SELECT
+             CAST(M.maxCod + N.rn AS VARCHAR(10)),
+             @descripcion,
+             0,
+             GETDATE(),
+             NEWID(),
+             @usuario,
+             @usuario,
+             GETDATE(),
+             N.articulo,
+             N.factor,
+             N.nivelPrecio,
+             N.version
+           FROM NuevosRegistros N
+           CROSS JOIN MaxCodigo M;`,
+        );
+      const insertados = insertResult.rowsAffected[0] ?? 0;
+
+      const exitosos = actualizados + insertados;
+
+      // Contar total de filas válidas para calcular fallidos
+      const countResult = await request().query<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM #DET D
+          WHERE D.FACTOR_APLICADO > 0
             AND D.FACTOR_APLICADO <= 2
             AND D.LISTA_PRECIO IS NOT NULL
-            AND LEN(LTRIM(RTRIM(D.LISTA_PRECIO))) > 0;`,
+            AND LEN(LTRIM(RTRIM(D.LISTA_PRECIO))) > 0`,
       );
-    const actualizados = updateResult.rowsAffected[0] ?? 0;
+      const total = Number(countResult.recordset[0]?.n ?? 0);
+      const fallidos = Math.max(0, total - exitosos);
 
-    // PASO 2: INSERT masivo de registros nuevos
-    // Inserta combinaciones (ARTICULO, NIVEL_PRECIO) que no existen en la tabla target
-    // Usa ROW_NUMBER para generar códigos secuenciales
-    const insertResult = await pool.request()
-      .input("codigo", mssql.VarChar(50), solicitudId)
-      .input("compania", mssql.VarChar(20), companiaNormalizada)
-      .input("descripcion", mssql.VarChar(20), descripcion)
-      .input("usuario", mssql.VarChar(50), usuarioNormalizado)
-      .query(
-        `WITH MaxCodigo AS (
-           SELECT COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U_CODIGO)), ''))), 0) AS maxCod
-             FROM ${target} WITH(NOLOCK)
-         ),
-         NuevosRegistros AS (
-           SELECT 
-             D.SKU AS articulo,
-             D.FACTOR_APLICADO AS factor,
-             G.NIVEL_PRECIO AS nivelPrecio,
-             G.VERSION AS version,
-             ROW_NUMBER() OVER (ORDER BY D.SKU, G.NIVEL_PRECIO) AS rn
-           FROM ${tabDet} D
-           INNER JOIN ${tabSol} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
-           INNER JOIN (
-             SELECT G1.NIVEL_PRECIO, G1.VERSION
-               FROM ${gestion} G1 WITH(NOLOCK)
-              WHERE G1.COMPANIA = @compania
-                AND G1.VERSION = (
-                  SELECT MAX(TRY_CONVERT(INT, G2.VERSION))
-                    FROM ${gestion} G2 WITH(NOLOCK)
-                   WHERE G2.COMPANIA = @compania
-                     AND G2.NIVEL_PRECIO = G1.NIVEL_PRECIO
-                )
-           ) G ON G.NIVEL_PRECIO = D.LISTA_PRECIO
-           LEFT JOIN ${target} T ON T.U_ARTICULO = D.SKU AND T.U_NIVEL_PRECIO = G.NIVEL_PRECIO
-          WHERE S.CODIGO_SOLICITUD = @codigo
-            AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')
-            AND D.FACTOR_APLICADO > 0
-            AND D.FACTOR_APLICADO <= 2
-            AND D.LISTA_PRECIO IS NOT NULL
-            AND LEN(LTRIM(RTRIM(D.LISTA_PRECIO))) > 0
-            AND T.U_ARTICULO IS NULL  -- No existe en target
-         )
-         INSERT INTO ${target} (
-           U_CODIGO, U_DESCRIP, NoteExistsFlag, RecordDate, RowPointer,
-           CreatedBy, UpdatedBy, CreateDate, U_ARTICULO, U_FACTOR,
-           U_NIVEL_PRECIO, U_VERSION
-         )
-         SELECT 
-           CAST(M.maxCod + N.rn AS VARCHAR(10)),
-           @descripcion,
-           0,
-           GETDATE(),
-           NEWID(),
-           @usuario,
-           @usuario,
-           GETDATE(),
-           N.articulo,
-           N.factor,
-           N.nivelPrecio,
-           N.version
-         FROM NuevosRegistros N
-         CROSS JOIN MaxCodigo M;`,
-      );
-    const insertados = insertResult.rowsAffected[0] ?? 0;
+      console.info("[FACTOR_ARTICULO_LISTA_BATCHED] Completado", {
+        solicitudId,
+        total,
+        actualizados,
+        insertados,
+        exitosos,
+        fallidos,
+      });
 
-    const exitosos = actualizados + insertados;
-
-    // Contar total de filas válidas para calcular fallidos
-    const countResult = await portalDb(companiaNormalizada).$queryRawUnsafe<{ n: bigint }[]>(
-      `SELECT COUNT(*) AS n FROM ${tabDetPortal} D
-       INNER JOIN ${tabSolPortal} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
-       WHERE S.CODIGO_SOLICITUD = @P1
-         AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')
-         AND D.FACTOR_APLICADO > 0
-         AND D.FACTOR_APLICADO <= 2
-         AND D.LISTA_PRECIO IS NOT NULL
-         AND LEN(LTRIM(RTRIM(D.LISTA_PRECIO))) > 0`,
-      solicitudId,
-    );
-    const total = Number(countResult[0]?.n ?? 0);
-    const fallidos = Math.max(0, total - exitosos);
-
-    console.info("[FACTOR_ARTICULO_LISTA_BATCHED] Completado", { 
-      solicitudId, 
-      total, 
-      actualizados,
-      insertados,
-      exitosos, 
-      fallidos,
+      return { total, exitosos, fallidos };
     });
-
-    return { total, exitosos, fallidos };
   } catch (error) {
     // Re-lanzar error de BD con mensaje descriptivo para que el servicio lo capture
     const mensaje = error instanceof Error ? error.message : String(error);
@@ -1507,125 +1538,107 @@ async function upsertUdfsBatched(
   if (esModoDemo()) throw new Error("UDF_BATCHED_NO_DISPONIBLE_EN_DEMO");
 
   const companiaNormalizada = compania.trim().toUpperCase();
-  const pool = await getPool(companiaNormalizada);
   const udf = objetoCalificado(companiaNormalizada, "udfFactorReduccion");
   const colCodigo = nombreSql(companiaNormalizada, "colUdfCodigo");
   const colDescrip = nombreSql(companiaNormalizada, "colUdfDescripcion");
   const colFactor = nombreSql(companiaNormalizada, "colUdfFactor");
   const colActivo = nombreSql(companiaNormalizada, "colUdfActivo");
   const colArticulo = nombreSql(companiaNormalizada, "colUdfArticulo");
-  
-  // Cross-database JOINs: pool es Softland, tablas de detalle están en Portal
-  const tabDet = objetoPortalFullyQualified(companiaNormalizada, "SOLICITUD_DETALLE");
-  const tabSol = objetoPortalFullyQualified(companiaNormalizada, "SOLICITUD");
-  // Para conteos en portalDb (sin fully qualified)
-  const tabDetPortal = objetoPortal(companiaNormalizada, "SOLICITUD_DETALLE");
-  const tabSolPortal = objetoPortal(companiaNormalizada, "SOLICITUD");
-  
+
   const mssql = await import("mssql");
   const descripcion = `Solicitud ${solicitudId}`;
 
-  console.info("[UDF_BATCHED] Iniciando MERGE masivo con cross-DB JOIN", { 
+  console.info("[UDF_BATCHED] Iniciando MERGE masivo", {
     solicitudId,
     tablaUdf: udf,
-    tablaDetalle: tabDet,
   });
 
   try {
-    // PASO 1: UPDATE masivo de registros existentes
-    const updateResult = await pool.request()
-      .input("codigo", mssql.VarChar(50), solicitudId)
-      .input("descrip", mssql.VarChar(260), descripcion)
-      .input("usuario", mssql.VarChar(30), usuario.trim())
-      .query(
-        `UPDATE U
-            SET U.${colDescrip} = @descrip,
-                U.${colFactor} = D.PORCENTAJE_MARGEN,
-                U.${colActivo} = 'S',
-                U.RecordDate = GETDATE(),
-                U.UpdatedBy = @usuario
-           FROM ${udf} U
-           INNER JOIN ${tabDet} D ON D.SKU = U.${colArticulo}
-           INNER JOIN ${tabSol} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
-          WHERE S.CODIGO_SOLICITUD = @codigo
-            AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')
-            AND D.SKU IS NOT NULL
-            AND LEN(LTRIM(RTRIM(D.SKU))) > 0;`,
+    return await conDetalleEnSoftland(companiaNormalizada, solicitudId, async (request) => {
+      // PASO 1: UPDATE masivo de registros existentes
+      const updateResult = await request()
+        .input("descrip", mssql.VarChar(260), descripcion)
+        .input("usuario", mssql.VarChar(30), usuario.trim())
+        .query(
+          `UPDATE U
+              SET U.${colDescrip} = @descrip,
+                  U.${colFactor} = D.PORCENTAJE_MARGEN,
+                  U.${colActivo} = 'S',
+                  U.RecordDate = GETDATE(),
+                  U.UpdatedBy = @usuario
+             FROM ${udf} U
+             INNER JOIN #DET D ON D.SKU = U.${colArticulo}
+            WHERE D.SKU IS NOT NULL
+              AND LEN(LTRIM(RTRIM(D.SKU))) > 0;`,
+        );
+      const actualizados = updateResult.rowsAffected[0] ?? 0;
+
+      // PASO 2: INSERT masivo de registros nuevos
+      // Usa ROW_NUMBER para generar códigos secuenciales; UPDLOCK/HOLDLOCK evita que otra
+      // transacción tome los mismos códigos (igual que upsertUdfs).
+      const insertResult = await request()
+        .input("descrip", mssql.VarChar(260), descripcion)
+        .input("usuario", mssql.VarChar(30), usuario.trim())
+        .query(
+          `WITH MaxCodigo AS (
+             SELECT COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(${colCodigo})), ''))), 0) AS maxCod
+               FROM ${udf} WITH(UPDLOCK, HOLDLOCK)
+           ),
+           NuevosRegistros AS (
+             SELECT
+               D.SKU AS articulo,
+               COALESCE(D.PORCENTAJE_MARGEN, 0) AS porcentaje,
+               ROW_NUMBER() OVER (ORDER BY D.SKU) AS rn
+             FROM #DET D
+             LEFT JOIN ${udf} U ON U.${colArticulo} = D.SKU
+            WHERE D.SKU IS NOT NULL
+              AND LEN(LTRIM(RTRIM(D.SKU))) > 0
+              AND U.${colArticulo} IS NULL  -- No existe en UDF
+           )
+           INSERT INTO ${udf} (
+             ${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
+             NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate,
+             ${colArticulo}
+           )
+           SELECT
+             CAST(M.maxCod + N.rn AS VARCHAR(256)),
+             @descrip,
+             N.porcentaje,
+             'S',
+             0,
+             GETDATE(),
+             NEWID(),
+             @usuario,
+             @usuario,
+             GETDATE(),
+             N.articulo
+           FROM NuevosRegistros N
+           CROSS JOIN MaxCodigo M;`,
+        );
+      const insertados = insertResult.rowsAffected[0] ?? 0;
+
+      const exitosos = actualizados + insertados;
+
+      // Contar total de filas válidas para calcular fallidos
+      const countResult = await request().query<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM #DET D
+          WHERE D.SKU IS NOT NULL
+            AND LEN(LTRIM(RTRIM(D.SKU))) > 0`,
       );
-    const actualizados = updateResult.rowsAffected[0] ?? 0;
+      const total = Number(countResult.recordset[0]?.n ?? 0);
+      const fallidos = Math.max(0, total - exitosos);
 
-    // PASO 2: INSERT masivo de registros nuevos
-    // Usa ROW_NUMBER para generar códigos secuenciales
-    const insertResult = await pool.request()
-      .input("codigo", mssql.VarChar(50), solicitudId)
-      .input("descrip", mssql.VarChar(260), descripcion)
-      .input("usuario", mssql.VarChar(30), usuario.trim())
-      .query(
-        `WITH MaxCodigo AS (
-           SELECT COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(${colCodigo})), ''))), 0) AS maxCod
-             FROM ${udf} WITH(NOLOCK)
-         ),
-         NuevosRegistros AS (
-           SELECT 
-             D.SKU AS articulo,
-             COALESCE(D.PORCENTAJE_MARGEN, 0) AS porcentaje,
-             ROW_NUMBER() OVER (ORDER BY D.SKU) AS rn
-           FROM ${tabDet} D
-           INNER JOIN ${tabSol} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
-           LEFT JOIN ${udf} U ON U.${colArticulo} = D.SKU
-          WHERE S.CODIGO_SOLICITUD = @codigo
-            AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')
-            AND D.SKU IS NOT NULL
-            AND LEN(LTRIM(RTRIM(D.SKU))) > 0
-            AND U.${colArticulo} IS NULL  -- No existe en UDF
-         )
-         INSERT INTO ${udf} (
-           ${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
-           NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate,
-           ${colArticulo}
-         )
-         SELECT 
-           CAST(M.maxCod + N.rn AS VARCHAR(256)),
-           @descrip,
-           N.porcentaje,
-           'S',
-           0,
-           GETDATE(),
-           NEWID(),
-           @usuario,
-           @usuario,
-           GETDATE(),
-           N.articulo
-         FROM NuevosRegistros N
-         CROSS JOIN MaxCodigo M;`,
-      );
-    const insertados = insertResult.rowsAffected[0] ?? 0;
+      console.info("[UDF_BATCHED] Completado", {
+        solicitudId,
+        total,
+        actualizados,
+        insertados,
+        exitosos,
+        fallidos,
+      });
 
-    const exitosos = actualizados + insertados;
-
-    // Contar total de filas válidas para calcular fallidos
-    const countResult = await portalDb(companiaNormalizada).$queryRawUnsafe<{ n: bigint }[]>(
-      `SELECT COUNT(*) AS n FROM ${tabDetPortal} D
-       INNER JOIN ${tabSolPortal} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
-       WHERE S.CODIGO_SOLICITUD = @P1
-         AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')
-         AND D.SKU IS NOT NULL
-         AND LEN(LTRIM(RTRIM(D.SKU))) > 0`,
-      solicitudId,
-    );
-    const total = Number(countResult[0]?.n ?? 0);
-    const fallidos = Math.max(0, total - exitosos);
-
-    console.info("[UDF_BATCHED] Completado", { 
-      solicitudId, 
-      total, 
-      actualizados,
-      insertados,
-      exitosos, 
-      fallidos,
+      return { total, exitosos, fallidos };
     });
-
-    return { total, exitosos, fallidos };
   } catch (error) {
     // Re-lanzar error de BD con mensaje descriptivo para que el servicio lo capture
     const mensaje = error instanceof Error ? error.message : String(error);
