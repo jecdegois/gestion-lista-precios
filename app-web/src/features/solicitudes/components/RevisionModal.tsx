@@ -11,7 +11,7 @@ import type { TableLoadParams } from "@/shared/components/ui/ResponsiveDataTable
 import { PROCESOS } from "@/features/solicitudes/utils/catalog";
 import { textoResultadoAuditoria } from "@/shared/utils/events";
 import { esHallazgoDeNegocio, type FilaMargen, type FilaPrecio, type FilaResultado, type Identidad, type ProcesoKey, type Solicitud } from "@/shared/types/domain-types";
-import { getCatalogoGestionGlobal } from "@/features/solicitudes/api/solicitudes-api";
+import { getCatalogoGestionGlobal, getSolicitudDetallePaginado } from "@/features/solicitudes/api/solicitudes-api";
 import { fetchGlobalManagementPage } from "@/features/solicitudes/api/paged-api";
 import { useSimulationExport } from "@/features/solicitudes/hooks/useSimulationExport";
 
@@ -349,9 +349,20 @@ export default function RevisionModal({
 
   const [slugExportacion, columnaExportacion, modoExportacion] = EXPORTACION[solicitud.proceso];
   const { exporting, exportRows } = useSimulationExport(slugExportacion, columnaExportacion, modoExportacion);
-  /** Gestión Global no persiste el detalle: se trae completo, página por página. */
+  /** Exporta el detalle completo, no solo las páginas ya cargadas en la tabla. */
   async function filasParaExportar(): Promise<FilaResultado[]> {
-    if (!esGestionGlobal) return filas;
+    if (!esGestionGlobal) {
+      if (!detailHasMore) return filas;
+      const todas: FilaResultado[] = [];
+      for (let offset: number | null = 0; offset != null;) {
+        const res = await getSolicitudDetallePaginado(solicitud.id, offset, 2000);
+        if (!res.ok) throw new Error(res.error);
+        todas.push(...res.data.filas);
+        offset = res.data.nextOffset;
+      }
+      return todas;
+    }
+    // Gestión Global no persiste el detalle: se recalcula página por página.
     const todas: FilaPrecio[] = [];
     for (let offset: number | null = 0; offset != null;) {
       const pagina = await fetchGlobalManagementPage({ level: nivelConsulta, factor: factorConsulta, variationType: tipoVariacionConsulta, offset, maxRecords: 200 });

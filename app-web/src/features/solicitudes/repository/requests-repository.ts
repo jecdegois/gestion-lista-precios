@@ -179,7 +179,7 @@ async function obtenerSolicitudDetallePaginado(
   limit: number,
 ): Promise<PaginaDetalleSolicitud | undefined> {
   const safeOffset = Math.max(0, offset);
-  const safeLimit = Math.min(Math.max(limit, 1), 200);
+  const safeLimit = Math.min(Math.max(limit, 1), 2000);
 
   if (esModoDemo()) {
     const sol = demoObtener(codigo);

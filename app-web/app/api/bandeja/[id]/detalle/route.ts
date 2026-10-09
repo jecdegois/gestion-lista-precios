@@ -5,7 +5,7 @@ import { solicitudesService } from "@/features/solicitudes/services/solicitudes-
  * Detalle paginado de una solicitud (filas de SOLICITUD_DETALLE).
  * Query params:
  *   - offset (default 0)
- *   - limit (default 50, max 200)
+ *   - limit (default 50, max 2000; la exportación a Excel pide páginas grandes)
  */
 export const GET = withIdentidad<{ params: Promise<{ id: string }> }>(
   async (req, identidad, { params }) => {
@@ -14,7 +14,7 @@ export const GET = withIdentidad<{ params: Promise<{ id: string }> }>(
 
     const url = new URL(req.url);
     const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
-    const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10) || 50));
+    const limit = Math.min(2000, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10) || 50));
 
     return apiServiceResult(
       await solicitudesService.obtenerSolicitudDetallePaginado(identidad, id, offset, limit),
