@@ -47,6 +47,17 @@ async function listarSolicitudes(compania: string): Promise<Solicitud[]> {
   return [...map.values()].map(({ cab, det }) => mapSolicitud(cab, det));
 }
 
+/**
+ * Columnas que lee mapSolicitudCabecera. PARAMETROS_JSON sale sin `filas`/`articulos`
+ * (pueden pesar varios MB por solicitud): se quitan en SQL para no transferirlas.
+ */
+const COLUMNAS_CABECERA = `CODIGO_SOLICITUD, PROCESO, MODALIDAD, COMPANIA, LISTA_PRECIO,
+  SOLICITANTE_NOMBRE, SOLICITANTE_EMAIL, ARCHIVO_NOMBRE, ARCHIVO_S3_KEY, FECHA_CREACION, FECHA_ENVIO,
+  ESTADO, MOTIVO_RECHAZO, ID_PROCESO_SP, APROBADOR_NOMBRE, APROBADOR_EMAIL,
+  CASE WHEN ISJSON(PARAMETROS_JSON) = 1
+       THEN JSON_MODIFY(JSON_MODIFY(PARAMETROS_JSON, '$.filas', NULL), '$.articulos', NULL)
+  END AS PARAMETROS_JSON`;
+
 export interface PaginaSolicitudes {
   solicitudes: Solicitud[];
   total: number;
@@ -109,7 +120,7 @@ async function listarSolicitudesPaginado(
       ...params,
     ),
     db.$queryRawUnsafe<Record<string, unknown>[]>(
-      `SELECT * FROM ${tabSol} WHERE ${where}
+      `SELECT ${COLUMNAS_CABECERA} FROM ${tabSol} WHERE ${where}
        ORDER BY FECHA_CREACION DESC
        OFFSET @P${params.length + 1} ROWS FETCH NEXT @P${params.length + 2} ROWS ONLY`,
       ...params,
@@ -364,7 +375,7 @@ async function obtenerSolicitudCabecera(compania: string, codigo: string): Promi
   const db = portalDb(compania);
   const tabSol = objetoPortal(compania, "SOLICITUD");
   const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT TOP 1 * FROM ${tabSol} WHERE CODIGO_SOLICITUD = @P1`,
+    `SELECT TOP 1 ${COLUMNAS_CABECERA} FROM ${tabSol} WHERE CODIGO_SOLICITUD = @P1`,
     codigo,
   );
   if (!rows.length) return undefined;
@@ -380,6 +391,14 @@ async function siguienteCodigoSolicitud(compania: string): Promise<string> {
   return "SOL-" + String(q.n);
 }
 
+/**
+ * Solo el borrador guarda las filas capturadas en PARAMETROS_JSON (para retomarlo);
+ * una solicitud enviada ya las tiene en SOLICITUD_DETALLE.
+ */
+function parametrosParaGuardar(s: Solicitud): string {
+  return JSON.stringify(s.estado === "BORRADOR" ? { ...s.parametros, filas: s.filas } : s.parametros);
+}
+
 async function agregarSolicitud(s: Solicitud): Promise<void> {
   assertEscrituraPortalHabilitada();
   if (esModoDemo()) {
@@ -393,7 +412,7 @@ async function agregarSolicitud(s: Solicitud): Promise<void> {
   const tabSol = objetoPortal(s.compania, "SOLICITUD");
   const tabDet = objetoPortal(s.compania, "SOLICITUD_DETALLE");
   const db = portalDb(s.compania);
-  const parametrosJson = JSON.stringify({ ...s.parametros, filas: s.filas });
+  const parametrosJson = parametrosParaGuardar(s);
 
   // Se evita $transaction interactivo de Prisma porque caduca a los 5 s con SQL Server.
   // El detalle usa valores interpolados (sqlVal) para no superar el límite de 2100 parámetros.
@@ -456,7 +475,7 @@ async function reemplazarBorrador(s: Solicitud): Promise<boolean> {
   // Construir detalle con valores interpolados para no superar el límite de 2100 parámetros
   const detalleInsertsSql = detalleInserts(s.filas, s.proceso, tabDet);
 
-  const parametrosJson = JSON.stringify({ ...s.parametros, filas: s.filas });
+  const parametrosJson = parametrosParaGuardar(s);
   const sql = `
     BEGIN TRY
       BEGIN TRAN;
