@@ -46,7 +46,7 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
     draft?.filas?.length ? (draft.filas as FilaPrecio[]) : null,
     () => submission.setSent(false),
   );
-  const { exporting, exportRows } = useSimulationExport("factor_precio", "Variación %");
+  const { exporting, exportRows } = useSimulationExport("factor_precio", variationType === "AUMENTO" ? "Aumento %" : "Disminución %");
 
   const conversion = useMemo(() => calcularVariacion(variationType, factor), [factor, variationType]);
   const selectedList = catalog.lists.find((list) => list.codigo === level);

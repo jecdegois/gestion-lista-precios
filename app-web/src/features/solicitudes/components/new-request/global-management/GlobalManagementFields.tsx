@@ -98,7 +98,7 @@ export default function GlobalManagementFields({
       />
       <PercentInput
         id="variacion-gg"
-        label="Variación %"
+        label={variationType === "AUMENTO" ? "Aumento %" : "Disminución %"}
         value={factor}
         disabled={disabled}
         error={invalidFactor ? conversion.causa : null}
