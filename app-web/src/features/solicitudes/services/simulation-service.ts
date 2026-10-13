@@ -228,11 +228,15 @@ export interface PaginaSimulacionGestionGlobal {
 /** Precio actual = precio de la lista base × variación (factor) vigente de la lista. */
 async function conPrecioVigente(compania: string, nivel: string, filas: FilaPrecio[]): Promise<FilaPrecio[]> {
   const listas = await pricingRepository.listGlobalManagement(compania);
-  const factor = listas.find((l) => l.codigo.trim().toUpperCase() === nivel.trim().toUpperCase())?.factorMultiplicador;
-  if (!factor || factor <= 0) return filas;
-  return filas.map((fila) => fila.validacion.precioActual == null
-    ? fila
-    : { ...fila, validacion: { ...fila.validacion, precioVigente: Math.round(fila.validacion.precioActual * factor * 100) / 100 } });
+  const lista = listas.find((l) => l.codigo.trim().toUpperCase() === nivel.trim().toUpperCase());
+  const factor = lista?.factorMultiplicador;
+  const moneda = lista?.moneda ?? null;
+  const monedaBase = lista?.monedaBase ?? moneda;
+  return filas.map((fila) => {
+    const { precioActual } = fila.validacion;
+    const precioVigente = factor && factor > 0 && precioActual != null ? Math.round(precioActual * factor * 100) / 100 : undefined;
+    return { ...fila, validacion: { ...fila.validacion, precioVigente, moneda, monedaBase } };
+  });
 }
 
 export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPaginadoInput): Promise<PaginaSimulacionGestionGlobal> {

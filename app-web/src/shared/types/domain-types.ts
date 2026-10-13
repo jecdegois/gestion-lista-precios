@@ -85,6 +85,9 @@ export interface ValidacionPrecio {
   precioActual: number | null;
   /** Precio actual de la lista: precio base × variación (factor) vigente de la lista. */
   precioVigente?: number | null;
+  /** Código de moneda Softland del precio base (MONEDA_BASE) y de la lista (MONEDA). */
+  monedaBase?: string | null;
+  moneda?: string | null;
   precioPropuesto: number | null;
   factorPropuesto?: number | null;
   multiplicador?: number | null;

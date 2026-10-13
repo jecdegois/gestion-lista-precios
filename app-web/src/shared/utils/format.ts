@@ -16,6 +16,11 @@ export function fmtFechaBd(
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("es-CR", { ...opciones, timeZone: "UTC" });
 }
 
+/** Símbolo según el código de moneda de Softland: D = "$"; L (o vacío) = moneda local de la compañía. */
+export function simboloMoneda(codigo: string | null | undefined, monedaLocal = ""): string {
+  return String(codigo ?? "").trim().toUpperCase() === "D" ? "$" : monedaLocal;
+}
+
 export function fmtMonto(n: number | null | undefined, moneda = ""): string {
   if (typeof n !== "number" || Number.isNaN(n)) return "—";
   const monto = n.toLocaleString("es-CR", { maximumFractionDigits: 2 });

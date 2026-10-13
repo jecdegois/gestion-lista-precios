@@ -11,9 +11,9 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
   { key: "codigo", header: "Código", value: (fila) => <span className="mono whitespace-nowrap">{fila.codigo}</span> },
   { key: "lista", header: "Lista", value: (fila) => fila.lista ?? "—" },
   { key: "descripcion", header: "Descripción", value: (fila) => <span className="block max-w-[280px] truncate whitespace-nowrap" title={fila.descripcion || "—"}>{fila.descripcion || "—"}</span> },
-  { key: "precioBase", header: "Precio Base", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioActual} /></span> },
-  { key: "precioActual", header: "Precio Actual", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioVigente ?? fila.validacion.precioActual} /></span> },
-  { key: "precioPropuesto", header: "Precio Calculado", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioPropuesto} /></span> },
+  { key: "precioBase", header: "Precio Base", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioActual} codigoMoneda={fila.validacion.monedaBase} /></span> },
+  { key: "precioActual", header: "Precio Actual", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioVigente ?? fila.validacion.precioActual} codigoMoneda={fila.validacion.moneda} /></span> },
+  { key: "precioPropuesto", header: "Precio Calculado", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioPropuesto} codigoMoneda={fila.validacion.moneda} /></span> },
   /*{
     key: "tipoVariacion",
     header: "Tipo Var.",
