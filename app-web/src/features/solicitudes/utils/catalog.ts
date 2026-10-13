@@ -74,13 +74,13 @@ export type TipoProcesoPortal =
 
 export const PROCESOS: Record<ProcesoKey | TipoProcesoPortal, ProcesoDef> = {
   FACTOR_PRECIO: {
-    label: "Gestión Global",
+    label: "Gestión Listas",
     desc: "Ajuste global manual por lista de precio mediante un factor.",
     ejecucion: "Actualización automatizada autorizada",
     modo: "factor",
   },
   MAYOREOD_MASIVO: {
-    label: "Precio Base",
+    label: "Precio Lista",
     desc: "Actualización de precios de MAYOREOD para los artículos seleccionados y la versión activa.",
     ejecucion: "Actualización automatizada autorizada",
     modo: "factor",
@@ -92,7 +92,7 @@ export const PROCESOS: Record<ProcesoKey | TipoProcesoPortal, ProcesoDef> = {
     modo: "factor",
   },
   MARGEN_UTILIDAD_MASIVO: {
-    label: "Margen de Utilidad",
+    label: "Margen Minimo",
     desc: "Carga masiva del porcentaje de reducción por artículo para recalcular el Margen Mínimo de Utilidad (Regla de Mayoreo).",
     ejecucion: "Recalculo de margen mínimo autorizado",
     modo: "margen",
