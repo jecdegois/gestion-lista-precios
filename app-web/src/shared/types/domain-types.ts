@@ -81,7 +81,10 @@ export interface ArticuloCatalogo {
 /** Validación de una fila de precio (modo "factor"). */
 export interface ValidacionPrecio {
   valido: boolean;
+  /** Precio de la lista base (base del cálculo). */
   precioActual: number | null;
+  /** Precio actual de la lista: precio base × variación (factor) vigente de la lista. */
+  precioVigente?: number | null;
   precioPropuesto: number | null;
   factorPropuesto?: number | null;
   multiplicador?: number | null;

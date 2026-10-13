@@ -225,6 +225,16 @@ export interface PaginaSimulacionGestionGlobal {
   error?: string;
 }
 
+/** Precio actual = precio de la lista base × variación (factor) vigente de la lista. */
+async function conPrecioVigente(compania: string, nivel: string, filas: FilaPrecio[]): Promise<FilaPrecio[]> {
+  const listas = await pricingRepository.listGlobalManagement(compania);
+  const factor = listas.find((l) => l.codigo.trim().toUpperCase() === nivel.trim().toUpperCase())?.factorMultiplicador;
+  if (!factor || factor <= 0) return filas;
+  return filas.map((fila) => fila.validacion.precioActual == null
+    ? fila
+    : { ...fila, validacion: { ...fila.validacion, precioVigente: Math.round(fila.validacion.precioActual * factor * 100) / 100 } });
+}
+
 export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPaginadoInput): Promise<PaginaSimulacionGestionGlobal> {
   const niveles = await pricingRepository.listPriceLevels(input.compania);
   const nivel = resolverNivelPrecio(niveles, input.nivel);
@@ -280,7 +290,7 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
     }));
     return {
       ok: true,
-      filas,
+      filas: await conPrecioVigente(input.compania, nivel, filas),
       offset,
       maxRecords,
       hasMore: pagina.hasMore,
@@ -298,7 +308,7 @@ export async function simularGestionGlobalPaginado(input: SimularGestionGlobalPa
   );
   return {
     ok: true,
-    filas,
+    filas: await conPrecioVigente(input.compania, nivel, filas),
     offset: pagina.offset,
     maxRecords: pagina.maxRecords,
     hasMore: pagina.hasMore,

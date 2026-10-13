@@ -55,14 +55,20 @@ const columns: readonly TableColumn<FilaResultado>[] = [
     value: (fila) => <span className="mono">{fmtFactor(esFilaMargen(fila) ? fila.validacion.multiplicador : fila.multiplicador ?? fila.factorPropuesto)}</span>,
   },
   {
-    key: "precioActual",
-    header: "Precio Actual",
+    key: "precioBase",
+    header: "Precio Base",
     align: "right",
     value: (fila) => <span className="mono"><Monto n={fila.validacion.precioActual} /></span>,
   },
   {
+    key: "precioActual",
+    header: "Precio Actual",
+    align: "right",
+    value: (fila) => <span className="mono"><Monto n={esFilaMargen(fila) ? fila.validacion.precioActual : fila.validacion.precioVigente ?? fila.validacion.precioActual} /></span>,
+  },
+  {
     key: "precioCalculado",
-    header: "Precio Calc.",
+    header: "Precio Calculado",
     align: "right",
     value: (fila) => <span className="mono"><Monto n={fila.validacion.precioPropuesto} /></span>,
   },

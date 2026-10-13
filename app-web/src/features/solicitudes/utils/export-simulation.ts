@@ -37,7 +37,7 @@ export function descargarSimulacionExcel(
         "Código": fila.codigo,
         "Descripción": fila.descripcion,
         "Precio Actual": numero(v.precioActual) ?? "",
-        "Precio Calc.": numero(v.precioPropuesto) ?? "",
+        "Precio Calculado": numero(v.precioPropuesto) ?? "",
         "Precio Mínimo": numero(v.costoMinimo) ?? "",
         "Estado": estado,
         "Causa": v.causa ?? fila.mensajeError ?? "",
@@ -74,7 +74,8 @@ export function descargarSimulacionExcel(
       Descripción: fila.descripcion,
       [etiquetaVariacion]: esMargen ? numero(filaMargen.validacion.porcentajeReduccion) : filaPrecio.variacionPorcentaje ?? "",
       Multiplicador: esMargen ? numero(filaMargen.validacion.multiplicadorMargen) : filaPrecio.multiplicador ?? filaPrecio.factorPropuesto ?? "",
-      "Precio Actual": numero(v.precioActual) ?? "",
+      "Precio Base": numero(v.precioActual) ?? "",
+      "Precio Actual": numero("precioVigente" in v ? v.precioVigente : null) ?? numero(v.precioActual) ?? "",
       "Precio Calculado": numero(v.precioPropuesto) ?? "",
       "Precio Redondeado": numero(v.precioRedondeado) ?? "",
       "Costo Mínimo": numero(v.costoMinimo) ?? "",
@@ -96,6 +97,7 @@ export function descargarSimulacionExcel(
       { wch: 34 }, // Descripción
       { wch: 14 }, // etiquetaVariacion
       { wch: 16 }, // Multiplicador
+      { wch: 16 }, // Precio Base
       { wch: 16 }, // Precio Actual
       { wch: 16 }, // Precio Calculado
       { wch: 18 }, // Precio Redondeado
@@ -106,7 +108,7 @@ export function descargarSimulacionExcel(
   } else {
     sheet["!cols"] = [
       { wch: 8 }, { wch: 18 }, { wch: 18 }, { wch: 34 }, { wch: 14 }, { wch: 16 },
-      { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 55 },
+      { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 55 },
     ];
   }
   XLSX.utils.book_append_sheet(workbook, sheet, "Simulación completa");
