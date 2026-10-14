@@ -7,12 +7,21 @@ import TablaResultadoModal from "@/features/solicitudes/components/tables/TablaR
 import TablaImpactoActualizacionMasiva from "@/features/solicitudes/components/tables/TablaImpactoActualizacionMasiva";
 import TablaImpactoGestionGlobal from "@/features/solicitudes/components/tables/TablaImpactoGestionGlobal";
 import TablaImpactoMargen from "@/features/solicitudes/components/tables/TablaImpactoMargen";
-import { esHallazgoDeNegocio } from "@/features/solicitudes/components/tables/Tablas";
 import type { TableLoadParams } from "@/shared/components/ui/ResponsiveDataTable";
 import { PROCESOS } from "@/features/solicitudes/utils/catalog";
 import { textoResultadoAuditoria } from "@/shared/utils/events";
-import type { FilaMargen, FilaPrecio, Identidad, Solicitud } from "@/shared/types/domain-types";
-import { getCatalogoGestionGlobal } from "@/features/solicitudes/api/solicitudes-api";
+import { esHallazgoDeNegocio, type FilaMargen, type FilaPrecio, type FilaResultado, type Identidad, type ProcesoKey, type Solicitud } from "@/shared/types/domain-types";
+import { getCatalogoGestionGlobal, getSolicitudDetallePaginado } from "@/features/solicitudes/api/solicitudes-api";
+import { fetchGlobalManagementPage } from "@/features/solicitudes/api/paged-api";
+import { useSimulationExport } from "@/features/solicitudes/hooks/useSimulationExport";
+
+/** Mismo archivo/columna que la exportación de la simulación de cada proceso. */
+const EXPORTACION: Record<ProcesoKey, [slug: string, columna: string, modo?: "precioBase"]> = {
+  FACTOR_PRECIO: ["factor_precio", "Variación %"],
+  MAYOREOD_MASIVO: ["mayoreod_masivo", "Precio", "precioBase"],
+  DESCUENTO_LISTA_PRECIO: ["descuento_lista_precio", "Descuento %"],
+  MARGEN_UTILIDAD_MASIVO: ["margen_utilidad_masivo", "Descuento %"],
+};
 
 function pasoDeEstado(estado: string): number {
   if (estado === "BORRADOR" || estado === "CANCELACION_SOLICITADA" || estado === "CANCELADO") return 0;
@@ -58,6 +67,20 @@ export default function RevisionModal({
   onRetomar,
   onEnviarBorrador,
   loadingDetail = false,
+  // Props de paginación del detalle (para procesos no-GG)
+  detailTotal,
+  detailTotalHallazgos,
+  detailHasMore = false,
+  detailNextOffset = null,
+  loadingDetailMore = false,
+  onLoadMoreDetail,
+  // Props de paginación de hallazgos desde el backend (para procesos no-GG)
+  backendHallazgosFilas = [],
+  backendHallazgosTotal,
+  backendHallazgosHasMore = false,
+  backendHallazgosNextOffset = null,
+  loadingBackendHallazgosMore = false,
+  onLoadMoreBackendHallazgos,
 }: {
   solicitud: Solicitud;
   currentUser: Identidad;
@@ -72,6 +95,31 @@ export default function RevisionModal({
   onEnviarBorrador?: (id: string) => void;
   /** Mientras sea true, el detalle (filas) está cargando desde el servidor. */
   loadingDetail?: boolean;
+  /** Total de filas en el detalle (para procesos no-GG con paginación). */
+  detailTotal?: number;
+  /** Total de hallazgos en el backend (para procesos no-GG con paginación). */
+  detailTotalHallazgos?: number;
+  /** Indica si hay más filas por cargar (para procesos no-GG). */
+  detailHasMore?: boolean;
+  /** Offset de la siguiente página (para procesos no-GG). */
+  detailNextOffset?: number | null;
+  /** Indica si está cargando más filas (para procesos no-GG). */
+  loadingDetailMore?: boolean;
+  /** Callback para cargar más filas del detalle (para procesos no-GG). */
+  onLoadMoreDetail?: () => void;
+  // Props de paginación de hallazgos desde el backend (para procesos no-GG)
+  /** Filas de hallazgos paginadas desde el backend. */
+  backendHallazgosFilas?: FilaResultado[];
+  /** Total de hallazgos en el backend. */
+  backendHallazgosTotal?: number;
+  /** Indica si hay más hallazgos por cargar. */
+  backendHallazgosHasMore?: boolean;
+  /** Offset de la siguiente página de hallazgos. */
+  backendHallazgosNextOffset?: number | null;
+  /** Indica si está cargando más hallazgos. */
+  loadingBackendHallazgosMore?: boolean;
+  /** Callback para cargar más hallazgos. */
+  onLoadMoreBackendHallazgos?: () => void;
 }) {
   const [motivo, setMotivo] = useState("");
   const [motivoCancelacion, setMotivoCancelacion] = useState("");
@@ -91,6 +139,9 @@ export default function RevisionModal({
   const [hallazgosHasMore, setHallazgosHasMore] = useState(false);
   const [hallazgosNextOffset, setHallazgosNextOffset] = useState<number | null>(null);
   const [cargandoHallazgos, setCargandoHallazgos] = useState(false);
+  // Gestión Global: totales de la lista completa (la tabla solo trae páginas).
+  const [totalArticulos, setTotalArticulos] = useState<number | null>(null);
+  const [totalHallazgos, setTotalHallazgos] = useState<number | null>(null);
   const offsetsDetalleEnCarga = useRef(new Set<number>());
   const offsetsHallazgosEnCarga = useRef(new Set<number>());
   // Para Gestión Global: true en cuanto llega la primera página de artículos.
@@ -107,6 +158,8 @@ export default function RevisionModal({
     setHallazgosDetalleCargados(false);
     setHallazgosHasMore(false);
     setHallazgosNextOffset(null);
+    setTotalArticulos(null);
+    setTotalHallazgos(null);
     offsetsHallazgosEnCarga.current.clear();
 
     if (esGestionGlobal) {
@@ -131,26 +184,23 @@ export default function RevisionModal({
   }, [solicitud.id, esGestionGlobal]);
 
 
-  // Precio Base: re-lee GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (MAYOREOD) cada vez
+  // Re-lee GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (listas con el flag activo) cada vez
   // que se abre el modal, para bloquear si el flag se activó después de enviar la solicitud.
   // null = consultando, "error" = falló → no se permite aprobar (falla cerrado) y se ofrece reintentar.
-  const esPrecioBase = solicitud.proceso === "MAYOREOD_MASIVO";
-  const [margenMinVigente, setMargenMinVigente] = useState<boolean | null | "error">(null);
+  const [listasMargenMin, setListasMargenMin] = useState<Set<string> | null | "error">(null);
   const [intentoMargen, setIntentoMargen] = useState(0);
   useEffect(() => {
-    if (!esPrecioBase) return;
     let cancelado = false;
-    setMargenMinVigente(null);
+    setListasMargenMin(null);
     getCatalogoGestionGlobal()
       .then((res) => {
         if (cancelado) return;
-        if (!res.ok) { setMargenMinVigente("error"); return; }
-        const config = (res.data?.listas ?? []).find((l) => l.codigo.trim().toUpperCase() === "MAYOREOD");
-        setMargenMinVigente(config?.validarPrecioBajoMargenMin === true);
+        if (!res.ok) { setListasMargenMin("error"); return; }
+        setListasMargenMin(new Set((res.data?.listas ?? []).filter((l) => l.validarPrecioBajoMargenMin).map((l) => l.codigo.trim().toUpperCase())));
       })
-      .catch(() => { if (!cancelado) setMargenMinVigente("error"); });
+      .catch(() => { if (!cancelado) setListasMargenMin("error"); });
     return () => { cancelado = true; };
-  }, [solicitud.id, esPrecioBase, intentoMargen]);
+  }, [solicitud.id, intentoMargen]);
 
   // Para procesos no-GG: sincronizar filas cuando llega el detalle lazy del modal.
   useEffect(() => {
@@ -180,13 +230,15 @@ export default function RevisionModal({
         hasMore?: boolean;
         nextOffset?: number | null;
         nivelPrecioBase?: string;
+        total?: number;
       };
       // One-way: se activa en cuanto la API responde (incluso si viene vacía),
       // garantizando que las tablas permanecen montadas si hallazgos tarda más.
       setArticulosCargados(true);
       if (!response.ok || !Array.isArray(pagina.filas)) return;
-      // Capturar la lista padre en la primera página para el banner descriptivo.
+      // Capturar la lista padre y el total en la primera página.
       if (offset === 0 && pagina.nivelPrecioBase) setNivelPrecioBaseDetalle(pagina.nivelPrecioBase);
+      if (offset === 0 && pagina.total != null) setTotalArticulos(pagina.total);
       const filasPagina = pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
       setFilasDetalle((actuales) =>
         offset === 0 ? filasPagina : [...actuales, ...filasPagina],
@@ -229,8 +281,10 @@ export default function RevisionModal({
         filas?: FilaPrecio[];
         hasMore?: boolean;
         nextOffset?: number | null;
+        total?: number;
       };
       if (!response.ok || !Array.isArray(pagina.filas)) return;
+      if (offset === 0) setTotalHallazgos(pagina.total ?? null);
       const filasPagina = pagina.filas.map((fila, index) => ({ ...fila, fila: offset + index + 1 }));
       setHallazgosDetalle((actuales) => offset === 0 ? filasPagina : [...actuales, ...filasPagina]);
       setHallazgosDetalleCargados(true);
@@ -269,15 +323,54 @@ export default function RevisionModal({
   const puedeDecidir =
     !readOnly && currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
 
-  // Bloqueo por GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN, valor VIGENTE leído al abrir
-  // el modal: si está activo y hay filas con ALERTA_MARGEN, el aprobador no puede proceder.
-  const bloqueadoPorMargen =
-    esPrecioBase &&
-    margenMinVigente === true &&
-    solicitud.filas.some((f) => f.validacion.estadoRedondeo === "ALERTA_MARGEN");
+  // Bloqueo por VALIDAR_PRECIO_BAJO_MARGEN_MIN (valor VIGENTE): Gestión Global con hallazgos en
+  // su lista; Descuento por la lista de cada fila; Precio Base y Margen por MAYOREOD.
+  const margenMinActivo = (lista: string | null | undefined) =>
+    listasMargenMin instanceof Set && listasMargenMin.has(String(lista ?? "").trim().toUpperCase());
+  const listaDeFila = (f: FilaResultado) =>
+    solicitud.proceso === "DESCUENTO_LISTA_PRECIO" ? ("listaCodigo" in f && f.listaCodigo) || f.lista : "MAYOREOD";
+  // Para procesos no-GG: usar hallazgos del backend si están disponibles, sino filtrar localmente
+  const filasConHallazgo = esGestionGlobal
+    ? []
+    : backendHallazgosFilas.length > 0
+      ? backendHallazgosFilas
+      : filas.filter(esHallazgoDeNegocio);
+  const listasBloqueadas = esGestionGlobal
+    ? (margenMinActivo(nivelConsulta) && (totalHallazgos ?? 0) > 0 ? [nivelConsulta] : [])
+    : [...new Set(filasConHallazgo.filter((f) => margenMinActivo(listaDeFila(f))).map(listaDeFila))];
+  const bloqueadoPorMargen = listasBloqueadas.length > 0;
   // Mientras se verifica el flag (o si la consulta falla) no se habilita Procesar.
-  const verificandoMargen = esPrecioBase && margenMinVigente === null;
-  const errorMargen = esPrecioBase && margenMinVigente === "error";
+  const verificandoMargen = listasMargenMin === null || (esGestionGlobal && margenMinActivo(nivelConsulta) && totalHallazgos === null);
+  const errorMargen = listasMargenMin === "error";
+  // Usar total de hallazgos del backend para procesos no-GG si está disponible
+  const cantidadHallazgos = esGestionGlobal
+    ? totalHallazgos ?? hallazgosDetalle.length
+    : (backendHallazgosTotal ?? detailTotalHallazgos ?? filasConHallazgo.length);
+
+  const [slugExportacion, columnaExportacion, modoExportacion] = EXPORTACION[solicitud.proceso];
+  const { exporting, exportRows } = useSimulationExport(slugExportacion, columnaExportacion, modoExportacion);
+  /** Exporta el detalle completo, no solo las páginas ya cargadas en la tabla. */
+  async function filasParaExportar(): Promise<FilaResultado[]> {
+    if (!esGestionGlobal) {
+      if (!detailHasMore) return filas;
+      const todas: FilaResultado[] = [];
+      for (let offset: number | null = 0; offset != null;) {
+        const res = await getSolicitudDetallePaginado(solicitud.id, offset, 2000);
+        if (!res.ok) throw new Error(res.error);
+        todas.push(...res.data.filas);
+        offset = res.data.nextOffset;
+      }
+      return todas;
+    }
+    // Gestión Global no persiste el detalle: se recalcula página por página.
+    const todas: FilaPrecio[] = [];
+    for (let offset: number | null = 0; offset != null;) {
+      const pagina = await fetchGlobalManagementPage({ level: nivelConsulta, factor: factorConsulta, variationType: tipoVariacionConsulta, offset, maxRecords: 200 });
+      todas.push(...pagina.filas);
+      offset = pagina.hasMore && pagina.filas.length > 0 ? pagina.nextOffset : null;
+    }
+    return todas;
+  }
 
   const puedeAprobar = puedeDecidir && !bloqueadoPorMargen && !verificandoMargen && !errorMargen && (solicitud.filas.length > 0 || (esGestionGlobal && articulosCargados));
   const enProceso = solicitud.estado === "EN_PROCESO";
@@ -331,8 +424,12 @@ export default function RevisionModal({
 
         {/* Cards resumen */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <Card label="Filas evaluadas" value={String(filas.length)} />
-          <Card label="Con hallazgo" value={String(filas.filter(esHallazgoDeNegocio).length)} />
+          <Card label="Filas evaluadas" value={
+            esGestionGlobal && totalArticulos == null
+              ? "…"
+              : String(esGestionGlobal ? totalArticulos : (detailTotal ?? filas.length))
+          } />
+          <Card label="Con hallazgo" value={esGestionGlobal && totalHallazgos == null && cargandoHallazgos ? "…" : String(cantidadHallazgos)} />
           <Card label="Lista de precios" value={listaPrecio} />
           <Card label="Modalidad" value={solicitud.modalidad} />
           <Card label="Ejecución" value={PROCESOS[solicitud.proceso].ejecucion} />
@@ -344,11 +441,18 @@ export default function RevisionModal({
           </div>
         )}
 
-        {/* Advertencia de filas inválidas en Precio Base — aplica cuando la solicitud
-            fue enviada con errores parciales; al aprobar solo se procesan las válidas. */}
-        {esActualizacionListaBase && (() => {
+        {esGestionGlobal && bloqueadoPorMargen && (
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-xs text-red-800 mb-4">
+            <strong>Aprobación bloqueada — {totalHallazgos} artículo(s) con precio bajo margen mínimo</strong>:{" "}
+            la lista {nivelConsulta} tiene activada la validación de precio bajo margen mínimo.
+          </div>
+        )}
+
+        {/* Advertencias de filas con error (descartadas) y de margen; al aprobar solo se procesan
+            las válidas y, si el flag de la lista está apagado, las de hallazgo de margen. */}
+        {!esGestionGlobal && (() => {
           const filasConError = filas.filter((f) => !f.validacion.valido && !esHallazgoDeNegocio(f)).length;
-          const filasConAdvertencia = filas.filter((f) => esHallazgoDeNegocio(f)).length;
+          const filasConAdvertencia = filasConHallazgo.length;
           if (filasConError === 0 && filasConAdvertencia === 0) return null;
           return (
             <div className="space-y-2 mb-4">
@@ -368,7 +472,7 @@ export default function RevisionModal({
                     <span className="text-red-500 shrink-0 mt-0.5">✕</span>
                     <span>
                       <strong>Aprobación bloqueada — {filasConAdvertencia} fila(s) con precio bajo margen mínimo</strong>:{" "}
-                      la lista MAYOREOD tiene activada la validación de precio bajo margen mínimo.
+                      la lista {listasBloqueadas.join(", ")} tiene activada la validación de precio bajo margen mínimo.
                       Esta solicitud <strong>no puede procesarse</strong> mientras contenga precios por debajo del margen mínimo.
                       El solicitante debe corregir los precios y reenviar la solicitud.
                     </span>
@@ -423,6 +527,15 @@ export default function RevisionModal({
         )}
 
         {/* Diff / tabla */}
+        {!loadingDetail && (esGestionGlobal ? articulosCargados : filas.length > 0) && (
+          <div className="flex justify-end mb-2">
+            <button className="btn btn-outline btn-sm" disabled={exporting} onClick={() => void exportRows(filasParaExportar, esGestionGlobal && nivelPrecioBaseDetalle ? `Precios calculados en base a la lista padre: ${nivelPrecioBaseDetalle}` : undefined)}>
+              {exporting
+                ? <><Icon name="loader" className="w-3.5 h-3.5" spin /> Exportando…</>
+                : <><Icon name="download" className="w-3.5 h-3.5" /> Exportar Excel</>}
+            </button>
+          </div>
+        )}
         {loadingDetail ? (
           <div className="flex items-center justify-center py-10 text-sm text-zinc-500">
             <span className="mr-2 animate-spin">⏳</span> Cargando detalle…
@@ -448,19 +561,47 @@ export default function RevisionModal({
               filas={filas as FilaPrecio[]}
               soloPrecioSolicitado
               mostrarErrores={filas.some((f) => !f.validacion.valido)}
+              hasMore={detailHasMore}
+              nextOffset={detailNextOffset}
+              loadingMore={loadingDetailMore}
+              onLoadMore={onLoadMoreDetail}
+              hallazgos={backendHallazgosFilas as FilaPrecio[]}
+              hallazgosHasMore={backendHallazgosHasMore}
+              hallazgosNextOffset={backendHallazgosNextOffset}
+              hallazgosLoadingMore={loadingBackendHallazgosMore}
+              hallazgosCargando={loadingBackendHallazgosMore}
+              onLoadMoreHallazgos={onLoadMoreBackendHallazgos}
             />
           ) : solicitud.proceso === "MARGEN_UTILIDAD_MASIVO" ? (
             <TablaImpactoMargen
               filas={filas as FilaMargen[]}
-              hasMore={detalleHasMore}
-              nextOffset={detalleNextOffset}
-              loadingMore={cargandoDetalle}
-              onLoadMore={cargarDetalle}
+              hasMore={detailHasMore}
+              nextOffset={detailNextOffset}
+              loadingMore={loadingDetailMore}
+              onLoadMore={onLoadMoreDetail ? () => onLoadMoreDetail() : undefined}
+              hallazgos={backendHallazgosFilas}
+              hallazgosTotal={backendHallazgosTotal}
+              hallazgosHasMore={backendHallazgosHasMore}
+              hallazgosNextOffset={backendHallazgosNextOffset}
+              hallazgosLoadingMore={loadingBackendHallazgosMore}
+              hallazgosCargando={loadingBackendHallazgosMore}
+              onLoadMoreHallazgos={onLoadMoreBackendHallazgos}
             />
           ) : (
             <TablaResultadoModal
               filas={filas}
               modo={solicitud.proceso === "DESCUENTO_LISTA_PRECIO" ? "descuentoArticuloLista" : "general"}
+              hasMore={detailHasMore}
+              nextOffset={detailNextOffset}
+              loadingMore={loadingDetailMore}
+              onLoadMore={onLoadMoreDetail}
+              hallazgos={backendHallazgosFilas}
+              hallazgosTotal={backendHallazgosTotal}
+              hallazgosHasMore={backendHallazgosHasMore}
+              hallazgosNextOffset={backendHallazgosNextOffset}
+              hallazgosLoadingMore={loadingBackendHallazgosMore}
+              hallazgosCargando={loadingBackendHallazgosMore}
+              onLoadMoreHallazgos={onLoadMoreBackendHallazgos}
             />
           )
         ) : (
@@ -538,7 +679,7 @@ export default function RevisionModal({
             </div>
             {errorMargen && (
               <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 flex items-center justify-between gap-2">
-                <span>No fue posible verificar la validación de margen mínimo de la lista MAYOREOD. No se puede procesar hasta verificarla.</span>
+                <span>No fue posible verificar la validación de margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN). No se puede procesar hasta verificarla.</span>
                 <button className="btn btn-outline shrink-0" onClick={() => setIntentoMargen((n) => n + 1)}>Reintentar</button>
               </div>
             )}

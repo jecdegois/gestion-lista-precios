@@ -9,9 +9,12 @@ import {
   calcularCostoMinimoArticulo,
   margenMinimoEfectivo,
 } from "@/features/solicitudes/utils/catalog";
+import type { FilaEntrada } from "@/features/solicitudes/schemas/solicitud-schema";
 import type {
   FilaMargen,
   FilaPrecio,
+  FilaResultado,
+  ProcesoKey,
   ModoProceso,
   TipoVariacion,
   ValidacionMargen,
@@ -269,7 +272,7 @@ export function construirFilaDescuentoMasivo(
       ...fila,
       listaCodigo: null,
       lista: "—",
-      validacion: { ...fila.validacion, valido: false, causa: "La lista de precio no existe o no tiene un formato válido en la plantilla." },
+      validacion: { ...fila.validacion, valido: false, estadoRedondeo: null, causa: "La lista de precio no existe o no tiene un formato válido en la plantilla." },
     };
   }
   return { ...fila, listaCodigo, lista: context.nombresLista[listaCodigo] || listaCodigo };
@@ -383,6 +386,60 @@ export function construirFilaMargenMasivo(row: FilaInput, context: CatalogoConte
             : "No fue posible calcular el margen (precio o costo inválido).",
     },
   };
+}
+
+/**
+ * Fila de una solicitud a partir de lo capturado (Excel o manual). La usan la
+ * previsualización y el envío, así el servidor recalcula exactamente lo que vio el usuario.
+ */
+export function construirFilaSolicitud(
+  proceso: ProcesoKey,
+  modalidad: "manual" | "excel",
+  entrada: FilaEntrada,
+  context: CatalogoContext = CATALOGO_POR_DEFECTO,
+): FilaResultado {
+  const fila = entrada.fila ?? 0;
+  const codigo = entrada.codigo.trim();
+  if (proceso === "MARGEN_UTILIDAD_MASIVO") {
+    return construirFilaMargenMasivo({ fila, codigo, porcentajeReduccionRaw: String(entrada.porcentajeReduccion ?? "").trim() }, context);
+  }
+  if (proceso === "MAYOREOD_MASIVO") {
+    return construirFilaCompleta(
+      { fila, codigo, listaCodigo: entrada.listaCodigo, valorPropuestoRaw: String(entrada.valorPropuestoRaw ?? "").trim() },
+      "precio",
+      context,
+    );
+  }
+  if (proceso === "DESCUENTO_LISTA_PRECIO" && modalidad === "manual") {
+    return construirFilaDescuentoMasivo(
+      { fila, codigo, listaCodigo: entrada.listaCodigo, tipoVariacion: entrada.tipoVariacion, variacionPorcentaje: entrada.variacionPorcentaje ?? "" },
+      false,
+      context,
+    );
+  }
+  if (proceso === "DESCUENTO_LISTA_PRECIO") {
+    // Excel: descuento porcentual -> multiplicador (10 -> 0.9000).
+    const porcentajeRaw = String(entrada.variacionPorcentaje ?? "").trim();
+    const porcentaje = Number.parseFloat(porcentajeRaw.replace(",", "."));
+    const formatoValido = porcentajeRaw !== "" && !Number.isNaN(porcentaje) && /^\d+(?:[.,]\d+)?$/.test(porcentajeRaw);
+    return construirFilaDescuentoMasivo(
+      {
+        fila,
+        codigo,
+        listaCodigo: entrada.listaCodigo,
+        tipoVariacion: "DISMINUCION",
+        variacionPorcentaje: porcentajeRaw,
+        valorPropuestoRaw: formatoValido ? textoFactorCalculado(1 - porcentaje / 100) : porcentajeRaw,
+      },
+      true,
+      context,
+    );
+  }
+  return construirFilaCompleta(
+    { fila, codigo, tipoVariacion: "DISMINUCION", valorPropuestoRaw: String(entrada.valorPropuestoRaw ?? "").trim() },
+    "factor",
+    context,
+  );
 }
 
 export function construirFilasMayoreodMasivo(

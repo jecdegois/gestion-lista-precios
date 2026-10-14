@@ -1,7 +1,7 @@
 import "server-only";
-import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/shared/types/domain-types";
+import { esFilaMargen, esFilaProcesable, type FilaPrecio, type FilaResultado, type TipoVariacion } from "@/shared/types/domain-types";
 import type { Articulo, GestionGlobalLista, NivelPrecio } from "@/shared/types/models";
-import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, resolverCompania } from "@/server/companies";
+import { assertEscrituraSoftlandHabilitada, esModoDemo, nombreSql, objetoCalificado, objetoPortal, resolverCompania } from "@/server/companies";
 import {
   buscarArticuloDemo,
   catalogoDemo,
@@ -9,7 +9,7 @@ import {
   porcentajeUdfDemo,
   upsertUdfDemo,
 } from "./demo-catalog";
-import { getPool, softlandDb, softlandDbo } from "@/server/db";
+import { getPool, portalDb, softlandDb } from "@/server/db";
 
 /**
  * Repositorio de precios/margen por compania. Enruta cada operacion a la base
@@ -41,18 +41,24 @@ export interface ResultadoFactorArticuloLista {
  * Actualiza el factor global de una lista. El procesamiento posterior de los
  * precios por artículo pertenece al SP externo que consume esta tabla.
  */
+/**
+ * VARIACION_PORC guarda la magnitud SIN signo (10, no -10); el sentido va en TIPO_VARIACION
+ * (AUMENTO / DISMINUCION), igual que el resto de filas de GESTION_LISTAS_PRECIOS.
+ */
 async function actualizarGestionGlobal(
   compania: string,
   lista: string,
   factor: number,
-  variacionPorcentaje: number,
+  tipoVariacion: TipoVariacion,
+  magnitud: number,
   usuario: string,
 ): Promise<ResultadoGestionGlobal> {
-  const variacion = Number(variacionPorcentaje.toFixed(8));
+  const variacion = Number(magnitud.toFixed(8));
   console.info("[GESTION_GLOBAL] Valores recibidos por pricing-repository", {
     compania,
     lista,
     factor,
+    tipoVariacion,
     variacionPorcentaje: variacion,
   });
   assertEscrituraSoftlandHabilitada();
@@ -66,8 +72,11 @@ async function actualizarGestionGlobal(
   if (!Number.isFinite(factor) || factor <= 0 || factor > 2) {
     throw new Error("El factor de Gestión Global debe ser mayor que 0 y menor o igual a 2.");
   }
-  if (!Number.isFinite(variacionPorcentaje)) {
+  if (!Number.isFinite(magnitud) || magnitud < 0) {
     throw new Error("La variación porcentual de Gestión Global no es válida.");
+  }
+  if (tipoVariacion !== "AUMENTO" && tipoVariacion !== "DISMINUCION") {
+    throw new Error("El tipo de variación de Gestión Global no es válido.");
   }
 
   const pool = await getPool(companiaNormalizada);
@@ -102,11 +111,13 @@ async function actualizarGestionGlobal(
       .input("version", mssql.VarChar(50), String(version))
       .input("factor", mssql.Decimal(28, 8), factor)
       .input("variacion", mssql.Decimal(28, 8), variacion)
+      .input("tipoVariacion", mssql.VarChar(12), tipoVariacion)
       .input("usuario", mssql.VarChar(50), usuario.trim())
       .query(
         `UPDATE A
             SET A.FACTOR_MULTIPLICADOR = @factor,
-                A.VARIACION_PORC = @variacion
+                A.VARIACION_PORC = @variacion,
+                A.TIPO_VARIACION = @tipoVariacion
            FROM [dbo].[GESTION_LISTAS_PRECIOS] A
           WHERE A.COMPANIA = @compania
             AND A.NIVEL_PRECIO = @lista
@@ -117,6 +128,7 @@ async function actualizarGestionGlobal(
       lista: listaNormalizada,
       version: String(version),
       factor,
+      tipoVariacion,
       variacionPorcentaje: variacion,
       filasAfectadas: updateResult.rowsAffected[0] ?? 0,
     });
@@ -163,7 +175,8 @@ async function upsertFactoresArticuloLista(
     throw new Error("La compañía y el usuario son obligatorios para guardar factores por artículo.");
   }
 
-  const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && fila.validacion.valido);
+  // Hallazgos de margen incluidos: el bloqueo por VALIDAR_PRECIO_BAJO_MARGEN_MIN ya se evaluó al aprobar.
+  const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && esFilaProcesable(fila));
   const filasOmitidas = filas.length - filasValidas.length;
   if (filasValidas.length === 0) {
     throw new Error("No existen filas válidas para guardar en FACTOR_ARTICULO_LISTA.");
@@ -308,7 +321,7 @@ async function actualizarPreciosBase(
   const companiaNormalizada = compania.trim().toUpperCase();
   const lista = "MAYOREOD";
   const filasValidas = filas.filter((fila): fila is FilaPrecio =>
-    !esFilaMargen(fila) && (fila.validacion.valido || fila.validacion.estadoRedondeo === "ALERTA_MARGEN"),
+    !esFilaMargen(fila) && esFilaProcesable(fila),
   );
   if (filasValidas.length === 0) {
     throw new Error("No existen filas válidas para actualizar precios base.");
@@ -419,12 +432,21 @@ async function obtenerVersionActiva(compania: string, nivelPrecio: string): Prom
 }
 
 /** Lista y parámetros vigentes usados exclusivamente por Gestión Global. */
+/** TIPO_VARIACION admite texto o signo: AUMENTO/A/+ y DISMINUCION/DESCUENTO/D/-. */
+function normalizarTipoVariacion(valor: unknown): TipoVariacion | null {
+  const v = String(valor ?? "").trim().toUpperCase();
+  if (v.startsWith("A") || v === "+") return "AUMENTO";
+  if (v.startsWith("D") || v === "-") return "DISMINUCION";
+  return null;
+}
+
 async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista[]> {
   if (esModoDemo()) {
     return nivelesPrecioDemo(compania).map((nivel) => ({
       ...nivel,
       version: "1",
       variacionPorc: 0,
+      tipoVariacion: null,
       moneda: null,
       nivelPrecioBase: nivel.codigo,
       monedaBase: null,
@@ -446,6 +468,7 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       `SELECT A.NIVEL_PRECIO AS codigo,
               A.VERSION AS version,
               A.VARIACION_PORC AS variacionPorc,
+              LTRIM(RTRIM(A.TIPO_VARIACION)) AS tipoVariacion,
               LTRIM(RTRIM(A.MONEDA)) AS moneda,
               CONVERT(varchar(10), A.FECHA_INICIO, 23) AS fechaInicio,
               CONVERT(varchar(10), A.FECHA_CORTE, 23) AS fechaFin,
@@ -460,7 +483,9 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
               ISNULL(A.VALIDAR_PRECIO_BAJO_MARGEN_MIN, 0) AS validarPrecioBajoMargenMin
          FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
         WHERE A.COMPANIA = @compania
-        ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION), A.VERSION;`,
+        -- Versión más reciente primero: los consumidores buscan por código con .find y
+        -- deben obtener la vigente (misma regla TOP 1 DESC que actualizarGestionGlobal).
+        ORDER BY A.NIVEL_PRECIO, TRY_CONVERT(INT, A.VERSION) DESC, A.VERSION DESC;`,
     );
   return q.recordset.map((r: Record<string, unknown>) => {
     const codigo = String(r.codigo ?? "").trim();
@@ -469,6 +494,7 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       nombre: codigo,
       version: String(r.version ?? "").trim(),
       variacionPorc: r.variacionPorc == null ? null : Number(r.variacionPorc),
+      tipoVariacion: normalizarTipoVariacion(r.tipoVariacion),
       moneda: r.moneda == null ? null : String(r.moneda).trim() || null,
       fechaInicio: r.fechaInicio == null ? null : String(r.fechaInicio).trim(),
       fechaFin: r.fechaFin == null ? null : String(r.fechaFin).trim(),
@@ -482,7 +508,10 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       excepcionesArticulos:       r.excepcionesArticulos == null ? null : String(r.excepcionesArticulos),
       validarPrecioBajoMargenMin: Boolean(r.validarPrecioBajoMargenMin),
     };
-  }).filter((nivel) => nivel.codigo && nivel.version);
+  })
+    .filter((nivel) => nivel.codigo && nivel.version)
+    // Solo la versión vigente (primera por el ORDER BY DESC) de cada lista.
+    .filter((nivel, i, todas) => todas.findIndex((otra) => otra.codigo === nivel.codigo) === i);
 }
 
 /** Por encima de este número de códigos se lee la lista completa (SQL Server admite ~2100 parámetros). */
@@ -608,6 +637,8 @@ function mapearArticulo(r: Record<string, unknown>): Articulo {
 
 export interface PaginaCatalogo {
   items: Articulo[];
+  /** Total de artículos que cumplen el filtro (todas las páginas). */
+  total: number;
   offset: number;
   maxRecords: number;
   hasMore: boolean;
@@ -646,6 +677,7 @@ async function listarCatalogoPaginado(
     const hasMore = paginaExtendida.length > limite;
     return {
       items: paginaExtendida.slice(0, limite),
+      total: catalogo.length,
       offset: pagina,
       maxRecords: limite,
       hasMore,
@@ -690,7 +722,8 @@ async function listarCatalogoPaginado(
               A.CLASIFICACION_4 AS clasificacion4,
               C4.DESCRIPCION AS clasificacion4Descripcion,
               A.CLASIFICACION_5 AS clasificacion5,
-              C5.DESCRIPCION AS clasificacion5Descripcion
+              C5.DESCRIPCION AS clasificacion5Descripcion,
+              COUNT(1) OVER() AS total
          FROM ${ap} AP WITH(NOLOCK)
          INNER JOIN VersionActiva VA
                  ON VA.NIVEL_PRECIO = AP.NIVEL_PRECIO
@@ -728,6 +761,8 @@ async function listarCatalogoPaginado(
   }));
   return {
     items,
+    // COUNT OVER se calcula antes del OFFSET; una página fuera de rango no trae filas.
+    total: Number(q.recordset[0]?.total ?? pagina),
     offset: pagina,
     maxRecords: limite,
     hasMore,
@@ -821,20 +856,21 @@ async function leerPorcentajeUdf(compania: string, codigo: string): Promise<numb
 }
 
 /**
- * Llena/actualiza (upsert) la UDF U_FACTOR_REDUCCION de la compania con
- * el factor normalizado capturado (0.10 = 10%). Usa el mapa configurable de
- * objeto y columnas. En DEMO_MODE actualiza el catalogo en memoria.
+ * Llena/actualiza (upsert) la UDF U_FACTOR_REDUCCION de la compania con el
+ * factor normalizado capturado (0.10 = 10%) de TODOS los artículos en una sola
+ * transacción: o se aplican todos o ninguno. El siguiente U_CODIGO se lee con
+ * UPDLOCK/HOLDLOCK, así dos aprobaciones simultáneas no generan el mismo código.
+ * Usa el mapa configurable de objeto y columnas. En DEMO_MODE actualiza el catalogo en memoria.
  */
-async function upsertUdf(
+async function upsertUdfs(
   compania: string,
-  codigo: string,
+  items: { codigo: string; porcentaje: number }[],
   descripcion: string,
-  porcentaje: number,
   usuario: string,
 ): Promise<void> {
   assertEscrituraSoftlandHabilitada();
   if (esModoDemo()) {
-    upsertUdfDemo(compania, codigo, porcentaje);
+    for (const item of items) upsertUdfDemo(compania, item.codigo, item.porcentaje);
     return;
   }
 
@@ -846,35 +882,49 @@ async function upsertUdf(
   const colActivo = nombreSql(compania, "colUdfActivo");
   const colArticulo = nombreSql(compania, "colUdfArticulo");
   const mssql = await import("mssql");
-  const siguienteCodigo = await pool
-    .request()
-    .query(
-      `SELECT CAST(COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.${colCodigo})), ''))), 0) + 1 AS VARCHAR(256)) AS siguienteCodigo
-         FROM ${udf} U WITH(NOLOCK)`,
+  const transaction = new mssql.Transaction(pool);
+  let committed = false;
+
+  await transaction.begin();
+  try {
+    const siguiente = await new mssql.Request(transaction).query(
+      `SELECT COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U.${colCodigo})), ''))), 0) + 1 AS siguienteCodigo
+         FROM ${udf} U WITH(UPDLOCK, HOLDLOCK)`,
     );
-  const codigoRegistro = String(siguienteCodigo.recordset[0]?.siguienteCodigo ?? "1");
-  await pool
-    .request()
-    .input("codigo", mssql.VarChar(256), codigoRegistro)
-    .input("articulo", mssql.VarChar(20), codigo.trim())
-    .input("descrip", mssql.VarChar(260), descripcion)
-    .input("factor", mssql.Decimal(18, 8), porcentaje)
-    .input("usuario", mssql.VarChar(30), usuario)
-    .query(
-      `MERGE ${udf} AS T
-         USING (SELECT @articulo AS articulo, @descrip AS d) AS S
-       ON T.${colArticulo} = S.articulo
-       WHEN MATCHED THEN
-         UPDATE SET T.${colDescrip} = @descrip,
-                    T.${colFactor} = @factor, T.${colActivo} = 'S',
-                    T.RecordDate = GETDATE(), T.UpdatedBy = @usuario
-       WHEN NOT MATCHED THEN
-         INSERT (${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
-                 NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate,
-                 ${colArticulo})
-         VALUES (@codigo, @descrip, @factor, 'S',
-                 0, GETDATE(), NEWID(), @usuario, @usuario, GETDATE(), @articulo);`,
-    );
+    let siguienteCodigo = BigInt(String(siguiente.recordset[0]?.siguienteCodigo ?? "1"));
+
+    for (const item of items) {
+      const result = await new mssql.Request(transaction)
+        .input("codigo", mssql.VarChar(256), siguienteCodigo.toString())
+        .input("articulo", mssql.VarChar(20), item.codigo.trim())
+        .input("descrip", mssql.VarChar(260), descripcion)
+        .input("factor", mssql.Decimal(18, 8), item.porcentaje)
+        .input("usuario", mssql.VarChar(30), usuario)
+        .query(
+          `MERGE ${udf} WITH(HOLDLOCK) AS T
+             USING (SELECT @articulo AS articulo, @descrip AS d) AS S
+           ON T.${colArticulo} = S.articulo
+           WHEN MATCHED THEN
+             UPDATE SET T.${colDescrip} = @descrip,
+                        T.${colFactor} = @factor, T.${colActivo} = 'S',
+                        T.RecordDate = GETDATE(), T.UpdatedBy = @usuario
+           WHEN NOT MATCHED THEN
+             INSERT (${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
+                     NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate,
+                     ${colArticulo})
+             VALUES (@codigo, @descrip, @factor, 'S',
+                     0, GETDATE(), NEWID(), @usuario, @usuario, GETDATE(), @articulo)
+           OUTPUT $action AS accion;`,
+        );
+      if (result.recordset[0]?.accion === "INSERT") siguienteCodigo += BigInt(1);
+    }
+
+    await transaction.commit();
+    committed = true;
+  } catch (error) {
+    if (!committed) await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
 }
 
 /**
@@ -1085,6 +1135,522 @@ async function listarHallazgosGestionGlobal(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Funciones BATCHED: aplican SOLICITUD_DETALLE en masa (UPDATE/INSERT con JOIN)
+// para solicitudes grandes (10K-40K filas) en lugar de fila por fila.
+// ---------------------------------------------------------------------------
+
+const BATCH_SIZE = 500;
+
+export interface ResultadoBatch {
+  total: number;
+  exitosos: number;
+  fallidos: number;
+}
+
+type FilaDetalleAplicable = {
+  SKU: string;
+  LISTA_PRECIO: string | null;
+  FACTOR_APLICADO: unknown;
+  PRECIO_SIMULADO: unknown;
+  PORCENTAJE_MARGEN: unknown;
+};
+
+/**
+ * Corre `aplicar` en una transacción de Softland con las filas aplicables (OK/HALLAZGO) de la
+ * solicitud cargadas en la tabla temporal #DET. Se leen del portal y se suben por bulk en vez de
+ * un JOIN entre bases: el Softland de Costa Rica (MAR/MARQA) está en otro servidor.
+ */
+async function conDetalleEnSoftland<T>(
+  compania: string,
+  solicitudId: string,
+  aplicar: (request: () => import("mssql").Request) => Promise<T>,
+): Promise<T> {
+  const filas = await portalDb(compania).$queryRawUnsafe<FilaDetalleAplicable[]>(
+    `SELECT D.SKU, D.LISTA_PRECIO, D.FACTOR_APLICADO, D.PRECIO_SIMULADO, D.PORCENTAJE_MARGEN
+       FROM ${objetoPortal(compania, "SOLICITUD_DETALLE")} D
+       INNER JOIN ${objetoPortal(compania, "SOLICITUD")} S ON S.ID_SOLICITUD = D.ID_SOLICITUD
+      WHERE S.CODIGO_SOLICITUD = @P1
+        AND D.ESTADO_FILA IN ('OK', 'HALLAZGO')`,
+    solicitudId,
+  );
+
+  const mssql = await import("mssql");
+  const transaction = new mssql.Transaction(await getPool(compania));
+  const request = () => new mssql.Request(transaction);
+  const decimal = (v: unknown) => (v == null ? null : Number(v));
+
+  await transaction.begin();
+  try {
+    // batch y no query: una tabla temporal creada dentro de sp_executesql muere al terminar.
+    // COLLATE DATABASE_DEFAULT: tempdb puede tener otra intercalación que la base de Softland.
+    await request().batch(
+      `IF OBJECT_ID('tempdb..#DET') IS NOT NULL DROP TABLE #DET;
+       CREATE TABLE #DET (
+         SKU               VARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
+         LISTA_PRECIO      VARCHAR(40) COLLATE DATABASE_DEFAULT NULL,
+         FACTOR_APLICADO   DECIMAL(8, 4) NOT NULL,
+         PRECIO_SIMULADO   DECIMAL(18, 4) NOT NULL,
+         PORCENTAJE_MARGEN DECIMAL(18, 4) NULL
+       );`,
+    );
+    if (filas.length) {
+      const tabla = new mssql.Table("#DET");
+      tabla.columns.add("SKU", mssql.VarChar(50), { nullable: false });
+      tabla.columns.add("LISTA_PRECIO", mssql.VarChar(40), { nullable: true });
+      tabla.columns.add("FACTOR_APLICADO", mssql.Decimal(8, 4), { nullable: false });
+      tabla.columns.add("PRECIO_SIMULADO", mssql.Decimal(18, 4), { nullable: false });
+      tabla.columns.add("PORCENTAJE_MARGEN", mssql.Decimal(18, 4), { nullable: true });
+      for (const f of filas) {
+        tabla.rows.add(f.SKU, f.LISTA_PRECIO, decimal(f.FACTOR_APLICADO), decimal(f.PRECIO_SIMULADO), decimal(f.PORCENTAJE_MARGEN));
+      }
+      await request().bulk(tabla);
+    }
+
+    const resultado = await aplicar(request);
+    // La conexión vuelve al pool: la tabla temporal no debe sobrevivir al commit.
+    await request().batch("DROP TABLE #DET;");
+    await transaction.commit();
+    return resultado;
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
+}
+
+/**
+ * Obtiene la configuración de gestión global para una lista específica.
+ * Usado para validar el flag VALIDAR_PRECIO_BAJO_MARGEN_MIN sin cargar todas las listas.
+ */
+async function obtenerConfiguracionGestionGlobal(
+  compania: string,
+  lista: string,
+): Promise<GestionGlobalLista | null> {
+  if (esModoDemo()) {
+    const listas = await listarGestionGlobal(compania);
+    return listas.find((l) => l.codigo.trim().toUpperCase() === lista.trim().toUpperCase()) ?? null;
+  }
+
+  const pool = await getPool(compania);
+  const mssql = await import("mssql");
+  const q = await pool.request()
+    .input("compania", mssql.VarChar(20), compania.trim().toUpperCase())
+    .input("lista", mssql.VarChar(50), lista.trim())
+    .query(
+      `SELECT TOP (1)
+              A.NIVEL_PRECIO AS codigo,
+              A.VERSION AS version,
+              A.VARIACION_PORC AS variacionPorc,
+              LTRIM(RTRIM(A.TIPO_VARIACION)) AS tipoVariacion,
+              LTRIM(RTRIM(A.MONEDA)) AS moneda,
+              COALESCE(NULLIF(LTRIM(RTRIM(A.NIVEL_PRECIO_BASE)), ''), A.NIVEL_PRECIO) AS nivelPrecioBase,
+              ISNULL(A.VALIDAR_PRECIO_BAJO_MARGEN_MIN, 0) AS validarPrecioBajoMargenMin
+         FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
+        WHERE A.COMPANIA = @compania
+          AND A.NIVEL_PRECIO = @lista
+        ORDER BY TRY_CONVERT(INT, A.VERSION) DESC, A.VERSION DESC;`,
+    );
+  
+  const r = q.recordset[0];
+  if (!r) return null;
+  
+  const codigo = String(r.codigo ?? "").trim();
+  return {
+    codigo,
+    nombre: codigo,
+    version: String(r.version ?? "").trim(),
+    variacionPorc: r.variacionPorc == null ? null : Number(r.variacionPorc),
+    tipoVariacion: normalizarTipoVariacion(r.tipoVariacion),
+    moneda: r.moneda == null ? null : String(r.moneda).trim() || null,
+    fechaInicio: null,
+    fechaFin: null,
+    factorMultiplicador: null,
+    horasAtras: null,
+    nivelPrecioBase: String(r.nivelPrecioBase ?? codigo).trim() || codigo,
+    monedaBase: null,
+    exigirFactorConfigurado: false,
+    validarPrecioBajoCosto: false,
+    excepcionesArticulos: null,
+    validarPrecioBajoMargenMin: Boolean(r.validarPrecioBajoMargenMin),
+  };
+}
+
+/**
+ * Actualiza precios base en ARTICULO_PRECIO leyendo directamente de SOLICITUD_DETALLE.
+ * Usa UPDATE con JOIN para actualizar en masa (no fila por fila).
+ */
+async function actualizarPreciosBaseBatched(
+  compania: string,
+  solicitudId: string,
+  usuario: string,
+): Promise<ResultadoBatch> {
+  assertEscrituraSoftlandHabilitada();
+  if (esModoDemo()) throw new Error("PRECIO_BASE_BATCHED_NO_DISPONIBLE_EN_DEMO");
+
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const lista = "MAYOREOD";
+  const ap = objetoCalificado(companiaNormalizada, "tablaArticuloPrecio");
+  const versiones = objetoCalificado(companiaNormalizada, "tablaVersionNivel");
+  const mssql = await import("mssql");
+
+  try {
+    return await conDetalleEnSoftland(companiaNormalizada, solicitudId, async (request) => {
+      // Obtener versión activa
+      const versionResult = await request()
+        .input("lista", mssql.VarChar(50), lista)
+        .query(
+          `SELECT TOP (1) VN.VERSION AS version
+             FROM ${versiones} VN WITH(NOLOCK)
+            WHERE VN.NIVEL_PRECIO = @lista
+              AND VN.ESTADO = 'A'
+            ORDER BY TRY_CONVERT(INT, VN.VERSION) DESC, VN.VERSION DESC;`,
+        );
+      const version = versionResult.recordset[0]?.version;
+      if (version == null || String(version).trim() === "") {
+        throw new Error(`No existe una versión activa para la lista '${lista}'.`);
+      }
+
+      console.info("[PRECIO_BASE_BATCHED] Iniciando UPDATE masivo", {
+        solicitudId,
+        lista,
+        version: String(version),
+        tablaArticuloPrecio: ap,
+      });
+
+      // UPDATE masivo: actualiza ARTICULO_PRECIO desde #DET con JOIN
+      // Esto es MUCHO más eficiente que hacer 10,000 UPDATEs individuales
+      const result = await request()
+        .input("lista", mssql.VarChar(50), lista)
+        .input("version", mssql.Int, Number(version))
+        .input("usuario", mssql.VarChar(50), usuario.trim())
+        .query(
+          `UPDATE AP
+              SET AP.PRECIO = D.PRECIO_SIMULADO,
+                  AP.FECHA_ULT_MODIF = GETDATE(),
+                  AP.USUARIO_ULT_MODIF = @usuario
+             FROM ${ap} AP
+             INNER JOIN #DET D ON D.SKU = AP.ARTICULO
+            WHERE AP.NIVEL_PRECIO = @lista
+              AND AP.VERSION = @version
+              AND D.PRECIO_SIMULADO > 0;`,
+        );
+
+      const exitosos = result.rowsAffected[0] ?? 0;
+
+      // Contar fallidos (filas que no se actualizaron por no existir en ARTICULO_PRECIO o precio inválido)
+      const countResult = await request().query<{ n: number }>(`SELECT COUNT(*) AS n FROM #DET`);
+      const total = Number(countResult.recordset[0]?.n ?? 0);
+      const fallidos = total - exitosos;
+
+      console.info("[PRECIO_BASE_BATCHED] Completado", {
+        solicitudId,
+        total,
+        exitosos,
+        fallidos,
+        tabla: ap,
+      });
+
+      return { total, exitosos, fallidos };
+    });
+  } catch (error) {
+    // Re-lanzar error de BD con mensaje descriptivo para que el servicio lo capture
+    const mensaje = error instanceof Error ? error.message : String(error);
+    console.error("[PRECIO_BASE_BATCHED] Error de base de datos", { 
+      solicitudId, 
+      tablaArticuloPrecio: ap,
+      error: mensaje,
+    });
+    throw new Error(`Error al actualizar Precio Base en ${ap}: ${mensaje}`);
+  }
+}
+
+/**
+ * Upsert factores artículo-lista leyendo directamente de SOLICITUD_DETALLE
+ * con MERGE masivo para solicitudes de Descuento (DESCUENTO_LISTA_PRECIO).
+ * Optimizado para 10K-40K filas usando operaciones bulk en lugar de fila por fila.
+ */
+async function upsertFactoresArticuloListaBatched(
+  compania: string,
+  solicitudId: string,
+  usuario: string,
+): Promise<ResultadoBatch> {
+  assertEscrituraSoftlandHabilitada();
+  if (esModoDemo()) throw new Error("FACTOR_ARTICULO_LISTA_BATCHED_NO_DISPONIBLE_EN_DEMO");
+
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const usuarioNormalizado = usuario.trim();
+  const target = objetoCalificado(companiaNormalizada, "tablaFactorArticuloLista");
+  // GESTION_LISTAS_PRECIOS siempre está en esquema dbo, no en el esquema de la compañía
+  const gestion = `[dbo].[${nombreSql(companiaNormalizada, "tablaGestionListaPrecio")}]`;
+
+  const mssql = await import("mssql");
+  const descripcion = `Solicitud ${solicitudId}`;
+
+  console.info("[FACTOR_ARTICULO_LISTA_BATCHED] Iniciando MERGE masivo", {
+    solicitudId,
+    tablaTarget: target,
+  });
+
+  try {
+    return await conDetalleEnSoftland(companiaNormalizada, solicitudId, async (request) => {
+      // PASO 1: UPDATE masivo de registros existentes
+      // Actualiza U_FACTOR para combinaciones (ARTICULO, NIVEL_PRECIO) que ya existen
+      const updateResult = await request()
+        .input("compania", mssql.VarChar(20), companiaNormalizada)
+        .input("descripcion", mssql.VarChar(20), descripcion)
+        .input("usuario", mssql.VarChar(50), usuarioNormalizado)
+        .query(
+          `UPDATE T
+              SET T.U_DESCRIP = @descripcion,
+                  T.U_FACTOR = D.FACTOR_APLICADO,
+                  T.U_VERSION = G.VERSION,
+                  T.RecordDate = GETDATE(),
+                  T.UpdatedBy = @usuario
+             FROM ${target} T
+             INNER JOIN #DET D ON D.SKU = T.U_ARTICULO
+             INNER JOIN (
+               SELECT G1.NIVEL_PRECIO, G1.VERSION
+                 FROM ${gestion} G1 WITH(NOLOCK)
+                WHERE G1.COMPANIA = @compania
+                  AND G1.VERSION = (
+                    SELECT MAX(TRY_CONVERT(INT, G2.VERSION))
+                      FROM ${gestion} G2 WITH(NOLOCK)
+                     WHERE G2.COMPANIA = @compania
+                       AND G2.NIVEL_PRECIO = G1.NIVEL_PRECIO
+                  )
+             ) G ON G.NIVEL_PRECIO = D.LISTA_PRECIO AND G.NIVEL_PRECIO = T.U_NIVEL_PRECIO
+            WHERE D.FACTOR_APLICADO > 0
+              AND D.FACTOR_APLICADO <= 2
+              AND D.LISTA_PRECIO IS NOT NULL
+              AND LEN(LTRIM(RTRIM(D.LISTA_PRECIO))) > 0;`,
+        );
+      const actualizados = updateResult.rowsAffected[0] ?? 0;
+
+      // PASO 2: INSERT masivo de registros nuevos
+      // Inserta combinaciones (ARTICULO, NIVEL_PRECIO) que no existen en la tabla target
+      // Usa ROW_NUMBER para generar códigos secuenciales; UPDLOCK/HOLDLOCK evita que otra
+      // transacción tome los mismos códigos (igual que upsertUdfs).
+      const insertResult = await request()
+        .input("compania", mssql.VarChar(20), companiaNormalizada)
+        .input("descripcion", mssql.VarChar(20), descripcion)
+        .input("usuario", mssql.VarChar(50), usuarioNormalizado)
+        .query(
+          `WITH MaxCodigo AS (
+             SELECT COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(U_CODIGO)), ''))), 0) AS maxCod
+               FROM ${target} WITH(UPDLOCK, HOLDLOCK)
+           ),
+           NuevosRegistros AS (
+             SELECT
+               D.SKU AS articulo,
+               D.FACTOR_APLICADO AS factor,
+               G.NIVEL_PRECIO AS nivelPrecio,
+               G.VERSION AS version,
+               ROW_NUMBER() OVER (ORDER BY D.SKU, G.NIVEL_PRECIO) AS rn
+             FROM #DET D
+             INNER JOIN (
+               SELECT G1.NIVEL_PRECIO, G1.VERSION
+                 FROM ${gestion} G1 WITH(NOLOCK)
+                WHERE G1.COMPANIA = @compania
+                  AND G1.VERSION = (
+                    SELECT MAX(TRY_CONVERT(INT, G2.VERSION))
+                      FROM ${gestion} G2 WITH(NOLOCK)
+                     WHERE G2.COMPANIA = @compania
+                       AND G2.NIVEL_PRECIO = G1.NIVEL_PRECIO
+                  )
+             ) G ON G.NIVEL_PRECIO = D.LISTA_PRECIO
+             LEFT JOIN ${target} T ON T.U_ARTICULO = D.SKU AND T.U_NIVEL_PRECIO = G.NIVEL_PRECIO
+            WHERE D.FACTOR_APLICADO > 0
+              AND D.FACTOR_APLICADO <= 2
+              AND D.LISTA_PRECIO IS NOT NULL
+              AND LEN(LTRIM(RTRIM(D.LISTA_PRECIO))) > 0
+              AND T.U_ARTICULO IS NULL  -- No existe en target
+           )
+           INSERT INTO ${target} (
+             U_CODIGO, U_DESCRIP, NoteExistsFlag, RecordDate, RowPointer,
+             CreatedBy, UpdatedBy, CreateDate, U_ARTICULO, U_FACTOR,
+             U_NIVEL_PRECIO, U_VERSION
+           )
+           SELECT
+             CAST(M.maxCod + N.rn AS VARCHAR(10)),
+             @descripcion,
+             0,
+             GETDATE(),
+             NEWID(),
+             @usuario,
+             @usuario,
+             GETDATE(),
+             N.articulo,
+             N.factor,
+             N.nivelPrecio,
+             N.version
+           FROM NuevosRegistros N
+           CROSS JOIN MaxCodigo M;`,
+        );
+      const insertados = insertResult.rowsAffected[0] ?? 0;
+
+      const exitosos = actualizados + insertados;
+
+      // Contar total de filas válidas para calcular fallidos
+      const countResult = await request().query<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM #DET D
+          WHERE D.FACTOR_APLICADO > 0
+            AND D.FACTOR_APLICADO <= 2
+            AND D.LISTA_PRECIO IS NOT NULL
+            AND LEN(LTRIM(RTRIM(D.LISTA_PRECIO))) > 0`,
+      );
+      const total = Number(countResult.recordset[0]?.n ?? 0);
+      const fallidos = Math.max(0, total - exitosos);
+
+      console.info("[FACTOR_ARTICULO_LISTA_BATCHED] Completado", {
+        solicitudId,
+        total,
+        actualizados,
+        insertados,
+        exitosos,
+        fallidos,
+      });
+
+      return { total, exitosos, fallidos };
+    });
+  } catch (error) {
+    // Re-lanzar error de BD con mensaje descriptivo para que el servicio lo capture
+    const mensaje = error instanceof Error ? error.message : String(error);
+    console.error("[FACTOR_ARTICULO_LISTA_BATCHED] Error de base de datos", { 
+      solicitudId, 
+      tablaTarget: target,
+      error: mensaje,
+    });
+    throw new Error(`Error al actualizar Factor Artículo-Lista en ${target}: ${mensaje}`);
+  }
+}
+
+/**
+ * Upsert UDFs de margen de utilidad leyendo directamente de SOLICITUD_DETALLE
+ * con MERGE masivo para solicitudes de Margen (MARGEN_UTILIDAD_MASIVO).
+ * Optimizado para 10K-40K filas usando operaciones bulk en lugar de fila por fila.
+ */
+async function upsertUdfsBatched(
+  compania: string,
+  solicitudId: string,
+  usuario: string,
+): Promise<ResultadoBatch> {
+  assertEscrituraSoftlandHabilitada();
+  if (esModoDemo()) throw new Error("UDF_BATCHED_NO_DISPONIBLE_EN_DEMO");
+
+  const companiaNormalizada = compania.trim().toUpperCase();
+  const udf = objetoCalificado(companiaNormalizada, "udfFactorReduccion");
+  const colCodigo = nombreSql(companiaNormalizada, "colUdfCodigo");
+  const colDescrip = nombreSql(companiaNormalizada, "colUdfDescripcion");
+  const colFactor = nombreSql(companiaNormalizada, "colUdfFactor");
+  const colActivo = nombreSql(companiaNormalizada, "colUdfActivo");
+  const colArticulo = nombreSql(companiaNormalizada, "colUdfArticulo");
+
+  const mssql = await import("mssql");
+  const descripcion = `Solicitud ${solicitudId}`;
+
+  console.info("[UDF_BATCHED] Iniciando MERGE masivo", {
+    solicitudId,
+    tablaUdf: udf,
+  });
+
+  try {
+    return await conDetalleEnSoftland(companiaNormalizada, solicitudId, async (request) => {
+      // PASO 1: UPDATE masivo de registros existentes
+      const updateResult = await request()
+        .input("descrip", mssql.VarChar(260), descripcion)
+        .input("usuario", mssql.VarChar(30), usuario.trim())
+        .query(
+          `UPDATE U
+              SET U.${colDescrip} = @descrip,
+                  U.${colFactor} = D.PORCENTAJE_MARGEN,
+                  U.${colActivo} = 'S',
+                  U.RecordDate = GETDATE(),
+                  U.UpdatedBy = @usuario
+             FROM ${udf} U
+             INNER JOIN #DET D ON D.SKU = U.${colArticulo}
+            WHERE D.SKU IS NOT NULL
+              AND LEN(LTRIM(RTRIM(D.SKU))) > 0;`,
+        );
+      const actualizados = updateResult.rowsAffected[0] ?? 0;
+
+      // PASO 2: INSERT masivo de registros nuevos
+      // Usa ROW_NUMBER para generar códigos secuenciales; UPDLOCK/HOLDLOCK evita que otra
+      // transacción tome los mismos códigos (igual que upsertUdfs).
+      const insertResult = await request()
+        .input("descrip", mssql.VarChar(260), descripcion)
+        .input("usuario", mssql.VarChar(30), usuario.trim())
+        .query(
+          `WITH MaxCodigo AS (
+             SELECT COALESCE(MAX(TRY_CONVERT(DECIMAL(38, 0), NULLIF(LTRIM(RTRIM(${colCodigo})), ''))), 0) AS maxCod
+               FROM ${udf} WITH(UPDLOCK, HOLDLOCK)
+           ),
+           NuevosRegistros AS (
+             SELECT
+               D.SKU AS articulo,
+               COALESCE(D.PORCENTAJE_MARGEN, 0) AS porcentaje,
+               ROW_NUMBER() OVER (ORDER BY D.SKU) AS rn
+             FROM #DET D
+             LEFT JOIN ${udf} U ON U.${colArticulo} = D.SKU
+            WHERE D.SKU IS NOT NULL
+              AND LEN(LTRIM(RTRIM(D.SKU))) > 0
+              AND U.${colArticulo} IS NULL  -- No existe en UDF
+           )
+           INSERT INTO ${udf} (
+             ${colCodigo}, ${colDescrip}, ${colFactor}, ${colActivo},
+             NoteExistsFlag, RecordDate, RowPointer, CreatedBy, UpdatedBy, CreateDate,
+             ${colArticulo}
+           )
+           SELECT
+             CAST(M.maxCod + N.rn AS VARCHAR(256)),
+             @descrip,
+             N.porcentaje,
+             'S',
+             0,
+             GETDATE(),
+             NEWID(),
+             @usuario,
+             @usuario,
+             GETDATE(),
+             N.articulo
+           FROM NuevosRegistros N
+           CROSS JOIN MaxCodigo M;`,
+        );
+      const insertados = insertResult.rowsAffected[0] ?? 0;
+
+      const exitosos = actualizados + insertados;
+
+      // Contar total de filas válidas para calcular fallidos
+      const countResult = await request().query<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM #DET D
+          WHERE D.SKU IS NOT NULL
+            AND LEN(LTRIM(RTRIM(D.SKU))) > 0`,
+      );
+      const total = Number(countResult.recordset[0]?.n ?? 0);
+      const fallidos = Math.max(0, total - exitosos);
+
+      console.info("[UDF_BATCHED] Completado", {
+        solicitudId,
+        total,
+        actualizados,
+        insertados,
+        exitosos,
+        fallidos,
+      });
+
+      return { total, exitosos, fallidos };
+    });
+  } catch (error) {
+    // Re-lanzar error de BD con mensaje descriptivo para que el servicio lo capture
+    const mensaje = error instanceof Error ? error.message : String(error);
+    console.error("[UDF_BATCHED] Error de base de datos", { 
+      solicitudId, 
+      tablaUdf: udf,
+      error: mensaje,
+    });
+    throw new Error(`Error al actualizar UDF Margen en ${udf}: ${mensaje}`);
+  }
+}
+
 export const pricingRepository = {
   listPriceLevels: listarNivelesPrecio,
   activePriceVersion: obtenerVersionActiva,
@@ -1097,7 +1663,12 @@ export const pricingRepository = {
   upsertArticleListFactors: upsertFactoresArticuloLista,
   updateBasePrices: actualizarPreciosBase,
   readUdfPercentage: leerPorcentajeUdf,
-  upsertUdf,
+  upsertUdfs,
   runMarginSp: ejecutarSpMargen,
   runListManagementSp: ejecutarSpGestionListas,
+  // Funciones BATCHED para solicitudes grandes (10K-40K filas)
+  getGlobalManagementConfig: obtenerConfiguracionGestionGlobal,
+  updateBasePricesBatched: actualizarPreciosBaseBatched,
+  upsertArticleListFactorsBatched: upsertFactoresArticuloListaBatched,
+  upsertUdfsBatched: upsertUdfsBatched,
 };

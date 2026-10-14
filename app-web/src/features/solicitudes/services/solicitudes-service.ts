@@ -12,13 +12,14 @@ import type {
   Rol,
   Solicitud,
 } from "@/shared/types/domain-types";
-import { esFilaMargen } from "@/shared/types/domain-types";
-import { validarFila } from "@/features/solicitudes/utils/engine";
+import { esFilaMargen, esFilaProcesable, esHallazgoDeNegocio } from "@/shared/types/domain-types";
+import type { GestionGlobalLista } from "@/shared/types/models";
+import { calcularVariacion, construirFilaSolicitud } from "@/features/solicitudes/utils/engine";
 import { esModoDemo, esModoSoloLectura, esModoSoloPortal } from "@/server/companies";
 import { auditRepository } from "@/features/auditoria/repository/audit-repository";
 import { requestsRepository as repo } from "../repository/requests-repository";
 import { pricingRepository } from "../repository/pricing-repository";
-import { nivelesSolicitadosCanonicos, cargarContextosPorLista, resolverNivelPrecio } from "./catalog-context";
+import { nivelesSolicitadosCanonicos, cargarContextosPorLista, crearContextoCatalogo, resolverNivelPrecio } from "./catalog-context";
 import {
   obtenerCatalogoSolicitud,
   paginaArticulos,
@@ -27,9 +28,11 @@ import {
   simularManual,
   type SimularGestionGlobalPaginadoInput,
 } from "./simulation-service";
+import { FilaEntradaSchema, SolicitudSchema } from "../schemas/solicitud-schema";
 import type {
   CancelacionInput,
   DecisionCancelacionInput,
+  FilaEntrada,
   RechazoInput,
   SimularManualInput,
   SolicitudInput,
@@ -45,18 +48,61 @@ function errorSoloPortal(): { ok: false; error: string } {
 
 const LISTA_PRECIO_BASE = "MAYOREOD";
 
-/**
- * Lee GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN de MAYOREOD para la compañía.
- * Falla cerrado: si no se puede consultar la configuración, se lanza el error.
- */
-async function leerValidarPrecioBajoMargenMin(compania: string): Promise<boolean> {
-  const listas = await pricingRepository.listGlobalManagement(compania);
-  const config = listas.find((l) => l.codigo.trim().toUpperCase() === LISTA_PRECIO_BASE);
-  return config?.validarPrecioBajoMargenMin === true;
-}
+const ESTADO_CAMBIADO = { ok: false as const, error: "La solicitud cambió de estado mientras se procesaba (otro usuario ya actuó sobre ella). Actualice la vista." };
 
-function mensajeBloqueoMargenMin(filasConHallazgo: number): string {
-  return `No se puede enviar: la lista ${LISTA_PRECIO_BASE} tiene activada la validación de precio bajo margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN) y la solicitud contiene ${filasConHallazgo} fila(s) con precio por debajo del margen mínimo. Corrija los precios antes de enviar.`;
+type MargenMin = { ok: false; error: string } | { ok: true; activo: boolean };
+
+/**
+ * Bloqueo por GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (valor vigente en BD).
+ * Con el flag activo en la lista afectada no se permite enviar ni aprobar con hallazgos de
+ * margen; apagado, los hallazgos se procesan. Precio Base y Margen de Utilidad usan MAYOREOD,
+ * Descuento la lista de cada fila y Gestión Global la lista de la solicitud (hallazgos en SQL).
+ * Falla cerrado: si no se puede leer la configuración, no se permite continuar.
+ */
+async function validarMargenMin(
+  accion: "enviar" | "aprobar",
+  compania: string,
+  proceso: ProcesoKey,
+  lista: string,
+  parametros: ParametrosSolicitud,
+  filas: FilaResultado[],
+): Promise<MargenMin> {
+  let config: Map<string, GestionGlobalLista>;
+  try {
+    const listas = await pricingRepository.listGlobalManagement(compania);
+    config = new Map(listas.map((l) => [l.codigo.trim().toUpperCase(), l]));
+  } catch (error) {
+    const detalle = error instanceof Error ? error.message : "Error no identificado.";
+    return { ok: false, error: `No fue posible verificar la configuración de margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN): ${detalle}` };
+  }
+  const activa = (codigo: string | null | undefined) => config.get(String(codigo ?? "").trim().toUpperCase())?.validarPrecioBajoMargenMin === true;
+  const bloqueo = (listas: string, hallazgos: number) => ({
+    ok: false as const,
+    error: `No se puede ${accion}: la lista ${listas} tiene activada la validación de precio bajo margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN) y la solicitud contiene ${hallazgos} artículo(s) con precio por debajo del margen mínimo. Corrija los precios y vuelva a enviar.`,
+  });
+
+  if (proceso === "FACTOR_PRECIO") {
+    if (!activa(lista)) return { ok: true, activo: false };
+    const variacion = calcularVariacion(parametros.tipoVariacion, parametros.factor);
+    const hallazgos = await pricingRepository.listFindings(
+      compania,
+      lista,
+      parametros.tipoVariacion === "DISMINUCION" ? "DISMINUCION" : "AUMENTO",
+      variacion.magnitud ?? 0,
+      0,
+      1,
+      config.get(lista.trim().toUpperCase())?.nivelPrecioBase,
+    );
+    return hallazgos.total > 0 ? bloqueo(lista, hallazgos.total) : { ok: true, activo: true };
+  }
+
+  const listaDeFila = (fila: FilaResultado) =>
+    proceso === "DESCUENTO_LISTA_PRECIO" ? ("listaCodigo" in fila && fila.listaCodigo) || fila.lista : LISTA_PRECIO_BASE;
+  const bloqueadas = filas.filter((fila) => esHallazgoDeNegocio(fila) && activa(listaDeFila(fila)));
+  if (bloqueadas.length > 0) {
+    return bloqueo([...new Set(bloqueadas.map(listaDeFila))].join(", "), bloqueadas.length);
+  }
+  return { ok: true, activo: filas.some((fila) => activa(listaDeFila(fila))) };
 }
 
 // ---------------------------------------------------------------------------
@@ -70,195 +116,148 @@ interface EnviarSolicitudInput {
   usuarioRol: Rol;
   compania: string;
   parametros: ParametrosSolicitud;
-  filas: FilaResultado[];
+  filas: FilaEntrada[];
   archivoNombre?: string | null;
   archivoS3Key?: string | null;
+  borradorId?: string | null;
 }
 
-async function enviarSolicitud(input: EnviarSolicitudInput): Promise<{ ok: boolean; error?: string; solicitud?: Solicitud }> {
-  if (esModoSoloLectura()) return errorSoloLectura();
-  // La sesión (Postgres) ya validó al usuario y su compañía; PORTAL_PRECIOS.USUARIO está obsoleta.
-  const identidadPortal = { nombre: input.usuarioNombre, email: input.usuarioEmail, rol: input.usuarioRol };
-  const idpOperador = input.usuarioEmail.trim().toLowerCase();
+type Preparada = { ok: false; error: string } | { ok: true; solicitud: Omit<Solicitud, "id"> };
 
+/**
+ * Valida la solicitud contra Softland y RECALCULA sus filas en servidor: no se
+ * confía en `validacion`/precios del cliente. Común a envío y borrador.
+ */
+async function prepararSolicitud(input: EnviarSolicitudInput, estado: "PENDIENTE" | "BORRADOR"): Promise<Preparada> {
   const niveles = await pricingRepository.listPriceLevels(input.compania);
-  const listasEnFilas = input.filas.flatMap((fila) =>
-    "listaCodigo" in fila && fila.listaCodigo ? [fila.listaCodigo] : [],
-  );
-  const valoresNivel = [
-    input.parametros.nivelPrecio,
-    input.parametros.listaBase,
-    input.parametros.nivel,
-    ...listasEnFilas,
-  ];
-  const valoresNivelNoVacios = valoresNivel.filter((valor): valor is string => Boolean(valor?.trim()));
-  const nivelesCanonicos = nivelesSolicitadosCanonicos(niveles, valoresNivelNoVacios);
+  const listasEnFilas = input.proceso === "DESCUENTO_LISTA_PRECIO"
+    ? input.filas.flatMap((fila) => fila.listaCodigo ? [fila.listaCodigo] : [])
+    : [];
+  const valoresParametros = [input.parametros.nivelPrecio, input.parametros.listaBase, input.parametros.nivel]
+    .filter((valor): valor is string => Boolean(valor?.trim()));
+  const nivelesParametros = nivelesSolicitadosCanonicos(niveles, valoresParametros);
+  // Las listas de los parámetros deben existir; una lista inválida en una fila de Descuento
+  // solo invalida esa fila (se descarta igual que un código inválido).
+  const nivelesCanonicos = [...new Set([...nivelesParametros, ...nivelesSolicitadosCanonicos(niveles, listasEnFilas)])];
   if (
     nivelesCanonicos.length === 0 ||
-    nivelesCanonicos.length !== new Set(valoresNivelNoVacios.map((valor) => valor.trim().toLowerCase())).size
+    nivelesParametros.length !== new Set(valoresParametros.map((valor) => valor.trim().toLowerCase())).size
   ) {
     return { ok: false, error: "La solicitud contiene una lista que no existe en los maestros de Softland." };
   }
 
-  const nivelSolicitud = [
-    input.parametros.nivelPrecio,
-    input.parametros.listaBase,
-    input.parametros.nivel,
-    ...(input.proceso === "DESCUENTO_LISTA_PRECIO" ? listasEnFilas : []),
-  ].find((valor): valor is string => Boolean(valor?.trim()));
+  // Precio Base escribe siempre en MAYOREOD (updateBasePrices): se valida contra esa lista.
+  const nivelSolicitud = input.proceso === "MAYOREOD_MASIVO" ? LISTA_PRECIO_BASE : nivelesParametros[0] ?? nivelesCanonicos[0];
   const listaPredeterminada = resolverNivelPrecio(niveles, nivelSolicitud);
   if (!listaPredeterminada) {
     return { ok: false, error: "La solicitud no contiene una lista de precio válida." };
   }
+  // Solo Descuento admite una lista por fila; el resto usa la lista de la solicitud.
+  const listaDeFila = (fila: FilaEntrada): string | undefined =>
+    input.proceso === "DESCUENTO_LISTA_PRECIO" && fila.listaCodigo
+      ? resolverNivelPrecio(niveles, fila.listaCodigo)
+      : listaPredeterminada;
+
+  const base = {
+    proceso: input.proceso,
+    modalidad: input.modalidad,
+    compania: input.compania,
+    solicitanteNombre: input.usuarioNombre,
+    solicitanteEmail: input.usuarioEmail,
+    idpOperador: input.usuarioEmail.trim().toLowerCase(),
+    archivoNombre: input.archivoNombre ?? null,
+    archivoS3Key: input.archivoS3Key ?? null,
+    fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
+    fechaCreacion: new Date().toISOString(),
+    estado,
+    motivoRechazo: null,
+    idProcesoSP: null,
+    lista: listaPredeterminada,
+  };
+
   if (input.proceso === "FACTOR_PRECIO") {
+    // El multiplicador se deriva en servidor de tipo + magnitud (no se toma del cliente).
+    const variacion = calcularVariacion(input.parametros.tipoVariacion, input.parametros.factor);
+    if (!variacion.valido) {
+      return { ok: false, error: variacion.causa ?? "La variación de Gestión Global no es válida." };
+    }
+    const margen = await validarMargenMin("enviar", input.compania, input.proceso, listaPredeterminada, input.parametros, []);
+    if (!margen.ok) return margen;
+    const parametros = { ...input.parametros, multiplicador: variacion.factor, validarPrecioBajoMargenMin: margen.activo };
     // Gestión Global persiste una sola fila resumen con los parámetros de la
     // operación. El detalle artículo por artículo es informativo y se consulta
     // en tiempo real desde Softland al abrir el modal — no se persiste.
-    const filaResumen = construirFilaResumenGestionGlobal(input.parametros, listaPredeterminada);
-    const codigo = await repo.nextCode(input.compania);
-    const solicitud: Solicitud = {
-      id: codigo,
-      proceso: input.proceso,
-      modalidad: input.modalidad,
-      compania: input.compania,
-      solicitanteNombre: identidadPortal.nombre,
-      solicitanteEmail: identidadPortal.email,
-      idpOperador,
-      parametros: input.parametros,
-      filas: [filaResumen],
-      archivoNombre: input.archivoNombre ?? null,
-      archivoS3Key: input.archivoS3Key ?? null,
-      fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
-      fechaCreacion: new Date().toISOString(),
-      estado: "PENDIENTE",
-      motivoRechazo: null,
-      idProcesoSP: null,
-      lista: listaPredeterminada,
-    };
-    try {
-      await repo.create(solicitud);
-      await auditRepository.record({ event: "SOLICITUD_ENVIADA", user: identidadPortal.nombre, role: identidadPortal.rol, company: input.compania, requestId: solicitud.id, userEmail: identidadPortal.email });
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de base de datos no identificado.";
-      return { ok: false, error: `No fue posible registrar la solicitud en el Portal: ${detalle}` };
-    }
-    return { ok: true, solicitud };
+    return { ok: true, solicitud: { ...base, parametros, filas: [construirFilaResumenGestionGlobal(parametros, listaPredeterminada)] } };
   }
 
   const contextosPorLista = await cargarContextosPorLista(
     input.compania,
     niveles,
-    nivelesCanonicos,
+    [...new Set([...nivelesCanonicos, listaPredeterminada])],
     input.filas.map((fila) => fila.codigo),
   );
-  const codigosPorLista = new Map(
-    [...contextosPorLista].map(([lista, contexto]) => [
-      lista,
-      new Set(Object.values(contexto.articulos).map((articulo) => articulo.codigo.trim().toUpperCase())),
-    ]),
-  );
-  const contieneArticulo = (listaCodigo: string, codigoArticulo: string): boolean =>
-    codigosPorLista.get(listaCodigo)?.has(codigoArticulo.trim().toUpperCase()) ?? false;
+  const contextoVacio = crearContextoCatalogo(niveles, []);
+  const filas: FilaResultado[] = input.filas.map((entrada) => {
+    const lista = listaDeFila(entrada);
+    const fila = construirFilaSolicitud(input.proceso, input.modalidad, entrada, (lista && contextosPorLista.get(lista)) || contextoVacio);
+    return { ...fila, lista };
+  });
 
-  // Para MAYOREOD_MASIVO se permite carga parcial: se descartan solo las filas con
-  // error duro (código inválido, precio cero, formato incorrecto). Las filas con
-  // advertencia de margen mínimo (ALERTA_MARGEN) sí se incluyen — el aprobador
-  // es quien decide si autoriza el riesgo.
-  const filasParaProcesar = input.proceso === "MAYOREOD_MASIVO"
-    ? input.filas.filter((fila) => fila.validacion.valido || fila.validacion.estadoRedondeo === "ALERTA_MARGEN")
-    : input.filas;
+  // Carga parcial: se descartan las filas con error duro (código inválido, precio cero,
+  // formato incorrecto). Las de hallazgo de margen se incluyen salvo bloqueo por flag.
+  const filasParaProcesar = filas.filter(esFilaProcesable);
 
   const hayArticuloFueraDeLista = filasParaProcesar.some((fila) => {
-    const listaFila = "listaCodigo" in fila && fila.listaCodigo
-      ? resolverNivelPrecio(niveles, fila.listaCodigo)
-      : listaPredeterminada;
-    return !listaFila || !contieneArticulo(listaFila, fila.codigo);
+    const contexto = fila.lista ? contextosPorLista.get(fila.lista) : undefined;
+    return !contexto?.articulos[fila.codigo];
   });
   if (filasParaProcesar.length === 0 || hayArticuloFueraDeLista) {
     return { ok: false, error: "La solicitud contiene un artículo que no existe en la lista de precio seleccionada en Softland." };
   }
 
-  // Precio Base (MAYOREOD): si GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN está
-  // activo, no se permite enviar la solicitud con hallazgos de margen. El flag se lee de la
-  // BD y el hallazgo se recalcula en servidor (no se confía en la validación del cliente).
-  let parametrosSolicitud = input.parametros;
-  if (input.proceso === "MAYOREOD_MASIVO") {
-    let validarMargenMin: boolean;
-    try {
-      validarMargenMin = await leerValidarPrecioBajoMargenMin(input.compania);
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : "Error no identificado.";
-      return { ok: false, error: `No fue posible verificar la configuración de margen mínimo de la lista ${LISTA_PRECIO_BASE}: ${detalle}` };
-    }
-    parametrosSolicitud = { ...input.parametros, validarPrecioBajoMargenMin: validarMargenMin };
-    if (validarMargenMin) {
-      const filasConHallazgo = filasParaProcesar.filter((fila) => {
-        if (fila.validacion.estadoRedondeo === "ALERTA_MARGEN") return true;
-        const listaFila = ("listaCodigo" in fila && fila.listaCodigo
-          ? resolverNivelPrecio(niveles, fila.listaCodigo)
-          : listaPredeterminada) ?? listaPredeterminada;
-        const contexto = contextosPorLista.get(listaFila);
-        if (!contexto || !("valorPropuestoRaw" in fila)) return false;
-        const recalculo = validarFila(
-          { codigo: fila.codigo, valorPropuestoRaw: String(fila.valorPropuestoRaw ?? "") },
-          "precio",
-          contexto,
-        );
-        return recalculo.estadoRedondeo === "ALERTA_MARGEN";
-      }).length;
-      if (filasConHallazgo > 0) {
-        return { ok: false, error: mensajeBloqueoMargenMin(filasConHallazgo) };
-      }
-    }
-  }
+  const margen = await validarMargenMin("enviar", input.compania, input.proceso, listaPredeterminada, input.parametros, filasParaProcesar);
+  if (!margen.ok) return margen;
+  const parametros = { ...input.parametros, validarPrecioBajoMargenMin: margen.activo };
+  return { ok: true, solicitud: { ...base, parametros, filas: filasParaProcesar } };
+}
 
-  // Enriquecer filas con la lista/nivel correspondiente
-  const filasConLista: FilaResultado[] = filasParaProcesar.map((fila) => {
-    const listaFila = "listaCodigo" in fila && fila.listaCodigo
-      ? resolverNivelPrecio(niveles, fila.listaCodigo)
-      : listaPredeterminada;
-    
-    return {
-      ...fila,
-      lista: listaFila,
-    };
-  });
+function errorRegistro(error: unknown, prefijo: string): { ok: false; error: string } {
+  const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de base de datos no identificado.";
+  if (detalle.includes("CK_PP_SOL_TIPO")) return { ok: false, error: `TIPO_PROCESO rechazado por CK_PP_SOL_TIPO: ${detalle}` };
+  return { ok: false, error: `${prefijo}: ${detalle}` };
+}
 
-  const codigo = await repo.nextCode(input.compania);
-  const solicitud: Solicitud = {
-    id: codigo,
-    proceso: input.proceso,
-    modalidad: input.modalidad,
-    compania: input.compania,
-    solicitanteNombre: identidadPortal.nombre,
-    solicitanteEmail: identidadPortal.email,
-    idpOperador,
-    parametros: parametrosSolicitud,
-    filas: filasConLista,
-    archivoNombre: input.archivoNombre ?? null,
-    archivoS3Key: input.archivoS3Key ?? null,
-    fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
-    fechaCreacion: new Date().toISOString(),
-    estado: "PENDIENTE",
-    motivoRechazo: null,
-    idProcesoSP: null,
-    lista: listaPredeterminada || ""
-  };
+/**
+ * Persiste la solicitud preparada: nueva (nextCode) o reemplazando un borrador
+ * propio (mismo código; el repo verifica atómicamente que siga en BORRADOR).
+ */
+async function persistirSolicitud(
+  input: EnviarSolicitudInput,
+  estado: "PENDIENTE" | "BORRADOR",
+): Promise<{ ok: false; error: string } | { ok: true; solicitud: Solicitud }> {
+  if (esModoSoloLectura()) return errorSoloLectura();
+  const preparada = await prepararSolicitud(input, estado);
+  if (!preparada.ok) return preparada;
+  const prefijo = estado === "BORRADOR" ? "No fue posible guardar el borrador" : "No fue posible registrar la solicitud en el Portal";
+  let solicitud: Solicitud;
   try {
-    await repo.create(solicitud);
-    await auditRepository.record({ event: "SOLICITUD_ENVIADA", user: identidadPortal.nombre, role: identidadPortal.rol, company: input.compania, requestId: solicitud.id, userEmail: identidadPortal.email });
-  } catch (error) {
-    const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de base de datos no identificado.";
-    if (detalle.includes("CK_PP_SOL_TIPO")) {
-      return {
-        ok: false,
-        error: `TIPO_PROCESO rechazado por CK_PP_SOL_TIPO: ${detalle}`,
-      };
+    if (input.borradorId) {
+      solicitud = { ...preparada.solicitud, id: input.borradorId };
+      if (!(await repo.replaceDraft(solicitud))) {
+        return { ok: false, error: "El borrador no existe, ya fue enviado o no le pertenece." };
+      }
+    } else {
+      solicitud = { ...preparada.solicitud, id: await repo.nextCode(input.compania) };
+      await repo.create(solicitud);
     }
-    return {
-      ok: false,
-      error: `No fue posible registrar la solicitud en el Portal: ${detalle}`,
-    };
+  } catch (error) {
+    return errorRegistro(error, prefijo);
+  }
+  const event = estado === "BORRADOR" ? "SOLICITUD_GUARDADA_BORRADOR" : input.borradorId ? "BORRADOR_ENVIADO" : "SOLICITUD_ENVIADA";
+  try {
+    await auditRepository.record({ event, user: input.usuarioNombre, role: input.usuarioRol, company: input.compania, requestId: solicitud.id, userEmail: input.usuarioEmail });
+  } catch (error) {
+    return errorRegistro(error, `Solicitud ${solicitud.id} registrada pero no se pudo auditar el evento`);
   }
   return { ok: true, solicitud };
 }
@@ -273,7 +272,8 @@ async function registrarRevision(
   compania: string,
 ): Promise<{ ok: boolean; error?: string }> {
   if (esModoSoloLectura()) return errorSoloLectura();
-  const s = await repo.find(compania, solicitudId);
+  // Usar findHeader para evitar cargar 10K+ filas
+  const s = await repo.findHeader(compania, solicitudId);
   if (s && s.estado === "PENDIENTE") {
     await auditRepository.record({ event: "SIMULACION_REVISADA", user: usuarioNombre, role: usuarioRol, company: compania, requestId: solicitudId });
   }
@@ -291,10 +291,13 @@ async function rechazarSolicitud(
   usuarioRol: Rol,
 ): Promise<{ ok: boolean; error?: string }> {
   if (esModoSoloLectura()) return errorSoloLectura();
-  const s = await repo.find(compania, solicitudId);
+  // Usar findHeader para evitar cargar 10K+ filas
+  const s = await repo.findHeader(compania, solicitudId);
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
   if (!motivo || motivo.trim().length === 0) return { ok: false, error: "El motivo de rechazo es obligatorio." };
-  await repo.update(compania, solicitudId, { estado: "RECHAZADO", motivoRechazo: motivo.trim() });
+  if (!(await repo.update(compania, solicitudId, { estado: "RECHAZADO", motivoRechazo: motivo.trim() }, ["PENDIENTE"]))) {
+    return ESTADO_CAMBIADO;
+  }
   await auditRepository.record({ event: "SOLICITUD_RECHAZADA", user: usuarioNombre, role: usuarioRol, company: s.compania, requestId: solicitudId });
   return { ok: true };
 }
@@ -313,214 +316,226 @@ interface AprobarInput {
 }
 
 async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; error?: string; idProcesoSP?: string }> {
-  if (esModoSoloLectura()) return errorSoloLectura();
-  // La aprobación registra la decisión en el flujo aplicativo. La ejecución
-  // operativa permanece bloqueada: Softland se consulta exclusivamente con SELECT.
-  const s = await repo.find(input.compania, input.solicitudId);
-  if (!s) return { ok: false, error: "Solicitud no encontrada." };
-  if (input.reintento && s.estado !== "ERROR_EJECUCION") {
+  console.info("[APROBAR] Iniciando aprobación", { solicitudId: input.solicitudId, compania: input.compania });
+  if (esModoSoloLectura()) {
+    console.info("[APROBAR] Bloqueado: modo solo lectura");
+    return errorSoloLectura();
+  }
+  
+  // Primero obtenemos solo la cabecera (rápido) para validaciones básicas
+  const cabecera = await repo.findHeader(input.compania, input.solicitudId);
+  if (!cabecera) {
+    console.info("[APROBAR] Solicitud no encontrada");
+    return { ok: false, error: "Solicitud no encontrada." };
+  }
+  console.info("[APROBAR] Cabecera encontrada", { proceso: cabecera.proceso, estado: cabecera.estado });
+  
+  if (input.reintento && cabecera.estado !== "ERROR_EJECUCION") {
+    console.info("[APROBAR] Bloqueado: reintento pero estado no es ERROR_EJECUCION");
     return { ok: false, error: "Solo se pueden reintentar solicitudes en ERROR_EJECUCION." };
   }
-  // Reutiliza el flujo de ejecución aprobado; la validación anterior garantiza
-  // que el cambio de estado solo sea posible desde ERROR_EJECUCION.
-  if (input.reintento) s.estado = "PENDIENTE";
-  if (s.estado !== "PENDIENTE") return { ok: false, error: "La solicitud no está pendiente de aprobación." };
+  
+  let estadoActual = cabecera.estado;
+  if (input.reintento) estadoActual = "PENDIENTE";
+  if (estadoActual !== "PENDIENTE") {
+    console.info("[APROBAR] Bloqueado: estado no es PENDIENTE", { estado: estadoActual });
+    return { ok: false, error: "La solicitud no está pendiente de aprobación." };
+  }
+  
   // Bloqueo estricto de autoaprobación (segregación de funciones).
-  if (s.solicitanteEmail === input.aprobadorEmail) {
+  if (cabecera.solicitanteEmail === input.aprobadorEmail) {
+    console.info("[APROBAR] Bloqueado: autoaprobación", { solicitante: cabecera.solicitanteEmail, aprobador: input.aprobadorEmail });
     return { ok: false, error: "No puede aprobar su propia solicitud (segregación de funciones)." };
   }
   if (input.aprobadorRol !== "APROBADOR") {
+    console.info("[APROBAR] Bloqueado: rol no es APROBADOR", { rol: input.aprobadorRol });
     return { ok: false, error: "Solo un Aprobador puede autorizar la ejecución." };
   }
-  if (!estaEnAmbito(s.compania, s.compania)) {
+  if (!estaEnAmbito(cabecera.compania, cabecera.compania)) {
+    console.info("[APROBAR] Bloqueado: fuera de ámbito");
     return { ok: false, error: "La solicitud está fuera de su ámbito autorizado." };
   }
 
-  if (s.filas.length === 0) {
+  // Consultar conteo de filas sin cargarlas todas
+  const { total: totalFilas, totalHallazgos } = await repo.countDetails(input.compania, input.solicitudId);
+  console.info("[APROBAR] Conteo de filas", { totalFilas, totalHallazgos });
+  
+  if (totalFilas === 0 && cabecera.proceso !== "FACTOR_PRECIO") {
+    console.info("[APROBAR] Bloqueado: sin filas");
     return { ok: false, error: "La solicitud no tiene filas para procesar." };
   }
-  const fallidosPrevios = s.filas.filter((fila) => !fila.validacion.valido).length;
-  // Gestión Global conserva una página del impacto y completa el detalle bajo
-  // demanda; no se puede concluir que todas las filas sean inválidas usando
-  // únicamente esa página parcial.
-  if (fallidosPrevios === s.filas.length && s.proceso !== "FACTOR_PRECIO") {
-    return { ok: false, error: "La solicitud no se puede procesar porque todas sus filas son inválidas." };
-  }
-  if (s.proceso === "FACTOR_PRECIO" && !esModoDemo() && esModoSoloPortal()) {
+
+  if (cabecera.proceso === "FACTOR_PRECIO" && !esModoDemo() && esModoSoloPortal()) {
+    console.info("[APROBAR] Bloqueado: FACTOR_PRECIO en modo solo portal");
     return errorSoloPortal();
   }
 
-  // Bloqueo por GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (MAYOREOD_MASIVO).
-  // Se lee el valor VIGENTE en BD al aprobar (el flag pudo activarse después del envío).
-  let validarMargenMinVigente = false;
-  if (s.proceso === "MAYOREOD_MASIVO") {
-    try {
-      validarMargenMinVigente = await leerValidarPrecioBajoMargenMin(input.compania);
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : "Error no identificado.";
-      return { ok: false, error: `No fue posible verificar la configuración de margen mínimo de la lista ${LISTA_PRECIO_BASE}: ${detalle}` };
-    }
-  }
-  if (s.proceso === "MAYOREOD_MASIVO" && validarMargenMinVigente) {
-    const filasConAlertaMargen = s.filas.filter((fila) => fila.validacion.estadoRedondeo === "ALERTA_MARGEN").length;
-    if (filasConAlertaMargen > 0) {
-      return {
-        ok: false,
-        error: `No se puede aprobar: la lista MAYOREOD tiene activada la validación de precio bajo margen mínimo y la solicitud contiene ${filasConAlertaMargen} fila(s) con precio por debajo del margen mínimo. El solicitante debe corregir los precios y reenviar la solicitud.`,
-      };
-    }
+  // Se re-lee el flag VIGENTE al aprobar (pudo activarse después del envío).
+  const lista = cabecera.lista.trim() || String(cabecera.parametros.nivelPrecio ?? cabecera.parametros.listaBase ?? cabecera.parametros.nivel ?? "").trim();
+  console.info("[APROBAR] Validando margen mínimo", { lista, proceso: cabecera.proceso });
+  
+  // Para validar margen, solo necesitamos saber si hay hallazgos (ya lo tenemos del conteo)
+  // La validación de margen por fila se hace en el procesamiento por lotes
+  const margen = await validarMargenMinCabecera("aprobar", cabecera.compania, cabecera.proceso, lista, cabecera.parametros, totalHallazgos);
+  if (!margen.ok) {
+    console.info("[APROBAR] Bloqueado por validación de margen", { error: margen.error });
+    return margen;
   }
 
+  console.info("[APROBAR] Tomando solicitud para procesamiento");
   const idProcesoSP = nuevoIdProcesoSP();
-  await repo.update(s.compania, input.solicitudId, {
+  // Toma la solicitud de forma atómica: si dos aprobadores aprueban a la vez, solo uno ejecuta.
+  const t0 = Date.now();
+  console.info("[APROBAR] Ejecutando repo.update para cambiar estado a EN_PROCESO...", { timestamp: new Date().toISOString() });
+  const tomada = await repo.update(cabecera.compania, input.solicitudId, {
     estado: "EN_PROCESO",
     idProcesoSP,
     autorizadoPor: input.aprobadorNombre,
     autorizadoPorEmail: input.aprobadorEmail,
     ultimaActualizacion: new Date().toLocaleString("es-CR", { hour12: false }),
-  });
-  await auditRepository.record({ event: "EJECUCION_ENCOLADA", user: input.aprobadorNombre, role: input.aprobadorRol, company: s.compania, requestId: s.id, processId: idProcesoSP });
+  }, [input.reintento ? "ERROR_EJECUCION" : "PENDIENTE"]);
+  console.info("[APROBAR] repo.update completado", { tomada, duracionMs: Date.now() - t0 });
+  if (!tomada) return ESTADO_CAMBIADO;
+  
+  console.info("[APROBAR] Registrando auditoría...");
+  await auditRepository.record({ event: "EJECUCION_ENCOLADA", user: input.aprobadorNombre, role: input.aprobadorRol, company: cabecera.compania, requestId: cabecera.id, processId: idProcesoSP });
+  console.info("[APROBAR] Auditoría registrada. Lanzando proceso en background...");
 
-  // Este flujo no ejecuta SP/UDF ni instrucciones de modificación en Softland.
-  // Solo utiliza datos que ya fueron consultados mediante SELECT para generar
-  // un resultado simulado, visible y trazable en la aplicación.
-  if (s.proceso === "FACTOR_PRECIO" && !esModoDemo()) {
-    try {
-      const lista = s.lista.trim() || String(s.parametros.nivelPrecio ?? s.parametros.listaBase ?? s.parametros.nivel ?? "").trim();
-      const factorPorcentajeOriginal = s.parametros.factor ?? "";
-      const porcentaje = Number(factorPorcentajeOriginal);
-      const factor = 1 + porcentaje / 100;
-      console.info("[GESTION_GLOBAL] Parámetros recibidos para actualización", {
-        solicitudId: s.id,
-        compania: s.compania,
-        lista,
-        factorPorcentajeOriginal,
-        porcentajeConvertido: porcentaje,
-        factorMultiplicador: factor,
-        variacionPorcentaje: porcentaje,
-      });
-      await pricingRepository.updateGlobalManagement(s.compania, lista, factor, porcentaje, input.aprobadorNombre);
-      await repo.markDetailsApplied(s.compania, s.id);
-      // En Gestión Global la operación real es un único UPDATE de la cabecera
-      // de la lista. Las filas del detalle son referenciales y no determinan
-      // el estado final del procesamiento.
-      await finalizarProcesamiento(s.compania, s.id, [...s.filas], 0, input.aprobadorNombre);
-      return { ok: true, idProcesoSP };
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : "No fue posible actualizar Gestión Global.";
-      await repo.update(s.compania, s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
-      await repo.setDetailError(s.compania, s.id, detalle).catch((detalleError) => {
-        console.error("[GESTION_GLOBAL] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
-      });
-      return { ok: false, error: detalle, idProcesoSP };
-    }
-  }
-
-  if (s.proceso === "DESCUENTO_LISTA_PRECIO" && !esModoDemo()) {
-    try {
-      const resultadoFactores = await pricingRepository.upsertArticleListFactors(
-        s.compania,
-        s.id,
-        s.filas,
-        input.aprobadorNombre,
-      );
-      await repo.markDetailsApplied(s.compania, s.id);
-      const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
-      console.info("[DESCUENTO_ARTICULO_LISTA] Factores persistidos", {
-        solicitudId: s.id,
-        insertados: resultadoFactores.insertados,
-        actualizados: resultadoFactores.actualizados,
-        omitidos: resultadoFactores.omitidos,
-      });
-      await finalizarProcesamiento(s.compania, s.id, [...s.filas], fallidos, input.aprobadorNombre);
-      return { ok: true, idProcesoSP };
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : "No fue posible guardar los factores por artículo y lista.";
-      await repo.update(s.compania, s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
-      await repo.setDetailError(s.compania, s.id, detalle).catch((detalleError) => {
-        console.error("[DESCUENTO_ARTICULO_LISTA] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
-      });
-      return { ok: false, error: detalle, idProcesoSP };
-    }
-  }
-
-  if (s.proceso === "MAYOREOD_MASIVO" && !esModoDemo()) {
-    try {
-      const resultadoPrecios = await pricingRepository.updateBasePrices(
-        s.compania,
-        s.id,
-        s.filas,
-        input.aprobadorNombre,
-      );
-      const fallidos = s.filas.filter((fila) => !fila.validacion.valido && fila.validacion.estadoRedondeo !== "ALERTA_MARGEN").length;
-      console.info("[PRECIO_BASE] Precios de MAYOREOD persistidos", {
-        solicitudId: s.id,
-        actualizados: resultadoPrecios.actualizados,
-      });
-      await finalizarProcesamiento(s.compania, s.id, [...s.filas], fallidos, input.aprobadorNombre);
-      return { ok: true, idProcesoSP };
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : "No fue posible actualizar los precios base.";
-      await repo.update(s.compania, s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
-      await repo.setDetailError(s.compania, s.id, detalle).catch((detalleError) => {
-        console.error("[PRECIO_BASE] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
-      });
-      return { ok: false, error: detalle, idProcesoSP };
-    }
-  }
-
-  if (s.proceso === "MARGEN_UTILIDAD_MASIVO" && !esModoDemo()) {
-    try {
-      const lista = "MAYOREOD";
-      const filasValidas = s.filas.filter((fila): fila is FilaMargen => esFilaMargen(fila) && fila.validacion.valido);
-      if (filasValidas.length === 0) {
-        throw new Error("No existen filas válidas para actualizar el margen de utilidad.");
-      }
-
-      for (const fila of filasValidas) {
-        const porcentaje = Number(fila.porcentajeReduccion);
-        const factorNormalizado = Number(fila.factorReduccion ?? (porcentaje / 100));
-        if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje >= 100 || !Number.isFinite(factorNormalizado) || factorNormalizado < 0 || factorNormalizado >= 1) {
-          throw new Error(`El porcentaje de reducción del artículo '${fila.codigo}' no es válido.`);
-        }
-        console.info("[MARGEN_UTILIDAD] Factor U_FACTOR_REDUCCION a persistir", {
-          solicitudId: s.id,
-          articulo: fila.codigo,
-          porcentajeSolicitado: porcentaje,
-          factorNormalizado,
-        });
-        await pricingRepository.upsertUdf(
-          s.compania,
-          fila.codigo,
-          `Solicitud ${s.id}`,
-          factorNormalizado,
-          input.aprobadorNombre,
-        );
-      }
-
-      await repo.markDetailsApplied(s.compania, s.id);
-      const fallidos = s.filas.filter((fila) => !fila.validacion.valido).length;
-      console.info("[MARGEN_UTILIDAD] Margen mínimo persistido", {
-        solicitudId: s.id,
-        compania: s.compania,
-        lista,
-        actualizados: filasValidas.length,
-      });
-      await finalizarProcesamiento(s.compania, s.id, [...s.filas], fallidos, input.aprobadorNombre);
-      return { ok: true, idProcesoSP };
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : "No fue posible actualizar el margen de utilidad.";
-      await repo.update(s.compania, s.id, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
-      await repo.setDetailError(s.compania, s.id, detalle).catch((detalleError) => {
-        console.error("[MARGEN_UTILIDAD] No fue posible guardar el error en SOLICITUD_DETALLE", detalleError);
-      });
-      return { ok: false, error: detalle, idProcesoSP };
-    }
-  }
-
-  void simularProcesamientoDemo(s.compania, s.id);
-
+  // Ejecutar el proceso según el tipo - ahora en background con fire-and-forget
+  void ejecutarProcesoEnBackground(cabecera, input, idProcesoSP, totalFilas);
+  
+  console.info("[APROBAR] Retornando respuesta OK al cliente");
   return { ok: true, idProcesoSP };
+}
+
+/** Valida el margen mínimo usando solo el conteo de hallazgos (sin cargar filas). */
+async function validarMargenMinCabecera(
+  accion: "aprobar" | "enviar",
+  compania: string,
+  proceso: ProcesoKey,
+  lista: string,
+  parametros: Solicitud["parametros"],
+  totalHallazgos: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  // Gestión Global y Precio Base: validar flag de la lista
+  if (proceso === "FACTOR_PRECIO" || proceso === "MAYOREOD_MASIVO") {
+    const listaConfig = await pricingRepository.getGlobalManagementConfig(compania, lista);
+    if (listaConfig?.validarPrecioBajoMargenMin && totalHallazgos > 0) {
+      return {
+        ok: false,
+        error: `No se puede ${accion} porque la lista ${lista} tiene activada la validación de precio bajo margen mínimo y hay ${totalHallazgos} artículo(s) con precio por debajo del margen.`,
+      };
+    }
+  }
+  // Descuento y Margen: verificar si hay hallazgos con flag activo por lista
+  if (proceso === "DESCUENTO_LISTA_PRECIO" || proceso === "MARGEN_UTILIDAD_MASIVO") {
+    if (totalHallazgos > 0) {
+      // Verificar si alguna lista tiene el flag activo - se hace en el procesamiento por lotes
+      // Por ahora, permitimos continuar y la validación detallada se hace al procesar
+    }
+  }
+  return { ok: true };
+}
+
+/** Ejecuta el proceso en background sin bloquear la respuesta HTTP. */
+async function ejecutarProcesoEnBackground(
+  cabecera: Solicitud,
+  input: AprobarInput,
+  idProcesoSP: string,
+  totalFilas: number,
+): Promise<void> {
+  const { proceso, compania, id: solicitudId } = cabecera;
+  const lista = cabecera.lista.trim() || String(cabecera.parametros.nivelPrecio ?? cabecera.parametros.listaBase ?? cabecera.parametros.nivel ?? "").trim();
+
+  console.info("[BACKGROUND] Iniciando ejecución en background", { solicitudId, proceso, totalFilas });
+
+  try {
+    // Gestión Global: no necesita filas del detalle, solo actualiza la cabecera de la lista
+    if (proceso === "FACTOR_PRECIO" && !esModoDemo()) {
+      const factorPorcentajeOriginal = cabecera.parametros.factor ?? "";
+      const variacion = calcularVariacion(cabecera.parametros.tipoVariacion, factorPorcentajeOriginal);
+      const tipoVariacion = cabecera.parametros.tipoVariacion;
+      if (!variacion.valido || variacion.factor == null || variacion.magnitud == null || !tipoVariacion) {
+        throw new Error(variacion.causa ?? "La variación de Gestión Global no es válida.");
+      }
+      console.info("[GESTION_GLOBAL] Ejecutando actualización", { solicitudId, lista, factor: variacion.factor });
+      await pricingRepository.updateGlobalManagement(compania, lista, variacion.factor, tipoVariacion, variacion.magnitud, input.aprobadorNombre);
+      await repo.markDetailsApplied(compania, solicitudId);
+      await finalizarProcesamientoSinFilas(compania, solicitudId, totalFilas, 0, input.aprobadorNombre);
+      return;
+    }
+
+    // Descuento por Artículo-Lista: procesar en lotes
+    if (proceso === "DESCUENTO_LISTA_PRECIO" && !esModoDemo()) {
+      console.info("[DESCUENTO_ARTICULO_LISTA] Iniciando procesamiento por lotes", { solicitudId, totalFilas });
+      const resultado = await pricingRepository.upsertArticleListFactorsBatched(compania, solicitudId, input.aprobadorNombre);
+      await repo.markDetailsApplied(compania, solicitudId);
+      console.info("[DESCUENTO_ARTICULO_LISTA] Procesamiento completado", { ...resultado });
+      await finalizarProcesamientoSinFilas(compania, solicitudId, resultado.total, resultado.fallidos, input.aprobadorNombre);
+      return;
+    }
+
+    // Precio Base (MAYOREOD): procesar en lotes
+    if (proceso === "MAYOREOD_MASIVO" && !esModoDemo()) {
+      console.info("[PRECIO_BASE] Iniciando procesamiento por lotes", { solicitudId, totalFilas });
+      const resultado = await pricingRepository.updateBasePricesBatched(compania, solicitudId, input.aprobadorNombre);
+      console.info("[PRECIO_BASE] Procesamiento completado", { ...resultado });
+      await finalizarProcesamientoSinFilas(compania, solicitudId, resultado.total, resultado.fallidos, input.aprobadorNombre);
+      return;
+    }
+
+    // Margen de Utilidad: procesar en lotes
+    if (proceso === "MARGEN_UTILIDAD_MASIVO" && !esModoDemo()) {
+      console.info("[MARGEN_UTILIDAD] Iniciando procesamiento por lotes", { solicitudId, totalFilas });
+      const resultado = await pricingRepository.upsertUdfsBatched(compania, solicitudId, input.aprobadorNombre);
+      await repo.markDetailsApplied(compania, solicitudId);
+      console.info("[MARGEN_UTILIDAD] Procesamiento completado", { ...resultado });
+      await finalizarProcesamientoSinFilas(compania, solicitudId, resultado.total, resultado.fallidos, input.aprobadorNombre);
+      return;
+    }
+
+    // Fallback: modo demo o proceso no reconocido
+    console.info("[APROBAR] Ejecutando simulación demo", { solicitudId, proceso });
+    await simularProcesamientoDemo(compania, solicitudId);
+  } catch (error) {
+    const detalle = error instanceof Error ? error.message : "Error durante el procesamiento.";
+    console.error("[APROBAR] Error en procesamiento", { solicitudId, proceso, error: detalle });
+    await repo.update(compania, solicitudId, { estado: "ERROR_EJECUCION", motivoRechazo: detalle });
+    await repo.setDetailError(compania, solicitudId, detalle).catch((e) => {
+      console.error("[APROBAR] No fue posible guardar el error en SOLICITUD_DETALLE", e);
+    });
+  }
+}
+
+/** Finaliza el procesamiento usando conteos en lugar de filas en memoria. */
+async function finalizarProcesamientoSinFilas(
+  compania: string,
+  solicitudId: string,
+  total: number,
+  fallidos: number,
+  aprobador: string,
+): Promise<void> {
+  if (esModoSoloLectura()) return;
+  const s = await repo.findHeader(compania, solicitudId);
+  if (!s) return;
+  const exitosos = total - fallidos;
+  const estadoFinal =
+    fallidos === 0 ? "PROCESADO" : fallidos === total ? "ERROR_EJECUCION" : "PROCESADO_CON_ERRORES";
+  await repo.update(compania, solicitudId, {
+    estado: estadoFinal,
+    resultado: {
+      totalLote: total,
+      exitosos,
+      fallidos,
+      filas: [], // No guardamos filas en memoria para solicitudes grandes
+      estadoFinal,
+      logS3Key: "erp-precios-logs/" + nombreArchivoS3("log-auditoria-" + solicitudId, "csv"),
+      aprobadoPor: aprobador,
+      aprobadoPorEmail: s.autorizadoPorEmail ?? "",
+    },
+    ultimaActualizacion: new Date().toLocaleString("es-CR", { hour12: false }),
+  });
+  await auditRepository.record({ event: "EJECUCION_FINALIZADA", user: aprobador, role: "APROBADOR", company: compania, requestId: solicitudId, processId: s.idProcesoSP });
 }
 
 /** Worker DEMO: retardo perceptible y cómputo de resultado sin tocar BD. */
@@ -529,13 +544,14 @@ async function simularProcesamientoDemo(compania: string, solicitudId: string): 
   if (!s) return;
   await new Promise((r) => setTimeout(r, 6000));
   const filas = [...s.filas];
-  const fallidos = filas.filter((f) => !f.validacion.valido).length;
+  const fallidos = filas.filter((f) => !esFilaProcesable(f)).length;
   await finalizarProcesamiento(compania, solicitudId, filas, fallidos, s.autorizadoPor ?? "Aprobador");
 }
 
 async function finalizarProcesamiento(compania: string, solicitudId: string, filas: FilaResultado[], fallidos: number, aprobador: string): Promise<void> {
   if (esModoSoloLectura()) return;
-  const s = await repo.find(compania, solicitudId);
+  // Usar findHeader - solo necesitamos la cabecera para actualizar el estado
+  const s = await repo.findHeader(compania, solicitudId);
   if (!s) return;
   const total = filas.length;
   const exitosos = total - fallidos;
@@ -559,80 +575,31 @@ async function finalizarProcesamiento(compania: string, solicitudId: string, fil
 }
 
 // ---------------------------------------------------------------------------
-// BORRADOR — guardar solicitud sin enviar a aprobación (DT-02)
+// ENVIAR BORRADOR desde "Mis solicitudes" (sin formulario): se re-prepara con lo
+// capturado que guardó el borrador; precios, costos y flags se validan al enviar.
 // ---------------------------------------------------------------------------
-async function guardarBorrador(input: EnviarSolicitudInput): Promise<{ ok: boolean; error?: string; solicitud?: Solicitud }> {
-  if (esModoSoloLectura()) return errorSoloLectura();
-  // La sesión (Postgres) ya validó al usuario y su compañía; PORTAL_PRECIOS.USUARIO está obsoleta.
-  const identidadPortal = { nombre: input.usuarioNombre, email: input.usuarioEmail, rol: input.usuarioRol };
-  const idpOperador = input.usuarioEmail.trim().toLowerCase();
-  const codigo = await repo.nextCode(input.compania);
-  const solicitud: Solicitud = {
-    id: codigo,
-    proceso: input.proceso,
-    modalidad: input.modalidad,
-    compania: input.compania,
-    solicitanteNombre: identidadPortal.nombre,
-    solicitanteEmail: identidadPortal.email,
-    idpOperador,
-    parametros: input.parametros,
-    filas: input.filas ?? [],
-    archivoNombre: input.archivoNombre ?? null,
-    archivoS3Key: input.archivoS3Key ?? null,
-    fechaEnvio: new Date().toLocaleString("es-CR", { hour12: false }),
-    fechaCreacion: new Date().toISOString(),
-    estado: "BORRADOR",
-    motivoRechazo: null,
-    idProcesoSP: null,
-    lista: input.parametros.nivelPrecio ?? input.parametros.listaBase ?? input.parametros.nivel ?? "",
-  };
-  try {
-    await repo.create(solicitud);
-  } catch (error) {
-    const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de base de datos.";
-    return { ok: false, error: `No fue posible guardar el borrador: ${detalle}` };
-  }
-  try {
-    await auditRepository.record({ event: "SOLICITUD_GUARDADA_BORRADOR", user: identidadPortal.nombre, role: identidadPortal.rol, company: input.compania, requestId: solicitud.id, userEmail: identidadPortal.email });
-  } catch (error) {
-    const detalle = error instanceof Error ? error.message.replace(/\s+/g, " ").trim() : "Error de auditoría.";
-    return { ok: false, error: `Borrador guardado pero no se pudo registrar el evento: ${detalle}` };
-  }
-  return { ok: true, solicitud };
-}
-
-// ---------------------------------------------------------------------------
-// ENVIAR BORRADOR — transicionar un borrador existente a PENDIENTE (DT-02)
-// ---------------------------------------------------------------------------
-async function enviarBorrador(
-  compania: string,
-  solicitudId: string,
-  usuarioEmail: string,
-  usuarioNombre: string,
-  usuarioRol: Rol,
-): Promise<{ ok: boolean; error?: string }> {
-  if (esModoSoloLectura()) return errorSoloLectura();
+async function enviarBorradorGuardado(identidad: Identidad, compania: string, solicitudId: string) {
   const s = await repo.find(compania, solicitudId);
-  if (!s) return { ok: false, error: "Solicitud no encontrada." };
-  if (s.estado !== "BORRADOR") return { ok: false, error: "Solo se puede enviar una solicitud en estado BORRADOR." };
-  if (s.solicitanteEmail !== usuarioEmail) return { ok: false, error: "Solo el solicitante original puede enviar este borrador." };
-  // Mismo bloqueo que en el envío directo: el flag se re-lee al momento de enviar el borrador.
-  if (s.proceso === "MAYOREOD_MASIVO") {
-    let validarMargenMin: boolean;
-    try {
-      validarMargenMin = await leerValidarPrecioBajoMargenMin(compania);
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : "Error no identificado.";
-      return { ok: false, error: `No fue posible verificar la configuración de margen mínimo de la lista ${LISTA_PRECIO_BASE}: ${detalle}` };
-    }
-    const filasConHallazgo = s.filas.filter((fila) => fila.validacion.estadoRedondeo === "ALERTA_MARGEN").length;
-    if (validarMargenMin && filasConHallazgo > 0) {
-      return { ok: false, error: mensajeBloqueoMargenMin(filasConHallazgo) };
-    }
+  if (!s || s.estado !== "BORRADOR" || s.solicitanteEmail !== identidad.email) {
+    return { ok: false as const, error: "El borrador no existe, ya fue enviado o no le pertenece." };
   }
-  await repo.update(compania, solicitudId, { estado: "PENDIENTE" });
-  await auditRepository.record({ event: "BORRADOR_ENVIADO", user: usuarioNombre, role: usuarioRol, company: s.compania, requestId: solicitudId, userEmail: usuarioEmail });
-  return { ok: true };
+  const filas = FilaEntradaSchema.array().safeParse(s.filas);
+  const parametros = SolicitudSchema.shape.parametros.safeParse(s.parametros);
+  if (!filas.success || !parametros.success) {
+    return { ok: false as const, error: "El borrador no tiene datos válidos. Ábralo, vuelva a cargar los datos y envíelo." };
+  }
+  return persistirSolicitud(
+    aEnviarInput(identidad, compania, {
+      proceso: s.proceso,
+      modalidad: s.modalidad,
+      parametros: parametros.data,
+      filas: filas.data,
+      archivoNombre: s.archivoNombre,
+      archivoS3Key: s.archivoS3Key,
+      borradorId: s.id,
+    }),
+    "PENDIENTE",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -647,7 +614,8 @@ async function solicitarCancelacion(
   usuarioRol: Rol,
 ): Promise<{ ok: boolean; error?: string }> {
   if (esModoSoloLectura()) return errorSoloLectura();
-  const s = await repo.find(compania, solicitudId);
+  // Usar findHeader - solo necesitamos la cabecera para validar estado y email
+  const s = await repo.findHeader(compania, solicitudId);
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
   if (s.estado !== "PENDIENTE") {
     return { ok: false, error: "Solo se puede solicitar la cancelación de una solicitud PENDIENTE." };
@@ -658,10 +626,11 @@ async function solicitarCancelacion(
   if (!motivo || motivo.trim().length === 0) {
     return { ok: false, error: "El motivo de cancelación es obligatorio." };
   }
-  await repo.update(compania, solicitudId, {
+  const actualizada = await repo.update(compania, solicitudId, {
     estado: "CANCELACION_SOLICITADA",
     motivoRechazo: motivo.trim(),
-  });
+  }, ["PENDIENTE"]);
+  if (!actualizada) return ESTADO_CAMBIADO;
   await auditRepository.record({ event: "CANCELACION_SOLICITADA", user: usuarioNombre, role: usuarioRol, company: s.compania, requestId: solicitudId, userEmail: usuarioEmail });
   return { ok: true };
 }
@@ -675,7 +644,8 @@ async function decidirCancelacion(
   aprobadorRol: Rol,
 ): Promise<{ ok: boolean; error?: string }> {
   if (esModoSoloLectura()) return errorSoloLectura();
-  const s = await repo.find(compania, solicitudId);
+  // Usar findHeader - solo necesitamos la cabecera para validar estado y rol
+  const s = await repo.findHeader(compania, solicitudId);
   if (!s) return { ok: false, error: "Solicitud no encontrada." };
   if (s.estado !== "CANCELACION_SOLICITADA") {
     return { ok: false, error: "La solicitud no tiene una cancelación pendiente de decisión." };
@@ -685,7 +655,7 @@ async function decidirCancelacion(
   }
   const nuevoEstado = aprobada ? "CANCELADO" : "PENDIENTE";
   const evento = aprobada ? "CANCELACION_CONFIRMADA" : "CANCELACION_DENEGADA";
-  await repo.update(compania, solicitudId, { estado: nuevoEstado });
+  if (!(await repo.update(compania, solicitudId, { estado: nuevoEstado }, ["CANCELACION_SOLICITADA"]))) return ESTADO_CAMBIADO;
   await auditRepository.record({ event: evento, user: aprobadorNombre, role: aprobadorRol, company: s.compania, requestId: solicitudId, userEmail: aprobadorEmail });
   return { ok: true };
 }
@@ -704,8 +674,12 @@ const AUTOAPROBACION = { ok: false as const, error: "No puede decidir sobre su p
  * rol APROBADOR y (salvo en cancelaciones) no puede ser el solicitante.
  */
 async function validarDecision(identidad: Identidad, solicitudId: string, permitirPropia = false) {
+  console.info("[validarDecision] Iniciando", { solicitudId, compania: identidad.compania });
   if (!identidad.compania) return { error: SIN_COMPANIA };
-  const solicitud = await repo.find(identidad.compania, solicitudId);
+  // Para validar la decisión solo necesitamos la cabecera, no las filas
+  console.info("[validarDecision] Buscando cabecera de solicitud (sin filas)...");
+  const solicitud = await repo.findHeader(identidad.compania, solicitudId);
+  console.info("[validarDecision] Cabecera encontrada", { encontrada: !!solicitud });
   if (!solicitud || !estaEnAmbito(identidad.compania, solicitud.compania)) return { error: NO_ENCONTRADA };
   if (identidad.rol !== "APROBADOR") return { error: SOLO_APROBADOR };
   if (!permitirPropia && solicitud.solicitanteEmail === identidad.email) return { error: AUTOAPROBACION };
@@ -724,10 +698,11 @@ function aEnviarInput(identidad: Identidad, compania: string, input: SolicitudIn
     usuarioNombre: identidad.nombre,
     usuarioRol: identidad.rol,
     compania,
-    parametros: input.parametros as ParametrosSolicitud,
-    filas: input.filas as unknown as FilaResultado[],
+    parametros: input.parametros,
+    filas: input.filas,
     archivoNombre: input.archivoNombre ?? null,
     archivoS3Key: input.archivoS3Key ?? null,
+    borradorId: input.borradorId ?? null,
   };
 }
 
@@ -807,6 +782,40 @@ export const solicitudesService = {
     return { ok: true as const, solicitud };
   },
 
+  /** Cabecera de una solicitud SIN filas de detalle (para carga inicial rápida del modal). */
+  async obtenerSolicitudCabecera(identidad: Identidad, solicitudId: string) {
+    if (!identidad.compania) return SIN_COMPANIA;
+    const solicitud = await repo.findHeader(identidad.compania, solicitudId);
+    if (!solicitud) return { ok: false as const, error: "Solicitud no encontrada." };
+    return { ok: true as const, solicitud };
+  },
+
+  /** Detalle paginado de una solicitud (filas de SOLICITUD_DETALLE con offset/limit). */
+  async obtenerSolicitudDetallePaginado(
+    identidad: Identidad,
+    solicitudId: string,
+    offset: number,
+    limit: number,
+  ) {
+    if (!identidad.compania) return SIN_COMPANIA;
+    const pagina = await repo.findDetailPaged(identidad.compania, solicitudId, offset, limit);
+    if (!pagina) return { ok: false as const, error: "Solicitud no encontrada." };
+    return { ok: true as const, ...pagina };
+  },
+
+  /** Hallazgos paginados de una solicitud (solo filas con advertencia de margen/costo). */
+  async obtenerSolicitudHallazgosPaginado(
+    identidad: Identidad,
+    solicitudId: string,
+    offset: number,
+    limit: number,
+  ) {
+    if (!identidad.compania) return SIN_COMPANIA;
+    const pagina = await repo.findHallazgosPaged(identidad.compania, solicitudId, offset, limit);
+    if (!pagina) return { ok: false as const, error: "Solicitud no encontrada." };
+    return { ok: true as const, ...pagina };
+  },
+
   /** Deja traza de que el aprobador abrió una solicitud PENDIENTE ajena. */
   async registrarRevision(identidad: Identidad, solicitudId: string) {
     const { solicitud, error } = await validarDecision(identidad, solicitudId);
@@ -815,7 +824,9 @@ export const solicitudesService = {
   },
 
   async aprobar(identidad: Identidad, solicitudId: string) {
+    console.info("[solicitudesService.aprobar] Iniciando", { solicitudId, email: identidad.email });
     const { solicitud, error } = await validarDecision(identidad, solicitudId);
+    console.info("[solicitudesService.aprobar] validarDecision completado", { tieneError: !!error, tieneSolicitud: !!solicitud });
     if (error) return error;
     return aprobarSolicitud({
       compania: solicitud.compania,
@@ -872,21 +883,24 @@ export const solicitudesService = {
     };
   },
 
+  /** Envía una solicitud nueva o, con `borradorId`, el borrador retomado con lo editado. */
   async enviar(identidad: Identidad, input: SolicitudInput) {
+    if (input.borradorId && !BORRADORES_HABILITADOS) return BORRADORES_DESHABILITADOS;
     if (!identidad.compania) return SIN_COMPANIA;
-    return enviarSolicitud(aEnviarInput(identidad, identidad.compania, input));
+    return persistirSolicitud(aEnviarInput(identidad, identidad.compania, input), "PENDIENTE");
   },
 
+  /** Crea un borrador o, con `borradorId`, actualiza el existente. */
   async guardarBorrador(identidad: Identidad, input: SolicitudInput) {
     if (!BORRADORES_HABILITADOS) return BORRADORES_DESHABILITADOS;
     if (!identidad.compania) return SIN_COMPANIA;
-    return guardarBorrador(aEnviarInput(identidad, identidad.compania, input));
+    return persistirSolicitud(aEnviarInput(identidad, identidad.compania, input), "BORRADOR");
   },
 
   async enviarBorrador(identidad: Identidad, solicitudId: string) {
     if (!BORRADORES_HABILITADOS) return BORRADORES_DESHABILITADOS;
     if (!identidad.compania) return SIN_COMPANIA;
-    return enviarBorrador(identidad.compania, solicitudId, identidad.email, identidad.nombre, identidad.rol);
+    return enviarBorradorGuardado(identidad, identidad.compania, solicitudId);
   },
 
   async solicitarCancelacion(identidad: Identidad, solicitudId: string, input: CancelacionInput) {

@@ -9,20 +9,44 @@ export const PROCESO_KEYS = [
 
 export const ProcesoSchema = z.enum(PROCESO_KEYS);
 
+const TipoVariacionSchema = z.enum(["AUMENTO", "DISMINUCION"]);
+
+/**
+ * Solo los datos capturados de cada fila. El resto (validacion, precios,
+ * descripcion) se descarta: el servidor recalcula la fila con el motor.
+ */
+export const FilaEntradaSchema = z.object({
+  fila: z.number().int().optional(),
+  codigo: z.string(),
+  listaCodigo: z.string().nullish(),
+  tipoVariacion: TipoVariacionSchema.optional(),
+  variacionPorcentaje: z.union([z.string(), z.number()]).nullish(),
+  valorPropuestoRaw: z.string().nullish(),
+  porcentajeReduccion: z.union([z.string(), z.number()]).nullish(),
+});
+
 /**
  * Cuerpo para enviar o guardar como borrador. La identidad y la compañia NO
  * viajan en el body: el Route Handler las toma de la sesion.
+ * `borradorId` indica que se envía/actualiza un borrador existente.
  */
 export const SolicitudSchema = z.object({
   proceso: ProcesoSchema,
   modalidad: z.enum(["manual", "excel"]),
-  parametros: z.record(z.string(), z.unknown()),
-  filas: z.array(z.record(z.string(), z.unknown())),
+  parametros: z.object({
+    nivel: z.string().nullish(),
+    nivelPrecio: z.string().optional(),
+    listaBase: z.string().optional(),
+    factor: z.string().nullish(),
+    multiplicador: z.number().nullish(),
+    tipoVariacion: TipoVariacionSchema.optional(),
+    variacionPorcentaje: z.union([z.string(), z.number()]).nullish(),
+  }),
+  filas: z.array(FilaEntradaSchema),
   archivoNombre: z.string().nullish(),
   archivoS3Key: z.string().nullish(),
+  borradorId: z.string().trim().min(1).nullish(),
 });
-
-const TipoVariacionSchema = z.enum(["AUMENTO", "DISMINUCION"]);
 
 /** Simulacion manual (previsualizacion); la compañia sale de la sesion. */
 export const SimularManualSchema = z.object({
@@ -56,6 +80,7 @@ export const RechazoSchema = z.object({
 
 export const DecisionCancelacionSchema = z.object({ aprobada: z.boolean() });
 
+export type FilaEntrada = z.infer<typeof FilaEntradaSchema>;
 export type SolicitudInput = z.infer<typeof SolicitudSchema>;
 export type SimularManualInput = z.infer<typeof SimularManualSchema>;
 export type CancelacionInput = z.infer<typeof CancelacionSchema>;

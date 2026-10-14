@@ -5,7 +5,7 @@ import { esHallazgoDeNegocio, ResumenValidaciones } from "@/features/solicitudes
 import { TIPOS_VARIACION } from "@/features/solicitudes/utils/catalog";
 import { esFilaMargen, type FilaResultado } from "@/shared/types/domain-types";
 import { fmtFactor, fmtPct, fmtPorcentajeCapturado, fmtPorcentajeMultiplicador } from "@/shared/utils/format";
-import ResponsiveDataTable, { type TableColumn } from "@/shared/components/ui/ResponsiveDataTable";
+import ResponsiveDataTable, { type TableColumn, type TableLoadParams } from "@/shared/components/ui/ResponsiveDataTable";
 import { Monto } from "@/shared/components/layout/PortalProviders";
 
 const PAGE_SIZE = 200;
@@ -55,14 +55,20 @@ const columns: readonly TableColumn<FilaResultado>[] = [
     value: (fila) => <span className="mono">{fmtFactor(esFilaMargen(fila) ? fila.validacion.multiplicador : fila.multiplicador ?? fila.factorPropuesto)}</span>,
   },
   {
-    key: "precioActual",
-    header: "Precio Actual",
+    key: "precioBase",
+    header: "Precio Base",
     align: "right",
     value: (fila) => <span className="mono"><Monto n={fila.validacion.precioActual} /></span>,
   },
   {
+    key: "precioActual",
+    header: "Precio Actual",
+    align: "right",
+    value: (fila) => <span className="mono"><Monto n={esFilaMargen(fila) ? fila.validacion.precioActual : fila.validacion.precioVigente ?? fila.validacion.precioActual} /></span>,
+  },
+  {
     key: "precioCalculado",
-    header: "Precio Calc.",
+    header: "Precio Calculado",
     align: "right",
     value: (fila) => <span className="mono"><Monto n={fila.validacion.precioPropuesto} /></span>,
   },
@@ -80,18 +86,50 @@ const columns: readonly TableColumn<FilaResultado>[] = [
   },
 ];
 
+interface TablaResultadoModalProps {
+  filas: FilaResultado[];
+  modo?: "general" | "descuentoArticuloLista";
+  /** Indica si hay más filas por cargar desde el servidor. */
+  hasMore?: boolean;
+  /** Offset de la siguiente página (paginación server-side). */
+  nextOffset?: number | null;
+  /** Indica si está cargando más filas. */
+  loadingMore?: boolean;
+  /** Callback para cargar más filas (paginación server-side). */
+  onLoadMore?: (params?: TableLoadParams) => void | Promise<void>;
+  // Props de hallazgos paginados
+  hallazgos?: FilaResultado[];
+  hallazgosTotal?: number;
+  hallazgosHasMore?: boolean;
+  hallazgosNextOffset?: number | null;
+  hallazgosLoadingMore?: boolean;
+  hallazgosCargando?: boolean;
+  onLoadMoreHallazgos?: (params: TableLoadParams) => void | Promise<void>;
+}
+
 export default function TablaResultadoModal({
   filas,
   modo = "general",
-}: {
-  filas: FilaResultado[];
-  modo?: "general" | "descuentoArticuloLista";
-}) {
+  hasMore = false,
+  nextOffset = null,
+  loadingMore = false,
+  onLoadMore,
+  // Props de hallazgos paginados
+  hallazgos: hallazgosExternos,
+  hallazgosTotal,
+  hallazgosHasMore = false,
+  hallazgosNextOffset = null,
+  hallazgosLoadingMore = false,
+  hallazgosCargando = false,
+  onLoadMoreHallazgos,
+}: TablaResultadoModalProps) {
   const [pagina, setPagina] = useState(1);
   const totalPaginas = Math.max(1, Math.ceil(filas.length / PAGE_SIZE));
   const paginaSegura = Math.min(pagina, totalPaginas);
   const visibles = filas.slice((paginaSegura - 1) * PAGE_SIZE, paginaSegura * PAGE_SIZE);
-  const hallazgos = filas.filter(esHallazgoDeNegocio).length;
+  // Usar total del backend si está disponible, sino contar de filas cargadas
+  const totalHallazgos = hallazgosTotal ?? (hallazgosExternos?.length ?? filas.filter(esHallazgoDeNegocio).length);
+  const hallazgos = hallazgosExternos?.length ?? filas.filter(esHallazgoDeNegocio).length;
   const invalidas = filas.filter((fila) => !fila.validacion.valido).length;
   const esDetalleMargen = filas.length > 0 && filas.every(esFilaMargen);
   const columnasVisibles = esDetalleMargen
@@ -114,13 +152,19 @@ export default function TablaResultadoModal({
     setPagina(1);
   }, [filas]);
 
+  // Wrapper para convertir el callback de paginación server-side al formato esperado
+  const handleLoadMore = onLoadMore
+    ? (params: TableLoadParams) => onLoadMore(params)
+    : undefined;
+
   return (
     <div>
       <p className="mb-2 text-xs text-zinc-500">
         {filas.length} fila(s) evaluada(s)
-        {hallazgos > 0 ? ` · ${hallazgos} con hallazgo` : ""}
+        {totalHallazgos > 0 ? ` · ${totalHallazgos} con hallazgo` : ""}
         {invalidas > 0 ? ` · ${invalidas} inválida(s)` : ""}
         {totalPaginas > 1 ? ` · Página ${paginaSegura} de ${totalPaginas}` : ""}
+        {hasMore ? " · (cargando más…)" : ""}
       </p>
       <ResponsiveDataTable
         rows={visibles}
@@ -135,8 +179,20 @@ export default function TablaResultadoModal({
         emptyTitle="No hay detalle de solicitud"
         emptyDescription="Esta solicitud no conserva filas de impacto."
         redirectOnRowClick={false}
+        hasMore={hasMore}
+        nextOffset={nextOffset}
+        loadingMore={loadingMore}
+        onLoadMore={handleLoadMore}
       />
-      <ResumenValidaciones filas={filas} />
+      <ResumenValidaciones
+        filas={filas}
+        hallazgosExternos={hallazgosExternos}
+        hallazgosHasMore={hallazgosHasMore}
+        hallazgosNextOffset={hallazgosNextOffset}
+        hallazgosLoadingMore={hallazgosLoadingMore}
+        hallazgosCargando={hallazgosCargando}
+        onLoadMoreHallazgos={onLoadMoreHallazgos}
+      />
     </div>
   );
 }

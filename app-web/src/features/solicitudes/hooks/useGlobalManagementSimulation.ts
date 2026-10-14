@@ -46,6 +46,8 @@ export function useGlobalManagementSimulation(
   const [findingsHasMore, setFindingsHasMore] = useState(false);
   const [findingsNextOffset, setFindingsNextOffset] = useState<number | null>(null);
   const [loadingFindings, setLoadingFindings] = useState(false);
+  // Total de hallazgos de toda la lista (SQL); null mientras no se conoce.
+  const [findingsTotal, setFindingsTotal] = useState<number | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -76,6 +78,7 @@ export function useGlobalManagementSimulation(
     setNextOffset(null);
     setFindingsHasMore(false);
     setFindingsNextOffset(null);
+    setFindingsTotal(null);
     setLoadingFirst(false);
     setLoadingMore(false);
     setLoadingFindings(false);
@@ -158,6 +161,7 @@ export function useGlobalManagementSimulation(
         );
         if (requestId !== findingsReqRef.current) return;
         setFindings((prev) => (offset === 0 ? page.filas : [...prev, ...page.filas]));
+        if (offset === 0) setFindingsTotal(page.total ?? null);
         setFindingsHasMore(Boolean(page.hasMore));
         setFindingsNextOffset(page.nextOffset);
       } catch (err) {
@@ -184,6 +188,7 @@ export function useGlobalManagementSimulation(
     setFindings([]);
     setFindingsHasMore(false);
     setFindingsNextOffset(null);
+    setFindingsTotal(null);
 
     await Promise.all([
       loadPage({ offset: 0, limit: PAGE_SIZE }),
@@ -218,6 +223,7 @@ export function useGlobalManagementSimulation(
       hasMore: findingsHasMore,
       nextOffset: findingsNextOffset,
       loading: loadingFindings,
+      total: findingsTotal,
       load: loadFindings,
     },
     simulate,

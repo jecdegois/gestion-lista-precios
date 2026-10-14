@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react";
 import type { Identidad } from "@/shared/types/domain-types";
-import { fmtMonto } from "@/shared/utils/format";
+import { fmtMonto, simboloMoneda } from "@/shared/utils/format";
 
 const UserContext = createContext<Identidad | null>(null);
 
@@ -14,8 +14,9 @@ export function useCurrentUser(): Identidad {
 }
 
 /** Monto formateado con la moneda de la compañía activa. */
-export function Monto({ n }: { n: number | null | undefined }) {
-  return <>{fmtMonto(n, useContext(UserContext)?.moneda)}</>;
+export function Monto({ n, codigoMoneda }: { n: number | null | undefined; codigoMoneda?: string | null }) {
+  const local = useContext(UserContext)?.moneda;
+  return <>{fmtMonto(n, codigoMoneda === undefined ? local : simboloMoneda(codigoMoneda, local))}</>;
 }
 
 export default function PortalProviders({ user, children }: { user: Identidad; children: React.ReactNode }) {

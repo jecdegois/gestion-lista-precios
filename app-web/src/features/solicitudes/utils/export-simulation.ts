@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { simboloMoneda } from "@/shared/utils/format";
 import type { FilaMargen, FilaPrecio, FilaResultado } from "@/shared/types/domain-types";
 
 function numero(valor: unknown): number | null {
@@ -21,8 +22,18 @@ export function descargarSimulacionExcel(
   etiquetaVariacion = "Descuento %",
   mensajeListaBase?: string,
   modo?: "precioBase",
+  monedaLocal = "",
 ): void {
   const omitirColumnaLista = Boolean(mensajeListaBase);
+  // Símbolo de moneda en el encabezado de las columnas de precio (según Softland: D = "$", L = local).
+  const primera = filas[0]?.validacion as Partial<FilaPrecio["validacion"]> | undefined;
+  const conMoneda = (titulo: string, codigo: string | null | undefined) => {
+    const simbolo = simboloMoneda(codigo, monedaLocal);
+    return simbolo ? `${titulo} (${simbolo})` : titulo;
+  };
+  const hBase = conMoneda("Precio Base", primera?.monedaBase ?? primera?.moneda);
+  const hActual = conMoneda("Precio Actual", primera?.moneda);
+  const hCalculado = conMoneda("Precio Calculado", primera?.moneda);
 
   // Exportación simplificada para Precio Base: solo columnas relevantes.
   if (modo === "precioBase") {
@@ -36,8 +47,8 @@ export function descargarSimulacionExcel(
       return {
         "Código": fila.codigo,
         "Descripción": fila.descripcion,
-        "Precio Actual": numero(v.precioActual) ?? "",
-        "Precio Calc.": numero(v.precioPropuesto) ?? "",
+        [hActual]: numero(v.precioActual) ?? "",
+        [hCalculado]: numero(v.precioPropuesto) ?? "",
         "Precio Mínimo": numero(v.costoMinimo) ?? "",
         "Estado": estado,
         "Causa": v.causa ?? fila.mensajeError ?? "",
@@ -74,8 +85,9 @@ export function descargarSimulacionExcel(
       Descripción: fila.descripcion,
       [etiquetaVariacion]: esMargen ? numero(filaMargen.validacion.porcentajeReduccion) : filaPrecio.variacionPorcentaje ?? "",
       Multiplicador: esMargen ? numero(filaMargen.validacion.multiplicadorMargen) : filaPrecio.multiplicador ?? filaPrecio.factorPropuesto ?? "",
-      "Precio Actual": numero(v.precioActual) ?? "",
-      "Precio Calculado": numero(v.precioPropuesto) ?? "",
+      [hBase]: numero(v.precioActual) ?? "",
+      [hActual]: numero("precioVigente" in v ? v.precioVigente : null) ?? numero(v.precioActual) ?? "",
+      [hCalculado]: numero(v.precioPropuesto) ?? "",
       "Precio Redondeado": numero(v.precioRedondeado) ?? "",
       "Costo Mínimo": numero(v.costoMinimo) ?? "",
       Estado: v.valido ? "VÁLIDO" : "INVÁLIDO",
@@ -96,6 +108,7 @@ export function descargarSimulacionExcel(
       { wch: 34 }, // Descripción
       { wch: 14 }, // etiquetaVariacion
       { wch: 16 }, // Multiplicador
+      { wch: 16 }, // Precio Base
       { wch: 16 }, // Precio Actual
       { wch: 16 }, // Precio Calculado
       { wch: 18 }, // Precio Redondeado
@@ -106,7 +119,7 @@ export function descargarSimulacionExcel(
   } else {
     sheet["!cols"] = [
       { wch: 8 }, { wch: 18 }, { wch: 18 }, { wch: 34 }, { wch: 14 }, { wch: 16 },
-      { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 55 },
+      { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 55 },
     ];
   }
   XLSX.utils.book_append_sheet(workbook, sheet, "Simulación completa");

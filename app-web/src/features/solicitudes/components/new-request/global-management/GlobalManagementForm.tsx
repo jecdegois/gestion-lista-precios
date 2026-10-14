@@ -46,7 +46,7 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
     draft?.filas?.length ? (draft.filas as FilaPrecio[]) : null,
     () => submission.setSent(false),
   );
-  const { exporting, exportRows } = useSimulationExport("factor_precio", "Variación %");
+  const { exporting, exportRows } = useSimulationExport("factor_precio", variationType === "AUMENTO" ? "Aumento %" : "Disminución %");
 
   const conversion = useMemo(() => calcularVariacion(variationType, factor), [factor, variationType]);
   const selectedList = catalog.lists.find((list) => list.codigo === level);
@@ -58,7 +58,11 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
   // que las tablas permanecen montadas independientemente de cualquier
   // re-render causado por findings, loadingFindings u otros efectos secundarios.
   const showTables = simulation.everSimulated || simulation.simulating;
-  const canSubmit = simulation.simulated && fieldsComplete && !readOnly && !simulation.simulating;
+  // VALIDAR_PRECIO_BAJO_MARGEN_MIN activo en la lista: no se envía con hallazgos
+  // (mientras no se conoce el total de hallazgos tampoco).
+  const validarMargenMin = selectedList?.validarPrecioBajoMargenMin === true;
+  const blockedByMargin = validarMargenMin && (simulation.findings.total ?? 1) > 0;
+  const canSubmit = simulation.simulated && fieldsComplete && !readOnly && !simulation.simulating && !blockedByMargin;
 
   // Mensaje descriptivo para la tabla: informa desde qué lista padre se tomaron los precios.
   const mensajeListaBase = simulation.nivelPrecioBase
@@ -68,6 +72,13 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
   const levelOptions: SelectOption[] = catalog.lists
     .filter((list) => list.codigo.toUpperCase() !== "MAYOREOD")
     .map((list) => ({ value: list.codigo, label: list.nombre || list.codigo }));
+
+  /** El tipo de variación se toma de GESTION_LISTAS_PRECIOS.TIPO_VARIACION de la lista. */
+  function changeLevel(code: string) {
+    setLevel(code);
+    const type = catalog.lists.find((list) => list.codigo === code)?.tipoVariacion;
+    if (type) setVariationType(type);
+  }
 
   function buildRequest(): SolicitudInput {
     return {
@@ -103,11 +114,17 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
         conversion={conversion}
         disabled={lockInput}
         loadingCatalog={catalog.loading}
-        onLevelChange={setLevel}
+        onLevelChange={changeLevel}
         onVariationTypeChange={setVariationType}
         onFactorChange={setFactor}
       />
       {simulation.error && <p className="text-[11px] text-red-600 mb-3">{simulation.error}</p>}
+      {validarMargenMin && simulation.simulated && (simulation.findings.total ?? 0) > 0 && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 mb-3">
+          <strong>{simulation.findings.total} artículo(s) por debajo del margen mínimo</strong>: la lista {level} tiene activada
+          la validación de precio bajo margen mínimo. <strong>No se puede enviar la solicitud</strong> con esta variación.
+        </div>
+      )}
 
       <RequestActions
         canSimulate={!lockInput && fieldsComplete && !simulation.simulating}

@@ -6,7 +6,7 @@ import type { ArticuloCapturaManualRow } from "@/features/solicitudes/components
 import TablaImpactoDescuentoManual from "@/features/solicitudes/components/tables/TablaImpactoDescuentoManual";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
 import { calcularVariacion, redondeoPreview } from "@/features/solicitudes/utils/preview";
-import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/shared/types/domain-types";
+import { esFilaMargen, esHallazgoDeNegocio, type FilaPrecio, type FilaResultado } from "@/shared/types/domain-types";
 import { simularManual } from "../../../api/solicitudes-api";
 import type { SolicitudInput } from "../../../schemas/solicitud-schema";
 import type { EntryMode, ProcessFormProps, UploadedFile } from "../../../types";
@@ -15,12 +15,14 @@ import { useArticleSearch } from "../../../hooks/useArticleSearch";
 import { useOnChange } from "../../../hooks/useOnChange";
 import { useRequestCatalog } from "../../../hooks/useRequestCatalog";
 import { useRequestSubmission } from "../../../hooks/useRequestSubmission";
+import { useMarginMinFlags } from "../../../hooks/useMarginMinFlags";
 import { useSimulationExport } from "../../../hooks/useSimulationExport";
 import EntryModeTabs from "../shared/EntryModeTabs";
 import ExcelUpload from "../shared/ExcelUpload";
 import ProcessFormLayout from "../shared/ProcessFormLayout";
 import RequestActions from "../shared/RequestActions";
 import SimulationResult from "../shared/SimulationResult";
+import MarginNotices, { contarFilas } from "../shared/MarginNotices";
 import DiscountManualCapture from "./DiscountManualCapture";
 
 const BASE_LIST = "mayoreod";
@@ -71,12 +73,18 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
   const selected = search.selected;
   const preview = selected && conversion.valido && conversion.factor != null ? redondeoPreview(selected.precioActual * conversion.factor) : null;
   const canAdd = !lockInput && !!level && !!selected && !invalidFactor && factor !== "";
-  const errorCount = rows ? rows.filter((r) => !r.validacion.valido).length : 0;
+  // Filas con error duro se descartan; los hallazgos de margen bloquean solo si la
+  // lista de la fila tiene VALIDAR_PRECIO_BAJO_MARGEN_MIN activo.
+  const margenMinActivo = useMarginMinFlags();
+  const { processable } = contarFilas(rows);
+  const listasBloqueadas = [...new Set((rows ?? [])
+    .filter((r) => esHallazgoDeNegocio(r) && margenMinActivo((r as FilaPrecio).listaCodigo))
+    .map((r) => (r as FilaPrecio).listaCodigo as string))];
 
   const fieldsComplete = isExcel
-    ? !!rows && rows.every((r) => r.validacion.valido) && !!company
+    ? processable > 0 && !!company
     : items.length > 0 && !!level && !levelMissing;
-  const canSubmit = simulated && fieldsComplete && !readOnly && !simulating;
+  const canSubmit = simulated && fieldsComplete && processable > 0 && listasBloqueadas.length === 0 && !readOnly && !simulating;
 
   // Cualquier cambio de parámetros invalida la simulación previa.
   useOnChange(JSON.stringify([level, factor, items]), () => {
@@ -118,10 +126,10 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
     const adjusted = parsed.map((r) => {
       const listCode = (r as { listaCodigo?: string | null }).listaCodigo?.trim().toLowerCase();
       if (listCode === BASE_LIST) {
-        return { ...r, validacion: { ...r.validacion, valido: false, causa: "La Lista Base (MAYOREOD) no se gestiona desde Descuento por Artículo." } };
+        return { ...r, validacion: { ...r.validacion, valido: false, estadoRedondeo: null, causa: "La Lista Base (MAYOREOD) no se gestiona desde Descuento por Artículo." } };
       }
       if (listCode && !catalog.levels.some((l) => l.codigo.toLowerCase() === listCode)) {
-        return { ...r, validacion: { ...r.validacion, valido: false, causa: "La lista no existe en los maestros de Softland." } };
+        return { ...r, validacion: { ...r.validacion, valido: false, estadoRedondeo: null, causa: "La lista no existe en los maestros de Softland." } };
       }
       return r;
     }) as FilaResultado[];
@@ -172,7 +180,6 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
         tipoVariacion: "DISMINUCION",
         variacionPorcentaje: factor,
         nivelPrecio: level || undefined,
-        articulos: rows ?? [],
       },
       filas: (rows ?? []) as unknown as SolicitudInput["filas"],
       archivoNombre: file.name,
@@ -205,8 +212,8 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
           disabled={lockInput}
           instructions="Use las columnas Lista de Precio, Código Artículo y Descuento %."
           templateHref="/api/plantilla?proceso=DESCUENTO_LISTA_PRECIO"
-          errorCount={errorCount}
-          errorMessage="Corrija y cargue nuevamente."
+          errorCount={0}
+          errorMessage=""
           onParsed={handleFileParsed}
         />
       ) : (
@@ -228,6 +235,8 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
           onRemove={removeItem}
         />
       )}
+
+      {simulated && <MarginNotices rows={rows} blocked={listasBloqueadas.length > 0} listLabel={listasBloqueadas.join(", ")} />}
 
       <RequestActions
         simulateLabel={isExcel ? "Precalcular impacto" : "Simular impacto"}

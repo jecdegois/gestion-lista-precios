@@ -2,26 +2,11 @@ import type { TableColumn } from "@/shared/components/ui/ResponsiveDataTable";
 import type { EjecucionLog } from "@/shared/types/domain-types";
 import { EJECUCION_LABELS } from "../../routes";
 import EstadoEjecucionBadge from "../EstadoEjecucionBadge";
+import { fmtFechaBd } from "@/shared/utils/format";
 
-/**
- * Convierte un string de fecha (ISO o ya formateado) a "dd/mm HH:mm".
- * Si no puede parsear, devuelve el valor original truncado.
- */
+/** Fecha de SQL Server (ISO) a "dd/mm, HH:mm". */
 function fechaCorta(raw: string | null): string {
-  if (!raw) return "—";
-  const d = new Date(raw);
-  if (!isNaN(d.getTime())) {
-    const dd   = String(d.getDate()).padStart(2, "0");
-    const mm   = String(d.getMonth() + 1).padStart(2, "0");
-    const HH   = String(d.getHours()).padStart(2, "0");
-    const min  = String(d.getMinutes()).padStart(2, "0");
-    return `${dd}/${mm} ${HH}:${min}`;
-  }
-  // El repositorio ya entrega el string con toLocaleString — intentamos recortar
-  // formato típico "dd/mm/yyyy, HH:mm:ss" → "dd/mm HH:mm"
-  const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/\d{4}[,\s]+(\d{2}):(\d{2})/);
-  if (m) return `${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")} ${m[3]}:${m[4]}`;
-  return raw.slice(0, 11);
+  return fmtFechaBd(raw, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 export const ejecucionColumns: readonly TableColumn<EjecucionLog>[] = [

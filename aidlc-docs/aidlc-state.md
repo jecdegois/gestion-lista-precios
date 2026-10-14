@@ -590,3 +590,12 @@ Antes de ejecutar PASO 4, confirmar:
 - [ ] RF-32 Cancelación: ¿entra en el alcance del PASO 4 o es un PASO 5?
 - [ ] RNF-11 Pruebas: ¿se agregan tests unitarios en PASO 4 o en un paso separado?
 
+
+
+## Sesión 2026-10-05 — Corrección de secuencia de solicitudes
+
+- **Incidente:** SQL Server 208 al registrar solicitudes en SILLACA por ausencia de `SILLACA.SEQ_SOLICITUD`.
+- **Causa:** `backend/sql/portal/09_seq_solicitud_por_empresa.sql` tenía comentada la creación de las secuencias BEVAL y SILLACA, mientras la aplicación resuelve y consulta secuencias por esquema de compañía.
+- **Corrección aplicada:** se habilitaron bloques idempotentes para `[BEVAL].[SEQ_SOLICITUD]` y `[SILLACA].[SEQ_SOLICITUD]`, con inicio documentado en 10541.
+- **Validaciones:** `git diff --check` y `npm run typecheck` pasaron; validación estática del script SQL pasó.
+- **Pendiente operativo:** ejecutar el script en la base `PORTAL_PRECIOS` autorizada y verificar la existencia de esquemas, tablas portal y correlativo antes de probar un POST real. No se ejecutó DDL contra la base viva desde esta sesión.

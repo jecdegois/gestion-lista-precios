@@ -2,7 +2,7 @@
 
 import { esHallazgoDeNegocio, ResumenValidaciones } from "@/features/solicitudes/components/tables/Tablas";
 import { fmtFactor, fmtPct } from "@/shared/utils/format";
-import type { FilaMargen } from "@/shared/types/domain-types";
+import type { FilaMargen, FilaResultado } from "@/shared/types/domain-types";
 import ResponsiveDataTable, { type TableColumn, type TableLoadParams } from "@/shared/components/ui/ResponsiveDataTable";
 import { Monto } from "@/shared/components/layout/PortalProviders";
 
@@ -30,6 +30,14 @@ interface TablaImpactoMargenProps {
   nextOffset?: number | null;
   loadingMore?: boolean;
   onLoadMore?: (params: TableLoadParams) => void | Promise<void>;
+  // Props de hallazgos paginados
+  hallazgos?: FilaResultado[];
+  hallazgosTotal?: number;
+  hallazgosHasMore?: boolean;
+  hallazgosNextOffset?: number | null;
+  hallazgosLoadingMore?: boolean;
+  hallazgosCargando?: boolean;
+  onLoadMoreHallazgos?: (params: TableLoadParams) => void | Promise<void>;
 }
 
 export default function TablaImpactoMargen({
@@ -38,17 +46,26 @@ export default function TablaImpactoMargen({
   nextOffset = null,
   loadingMore = false,
   onLoadMore,
+  // Props de hallazgos paginados
+  hallazgos: hallazgosExternos,
+  hallazgosTotal,
+  hallazgosHasMore = false,
+  hallazgosNextOffset = null,
+  hallazgosLoadingMore = false,
+  hallazgosCargando = false,
+  onLoadMoreHallazgos,
 }: TablaImpactoMargenProps) {
-  const hallazgos = filas.filter(esHallazgoDeNegocio).length;
+  // Usar total del backend si está disponible, sino contar de filas cargadas
+  const totalHallazgos = hallazgosTotal ?? (hallazgosExternos?.length ?? filas.filter(esHallazgoDeNegocio).length);
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila)).length;
 
   return (
     <div>
       <p className="mb-2 text-xs text-zinc-500">
         {filas.length} artículo(s) evaluado(s)
-        {hallazgos > 0 ? ` · ${hallazgos} con hallazgo` : ""}
+        {totalHallazgos > 0 ? ` · ${totalHallazgos} con hallazgo` : ""}
         {datosPorCorregir > 0 ? ` · ${datosPorCorregir} dato(s) por corregir` : ""}
-        {hallazgos === 0 && datosPorCorregir === 0 ? " · cálculo y redondeo comercial verificados" : ""}
+        {totalHallazgos === 0 && datosPorCorregir === 0 ? " · cálculo y redondeo comercial verificados" : ""}
       </p>
       <ResponsiveDataTable
         rows={filas}
@@ -64,7 +81,15 @@ export default function TablaImpactoMargen({
         onLoadMore={onLoadMore}
         rowClassName={(fila) => fila.validacion.valido ? "bg-green-50" : "bg-red-50"}
       />
-      <ResumenValidaciones filas={filas} />
+      <ResumenValidaciones
+        filas={filas}
+        hallazgosExternos={hallazgosExternos}
+        hallazgosHasMore={hallazgosHasMore}
+        hallazgosNextOffset={hallazgosNextOffset}
+        hallazgosLoadingMore={hallazgosLoadingMore}
+        hallazgosCargando={hallazgosCargando}
+        onLoadMoreHallazgos={onLoadMoreHallazgos}
+      />
     </div>
   );
 }

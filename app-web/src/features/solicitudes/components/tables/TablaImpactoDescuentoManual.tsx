@@ -11,7 +11,9 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
   { key: "codigo", header: "Código", value: (fila) => <span className="mono whitespace-nowrap">{fila.codigo}</span> },
   { key: "lista", header: "Lista", value: (fila) => fila.lista ?? "—" },
   { key: "descripcion", header: "Descripción", value: (fila) => <span className="block max-w-[280px] truncate whitespace-nowrap" title={fila.descripcion || "—"}>{fila.descripcion || "—"}</span> },
-  { key: "precioActual", header: "Precio Actual", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioActual} /></span> },
+  { key: "precioBase", header: "Precio Base", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioActual} codigoMoneda={fila.validacion.monedaBase} /></span> },
+  { key: "precioActual", header: "Precio Actual", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioVigente ?? fila.validacion.precioActual} codigoMoneda={fila.validacion.moneda} /></span> },
+  { key: "precioPropuesto", header: "Precio Calculado", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioPropuesto} codigoMoneda={fila.validacion.moneda} /></span> },
   /*{
     key: "tipoVariacion",
     header: "Tipo Var.",
@@ -20,16 +22,8 @@ const columns: readonly TableColumn<FilaPrecio>[] = [
       return <span className={`badge ${fila.tipoVariacion === "DISMINUCION" ? "badge-rechazado" : "badge-ok"}`}>{tipo}</span>;
     },
   },*/
-  { key: "factor", header: "Descuento %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeCapturado(fila.variacionPorcentaje)}</span> },
+  { key: "factor", header: "Disminución %", align: "right", value: (fila) => <span className="mono">{fmtPorcentajeCapturado(fila.variacionPorcentaje)}</span> },
   { key: "multiplicador", header: "Multiplicador", align: "right", value: (fila) => <span className="mono">{fmtFactor(fila.multiplicador ?? fila.factorPropuesto)}</span> },
-  {
-    key: "mensajeError",
-    header: "Mensaje de error",
-    value: (fila) => fila.mensajeError
-      ? <span className="block max-w-[280px] truncate text-red-700" title={fila.mensajeError}>{fila.mensajeError}</span>
-      : <span className="text-zinc-400">—</span>,
-  },
-  { key: "precioPropuesto", header: "Precio Calc.", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.precioPropuesto} /></span> },
   { key: "costoMinimo", header: "Precio Mín.", align: "right", value: (fila) => <span className="mono"><Monto n={fila.validacion.costoMinimo} /></span> },
 ];
 
@@ -69,16 +63,16 @@ export default function TablaImpactoDescuentoManual({
 }: TablaImpactoDescuentoManualProps) {
   const totalHallazgosVisibles = filas.filter(esHallazgoDeNegocio).length;
   const datosPorCorregir = filas.filter((fila) => !fila.validacion.valido && !esHallazgoDeNegocio(fila)).length;
-  const etiquetaVariacion = filas.some((fila) => fila.tipoVariacion === "AUMENTO") ? "Variación %" : "Descuento %";
+  const etiquetaVariacion = filas.some((fila) => fila.tipoVariacion === "AUMENTO") ? "Aumento %" : "Disminución %";
   const columnas = columns
     .filter((column) => {
       const key = String(column.key);
       if (modo === "precioBaseRevision") {
-        return !["lista", "factor", "multiplicador", "factorAplicado", "mensajeError", "precioActual", "precioRedondeado", "costoMinimo"].includes(key);
+        return !["lista", "factor", "multiplicador", "factorAplicado", "precioBase", "precioActual", "precioRedondeado", "costoMinimo"].includes(key);
       }
       // Si hay mensajeListaBase, la columna "lista" se reemplaza por el banner — no se muestra en la tabla.
       if (mensajeListaBase && key === "lista") return false;
-      return modo !== "precioBase" || !["lista", "factor", "multiplicador", "factorAplicado", "mensajeError"].includes(key);
+      return modo !== "precioBase" || !["lista", "factor", "multiplicador", "factorAplicado", "precioBase"].includes(key);
     })
     .map((column) => {
       if (modo === "precioBaseRevision" && column.key === "precioPropuesto") return { ...column, header: "Precio Solicitado" };

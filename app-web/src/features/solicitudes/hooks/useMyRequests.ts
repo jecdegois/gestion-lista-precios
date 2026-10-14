@@ -3,10 +3,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { notify } from "@/shared/notifications/notify";
-import type { ProcesoKey, Solicitud } from "@/shared/types/domain-types";
-import { enviarBorrador, getMisSolicitudes, getSolicitudDetalle, solicitarCancelacion } from "../api/solicitudes-api";
+import type { FilaResultado, ProcesoKey, Solicitud } from "@/shared/types/domain-types";
+import {
+  enviarBorrador,
+  getMisSolicitudes,
+  getSolicitudCabecera,
+  getSolicitudDetalle,
+  getSolicitudDetallePaginado,
+  getSolicitudHallazgosPaginado,
+  solicitarCancelacion,
+} from "../api/solicitudes-api";
 
 const PAGE_SIZE = 20;
+/** Tamaño de página para el detalle de filas (modal de revisión). */
+const DETAIL_PAGE_SIZE = 50;
 
 /**
  * Solicitudes propias del proceso, paginadas por cabecera (sin detalle de filas).
@@ -83,21 +93,169 @@ export function useMyRequests(process: ProcesoKey, readOnly: boolean) {
   }, [hasMore, nextOffset, loadingMore, process]);
 
   // ── Detalle lazy al abrir el modal ────────────────────────────────────────
+  // Estado de paginación del detalle (para procesos no-GG)
+  const [modalDetailFilas, setModalDetailFilas] = useState<FilaResultado[]>([]);
+  const [modalDetailTotal, setModalDetailTotal] = useState(0);
+  const [modalDetailTotalHallazgos, setModalDetailTotalHallazgos] = useState(0);
+  const [modalDetailHasMore, setModalDetailHasMore] = useState(false);
+  const [modalDetailNextOffset, setModalDetailNextOffset] = useState<number | null>(null);
+  const [loadingDetailMore, setLoadingDetailMore] = useState(false);
+  const detailOffsetsLoading = useRef(new Set<number>());
+
+  // Estado de paginación de hallazgos (independiente del detalle)
+  const [modalHallazgosFilas, setModalHallazgosFilas] = useState<FilaResultado[]>([]);
+  const [modalHallazgosTotal, setModalHallazgosTotal] = useState(0);
+  const [modalHallazgosHasMore, setModalHallazgosHasMore] = useState(false);
+  const [modalHallazgosNextOffset, setModalHallazgosNextOffset] = useState<number | null>(null);
+  const [loadingHallazgosMore, setLoadingHallazgosMore] = useState(false);
+  const hallazgosOffsetsLoading = useRef(new Set<number>());
+
+  /**
+   * Abre el modal con la cabecera + primera página de filas.
+   * Para Gestión Global (FACTOR_PRECIO) sigue el flujo existente (sin filas).
+   */
   async function openWithDetail(id: string): Promise<void> {
-    const cabecera = requests.find((s) => s.id === id) ?? null;
-    setModalRequest(cabecera);
+    // Reset estado de detalle paginado
+    setModalDetailFilas([]);
+    setModalDetailTotal(0);
+    setModalDetailTotalHallazgos(0);
+    setModalDetailHasMore(false);
+    setModalDetailNextOffset(null);
+    detailOffsetsLoading.current.clear();
+
+    // Reset estado de hallazgos paginados
+    setModalHallazgosFilas([]);
+    setModalHallazgosTotal(0);
+    setModalHallazgosHasMore(false);
+    setModalHallazgosNextOffset(null);
+    hallazgosOffsetsLoading.current.clear();
+
+    // Mostrar cabecera inmediatamente mientras carga el detalle
+    const cabeceraLocal = requests.find((s) => s.id === id) ?? null;
+    setModalRequest(cabeceraLocal);
     setLoadingDetail(true);
+
     try {
-      const res = await getSolicitudDetalle(id);
-      if (res.ok) setModalRequest(res.data.solicitud);
-      else notify.error(res.error);
+      // Cargar cabecera desde servidor (sin filas) para tener datos frescos
+      const cabRes = await getSolicitudCabecera(id);
+      if (!cabRes.ok) {
+        notify.error(cabRes.error);
+        return;
+      }
+      const cabecera = cabRes.data.solicitud;
+
+      // Gestión Global (FACTOR_PRECIO) mantiene su flujo original — las filas vienen de Softland
+      if (cabecera.proceso === "FACTOR_PRECIO") {
+        setModalRequest(cabecera);
+        return;
+      }
+
+      // Para otros procesos: cargar primera página de detalle y hallazgos en paralelo
+      const [detRes, hallRes] = await Promise.all([
+        getSolicitudDetallePaginado(id, 0, DETAIL_PAGE_SIZE),
+        getSolicitudHallazgosPaginado(id, 0, DETAIL_PAGE_SIZE),
+      ]);
+
+      if (!detRes.ok) {
+        // Mostrar cabecera aunque falle el detalle
+        setModalRequest(cabecera);
+        notify.error(detRes.error);
+        return;
+      }
+
+      setModalDetailFilas(detRes.data.filas);
+      setModalDetailTotal(detRes.data.total);
+      setModalDetailTotalHallazgos(detRes.data.totalHallazgos);
+      setModalDetailHasMore(detRes.data.hasMore);
+      setModalDetailNextOffset(detRes.data.nextOffset);
+
+      // Almacenar hallazgos paginados
+      if (hallRes.ok) {
+        setModalHallazgosFilas(hallRes.data.filas);
+        setModalHallazgosTotal(hallRes.data.total);
+        setModalHallazgosHasMore(hallRes.data.hasMore);
+        setModalHallazgosNextOffset(hallRes.data.nextOffset);
+      }
+
+      // Combinar cabecera con primera página de filas
+      setModalRequest({ ...cabecera, filas: detRes.data.filas });
     } finally {
       setLoadingDetail(false);
     }
   }
 
+  /** Carga más filas del detalle (para procesos no-GG). */
+  async function loadMoreDetail(): Promise<void> {
+    if (!modalRequest || !modalDetailHasMore || modalDetailNextOffset == null) return;
+    if (detailOffsetsLoading.current.has(modalDetailNextOffset)) return;
+
+    const offset = modalDetailNextOffset;
+    detailOffsetsLoading.current.add(offset);
+    setLoadingDetailMore(true);
+
+    try {
+      const res = await getSolicitudDetallePaginado(modalRequest.id, offset, DETAIL_PAGE_SIZE);
+      if (!res.ok) {
+        notify.error(res.error);
+        return;
+      }
+
+      const nuevasFilas = res.data.filas;
+      setModalDetailFilas((prev) => [...prev, ...nuevasFilas]);
+      setModalDetailTotal(res.data.total);
+      setModalDetailHasMore(res.data.hasMore);
+      setModalDetailNextOffset(res.data.nextOffset);
+
+      // Actualizar también las filas en modalRequest
+      setModalRequest((prev) =>
+        prev ? { ...prev, filas: [...prev.filas, ...nuevasFilas] } : prev,
+      );
+    } finally {
+      detailOffsetsLoading.current.delete(offset);
+      setLoadingDetailMore(false);
+    }
+  }
+
+  /** Carga más hallazgos (para procesos no-GG). */
+  async function loadMoreHallazgos(): Promise<void> {
+    if (!modalRequest || !modalHallazgosHasMore || modalHallazgosNextOffset == null) return;
+    if (hallazgosOffsetsLoading.current.has(modalHallazgosNextOffset)) return;
+
+    const offset = modalHallazgosNextOffset;
+    hallazgosOffsetsLoading.current.add(offset);
+    setLoadingHallazgosMore(true);
+
+    try {
+      const res = await getSolicitudHallazgosPaginado(modalRequest.id, offset, DETAIL_PAGE_SIZE);
+      if (!res.ok) {
+        notify.error(res.error);
+        return;
+      }
+
+      setModalHallazgosFilas((prev) => [...prev, ...res.data.filas]);
+      setModalHallazgosTotal(res.data.total);
+      setModalHallazgosHasMore(res.data.hasMore);
+      setModalHallazgosNextOffset(res.data.nextOffset);
+    } finally {
+      hallazgosOffsetsLoading.current.delete(offset);
+      setLoadingHallazgosMore(false);
+    }
+  }
+
   function closeModal() {
     setModalRequest(null);
+    setModalDetailFilas([]);
+    setModalDetailTotal(0);
+    setModalDetailTotalHallazgos(0);
+    setModalDetailHasMore(false);
+    setModalDetailNextOffset(null);
+    detailOffsetsLoading.current.clear();
+    // Limpiar estado de hallazgos
+    setModalHallazgosFilas([]);
+    setModalHallazgosTotal(0);
+    setModalHallazgosHasMore(false);
+    setModalHallazgosNextOffset(null);
+    hallazgosOffsetsLoading.current.clear();
   }
 
   async function submitDraft(id: string) {
@@ -132,6 +290,20 @@ export function useMyRequests(process: ProcesoKey, readOnly: boolean) {
     setDraft,
     modalRequest,
     loadingDetail,
+    // Paginación del detalle (para procesos no-GG)
+    modalDetailTotal,
+    modalDetailTotalHallazgos,
+    modalDetailHasMore,
+    modalDetailNextOffset,
+    loadingDetailMore,
+    loadMoreDetail,
+    // Paginación de hallazgos (independiente del detalle)
+    modalHallazgosFilas,
+    modalHallazgosTotal,
+    modalHallazgosHasMore,
+    modalHallazgosNextOffset,
+    loadingHallazgosMore,
+    loadMoreHallazgos,
     refresh,
     loadMore,
     openWithDetail,

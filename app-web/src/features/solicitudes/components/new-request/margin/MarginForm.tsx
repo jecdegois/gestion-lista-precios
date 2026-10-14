@@ -10,11 +10,13 @@ import type { ProcessFormProps, UploadedFile } from "../../../types";
 import { draftFile, draftValues, EMPTY_FILE } from "../../../utils/draft-values";
 import { useDefaultLevel, useRequestCatalog } from "../../../hooks/useRequestCatalog";
 import { useRequestSubmission } from "../../../hooks/useRequestSubmission";
+import { useMarginMinFlags } from "../../../hooks/useMarginMinFlags";
 import { useSimulationExport } from "../../../hooks/useSimulationExport";
 import ExcelUpload from "../shared/ExcelUpload";
 import ProcessFormLayout from "../shared/ProcessFormLayout";
 import RequestActions from "../shared/RequestActions";
 import SimulationResult from "../shared/SimulationResult";
+import MarginNotices, { contarFilas } from "../shared/MarginNotices";
 import MarginInstructions from "./MarginInstructions";
 
 // El margen se consulta contra la lista base.
@@ -42,8 +44,11 @@ export default function MarginForm({ readOnly, consultOnly, draft, onSubmitted, 
     },
   });
 
-  const errorCount = rows ? rows.filter((r) => !r.validacion.valido).length : 0;
-  const fieldsComplete = !!rows && rows.every((r) => r.validacion.valido) && !!company;
+  // Códigos inválidos se descartan; los hallazgos de margen bloquean solo con
+  // VALIDAR_PRECIO_BAJO_MARGEN_MIN activo en la lista base.
+  const { warnings, processable } = contarFilas(rows);
+  const blocked = useMarginMinFlags()(BASE_LIST) && warnings > 0;
+  const fieldsComplete = processable > 0 && !blocked && !!company;
   const canSubmit = simulated && fieldsComplete && !readOnly;
 
   function buildRequest(): SolicitudInput {
@@ -77,8 +82,8 @@ export default function MarginForm({ readOnly, consultOnly, draft, onSubmitted, 
         level={level}
         disabled={lockInput}
         templateHref="/api/plantilla"
-        errorCount={errorCount}
-        errorMessage="Corrija los porcentajes y cargue nuevamente."
+        errorCount={0}
+        errorMessage=""
         onParsed={(parsed, name, s3Key) => {
           setRows(parsed);
           setFile({ name, s3Key });
@@ -86,6 +91,8 @@ export default function MarginForm({ readOnly, consultOnly, draft, onSubmitted, 
           submission.setSent(false);
         }}
       />
+
+      <MarginNotices rows={rows} blocked={blocked} listLabel={BASE_LIST} />
 
       <RequestActions
         simulateLabel="Precalcular impacto"
