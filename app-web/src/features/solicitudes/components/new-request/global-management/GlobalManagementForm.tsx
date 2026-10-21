@@ -58,11 +58,7 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
   // que las tablas permanecen montadas independientemente de cualquier
   // re-render causado por findings, loadingFindings u otros efectos secundarios.
   const showTables = simulation.everSimulated || simulation.simulating;
-  // VALIDAR_PRECIO_BAJO_MARGEN_MIN activo en la lista: no se envía con hallazgos
-  // (mientras no se conoce el total de hallazgos tampoco).
-  const validarMargenMin = selectedList?.validarPrecioBajoMargenMin === true;
-  const blockedByMargin = validarMargenMin && (simulation.findings.total ?? 1) > 0;
-  const canSubmit = simulation.simulated && fieldsComplete && !readOnly && !simulation.simulating && !blockedByMargin;
+  const canSubmit = simulation.simulated && fieldsComplete && !readOnly && !simulation.simulating;
 
   // Mensaje descriptivo para la tabla: informa desde qué lista padre se tomaron los precios.
   const mensajeListaBase = simulation.nivelPrecioBase
@@ -119,12 +115,6 @@ export default function GlobalManagementForm({ readOnly, consultOnly, draft, onS
         onFactorChange={setFactor}
       />
       {simulation.error && <p className="text-[11px] text-red-600 mb-3">{simulation.error}</p>}
-      {validarMargenMin && simulation.simulated && (simulation.findings.total ?? 0) > 0 && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 mb-3">
-          <strong>{simulation.findings.total} artículo(s) por debajo del margen mínimo</strong>: la lista {level} tiene activada
-          la validación de precio bajo margen mínimo. <strong>No se puede enviar la solicitud</strong> con esta variación.
-        </div>
-      )}
 
       <RequestActions
         canSimulate={!lockInput && fieldsComplete && !simulation.simulating}

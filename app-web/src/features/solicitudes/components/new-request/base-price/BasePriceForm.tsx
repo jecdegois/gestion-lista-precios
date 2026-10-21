@@ -7,7 +7,6 @@ import type { SolicitudInput } from "../../../schemas/solicitud-schema";
 import type { ProcessFormProps, UploadedFile } from "../../../types";
 import { draftFile } from "../../../utils/draft-values";
 import { useRequestSubmission } from "../../../hooks/useRequestSubmission";
-import { useMarginMinFlags } from "../../../hooks/useMarginMinFlags";
 import { useSimulationExport } from "../../../hooks/useSimulationExport";
 import ExcelUpload from "../shared/ExcelUpload";
 import ProcessFormLayout from "../shared/ProcessFormLayout";
@@ -25,9 +24,6 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
   const [simulated, setSimulated] = useState(Boolean(draft?.filas?.length));
   const [file, setFile] = useState<UploadedFile>(draftFile(draft));
 
-  // GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN de MAYOREOD: activo + hallazgos → no se envía.
-  const validarPrecioBajoMargenMin = useMarginMinFlags()(LISTA_MAYOREOD);
-
   const { exporting, exportRows } = useSimulationExport("mayoreod_masivo", "Precio", "precioBase");
   const submission = useRequestSubmission({
     draft,
@@ -39,9 +35,8 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
     },
   });
 
-  const { warnings: warningCount, processable: processableCount } = contarFilas(rows);
-  const bloqueadoPorMargenMin = validarPrecioBajoMargenMin && warningCount > 0;
-  const canSubmit = simulated && processableCount > 0 && !readOnly && !bloqueadoPorMargenMin;
+  const { processable: processableCount } = contarFilas(rows);
+  const canSubmit = simulated && processableCount > 0 && !readOnly;
 
   function buildRequest(): SolicitudInput {
     return {
@@ -64,18 +59,6 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
       onDiscardDraft={onDiscardDraft}
       catalogStatus={{ loading: false, error: null, noLevels: false }}
     >
-      {validarPrecioBajoMargenMin && (
-        // Aviso preventivo: se muestra al abrir la pestaña, antes de cargar el archivo.
-        <div role="status" className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
-          <span className="mt-0.5" aria-hidden="true">🚩</span>
-          <span>
-            <strong>Validación de margen mínimo activa</strong> para la lista MAYOREOD.{" "}
-            Si el archivo contiene artículos con precio por debajo del margen mínimo,
-            la solicitud <strong>no se podrá enviar</strong> hasta corregirlos.
-          </span>
-        </div>
-      )}
-
       <ExcelUpload
         process="MAYOREOD_MASIVO"
         level={LISTA_MAYOREOD}
@@ -110,7 +93,7 @@ export default function BasePriceForm({ readOnly, consultOnly, draft, onSubmitte
         onSubmit={() => canSubmit && void submission.submit(buildRequest())}
       />
 
-      <MarginNotices rows={rows} blocked={bloqueadoPorMargenMin} listLabel={LISTA_MAYOREOD} />
+      <MarginNotices rows={rows} />
 
       {rows && rows.length > 0 && (
         <SimulationResult exporting={exporting} onExport={() => void exportRows(() => rows)}>

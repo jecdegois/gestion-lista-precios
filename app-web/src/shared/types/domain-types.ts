@@ -204,12 +204,6 @@ export interface ParametrosSolicitud {
   criteriosArticulo?: CriteriosArticulo;
   codigosArticulos?: string[];
   articulos?: FilaResultado[];
-  /**
-   * GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN de la(s) lista(s) de la solicitud al enviar.
-   * Si es true, no se permite enviar ni aprobar con hallazgos de margen.
-   * El servidor lo lee de la BD (no confía en el valor del cliente).
-   */
-  validarPrecioBajoMargenMin?: boolean;
 }
 
 export interface ResultadoEjecucion {
@@ -320,8 +314,7 @@ export function esHallazgoDeNegocio(fila: FilaResultado): boolean {
 
 /**
  * Fila que se envía y procesa: válida o con hallazgo de margen. Las de error duro
- * (código inexistente, formato, precio cero) se descartan. Las de hallazgo se bloquean
- * solo si la lista tiene GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN activo.
+ * (código inexistente, formato, precio cero) se descartan.
  */
 export function esFilaProcesable(fila: FilaResultado): boolean {
   return fila.validacion.valido || esHallazgoDeNegocio(fila);

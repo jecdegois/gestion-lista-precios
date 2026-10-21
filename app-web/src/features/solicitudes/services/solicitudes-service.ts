@@ -12,8 +12,7 @@ import type {
   Rol,
   Solicitud,
 } from "@/shared/types/domain-types";
-import { esFilaMargen, esFilaProcesable, esHallazgoDeNegocio } from "@/shared/types/domain-types";
-import type { GestionGlobalLista } from "@/shared/types/models";
+import { esFilaMargen, esFilaProcesable } from "@/shared/types/domain-types";
 import { calcularVariacion, construirFilaSolicitud } from "@/features/solicitudes/utils/engine";
 import { esModoDemo, esModoSoloLectura, esModoSoloPortal } from "@/server/companies";
 import { auditRepository } from "@/features/auditoria/repository/audit-repository";
@@ -49,61 +48,6 @@ function errorSoloPortal(): { ok: false; error: string } {
 const LISTA_PRECIO_BASE = "MAYOREOD";
 
 const ESTADO_CAMBIADO = { ok: false as const, error: "La solicitud cambió de estado mientras se procesaba (otro usuario ya actuó sobre ella). Actualice la vista." };
-
-type MargenMin = { ok: false; error: string } | { ok: true; activo: boolean };
-
-/**
- * Bloqueo por GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (valor vigente en BD).
- * Con el flag activo en la lista afectada no se permite enviar ni aprobar con hallazgos de
- * margen; apagado, los hallazgos se procesan. Precio Base y Margen de Utilidad usan MAYOREOD,
- * Descuento la lista de cada fila y Gestión Global la lista de la solicitud (hallazgos en SQL).
- * Falla cerrado: si no se puede leer la configuración, no se permite continuar.
- */
-async function validarMargenMin(
-  accion: "enviar" | "aprobar",
-  compania: string,
-  proceso: ProcesoKey,
-  lista: string,
-  parametros: ParametrosSolicitud,
-  filas: FilaResultado[],
-): Promise<MargenMin> {
-  let config: Map<string, GestionGlobalLista>;
-  try {
-    const listas = await pricingRepository.listGlobalManagement(compania);
-    config = new Map(listas.map((l) => [l.codigo.trim().toUpperCase(), l]));
-  } catch (error) {
-    const detalle = error instanceof Error ? error.message : "Error no identificado.";
-    return { ok: false, error: `No fue posible verificar la configuración de margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN): ${detalle}` };
-  }
-  const activa = (codigo: string | null | undefined) => config.get(String(codigo ?? "").trim().toUpperCase())?.validarPrecioBajoMargenMin === true;
-  const bloqueo = (listas: string, hallazgos: number) => ({
-    ok: false as const,
-    error: `No se puede ${accion}: la lista ${listas} tiene activada la validación de precio bajo margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN) y la solicitud contiene ${hallazgos} artículo(s) con precio por debajo del margen mínimo. Corrija los precios y vuelva a enviar.`,
-  });
-
-  if (proceso === "FACTOR_PRECIO") {
-    if (!activa(lista)) return { ok: true, activo: false };
-    const variacion = calcularVariacion(parametros.tipoVariacion, parametros.factor);
-    const hallazgos = await pricingRepository.listFindings(
-      compania,
-      lista,
-      parametros.tipoVariacion === "DISMINUCION" ? "DISMINUCION" : "AUMENTO",
-      variacion.magnitud ?? 0,
-      0,
-      1,
-      config.get(lista.trim().toUpperCase())?.nivelPrecioBase,
-    );
-    return hallazgos.total > 0 ? bloqueo(lista, hallazgos.total) : { ok: true, activo: true };
-  }
-
-  const listaDeFila = (fila: FilaResultado) =>
-    proceso === "DESCUENTO_LISTA_PRECIO" ? ("listaCodigo" in fila && fila.listaCodigo) || fila.lista : LISTA_PRECIO_BASE;
-  const bloqueadas = filas.filter((fila) => esHallazgoDeNegocio(fila) && activa(listaDeFila(fila)));
-  if (bloqueadas.length > 0) {
-    return bloqueo([...new Set(bloqueadas.map(listaDeFila))].join(", "), bloqueadas.length);
-  }
-  return { ok: true, activo: filas.some((fila) => activa(listaDeFila(fila))) };
-}
 
 // ---------------------------------------------------------------------------
 // Envio de solicitud (queda PENDIENTE; NO toca la BD productiva)
@@ -181,9 +125,7 @@ async function prepararSolicitud(input: EnviarSolicitudInput, estado: "PENDIENTE
     if (!variacion.valido) {
       return { ok: false, error: variacion.causa ?? "La variación de Gestión Global no es válida." };
     }
-    const margen = await validarMargenMin("enviar", input.compania, input.proceso, listaPredeterminada, input.parametros, []);
-    if (!margen.ok) return margen;
-    const parametros = { ...input.parametros, multiplicador: variacion.factor, validarPrecioBajoMargenMin: margen.activo };
+    const parametros = { ...input.parametros, multiplicador: variacion.factor };
     // Gestión Global persiste una sola fila resumen con los parámetros de la
     // operación. El detalle artículo por artículo es informativo y se consulta
     // en tiempo real desde Softland al abrir el modal — no se persiste.
@@ -204,7 +146,7 @@ async function prepararSolicitud(input: EnviarSolicitudInput, estado: "PENDIENTE
   });
 
   // Carga parcial: se descartan las filas con error duro (código inválido, precio cero,
-  // formato incorrecto). Las de hallazgo de margen se incluyen salvo bloqueo por flag.
+  // formato incorrecto). Las de hallazgo de margen se incluyen.
   const filasParaProcesar = filas.filter(esFilaProcesable);
 
   const hayArticuloFueraDeLista = filasParaProcesar.some((fila) => {
@@ -215,10 +157,7 @@ async function prepararSolicitud(input: EnviarSolicitudInput, estado: "PENDIENTE
     return { ok: false, error: "La solicitud contiene un artículo que no existe en la lista de precio seleccionada en Softland." };
   }
 
-  const margen = await validarMargenMin("enviar", input.compania, input.proceso, listaPredeterminada, input.parametros, filasParaProcesar);
-  if (!margen.ok) return margen;
-  const parametros = { ...input.parametros, validarPrecioBajoMargenMin: margen.activo };
-  return { ok: true, solicitud: { ...base, parametros, filas: filasParaProcesar } };
+  return { ok: true, solicitud: { ...base, parametros: input.parametros, filas: filasParaProcesar } };
 }
 
 function errorRegistro(error: unknown, prefijo: string): { ok: false; error: string } {
@@ -370,18 +309,6 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
     return errorSoloPortal();
   }
 
-  // Se re-lee el flag VIGENTE al aprobar (pudo activarse después del envío).
-  const lista = cabecera.lista.trim() || String(cabecera.parametros.nivelPrecio ?? cabecera.parametros.listaBase ?? cabecera.parametros.nivel ?? "").trim();
-  console.info("[APROBAR] Validando margen mínimo", { lista, proceso: cabecera.proceso });
-  
-  // Para validar margen, solo necesitamos saber si hay hallazgos (ya lo tenemos del conteo)
-  // La validación de margen por fila se hace en el procesamiento por lotes
-  const margen = await validarMargenMinCabecera("aprobar", cabecera.compania, cabecera.proceso, lista, cabecera.parametros, totalHallazgos);
-  if (!margen.ok) {
-    console.info("[APROBAR] Bloqueado por validación de margen", { error: margen.error });
-    return margen;
-  }
-
   console.info("[APROBAR] Tomando solicitud para procesamiento");
   const idProcesoSP = nuevoIdProcesoSP();
   // Toma la solicitud de forma atómica: si dos aprobadores aprueban a la vez, solo uno ejecuta.
@@ -406,35 +333,6 @@ async function aprobarSolicitud(input: AprobarInput): Promise<{ ok: boolean; err
   
   console.info("[APROBAR] Retornando respuesta OK al cliente");
   return { ok: true, idProcesoSP };
-}
-
-/** Valida el margen mínimo usando solo el conteo de hallazgos (sin cargar filas). */
-async function validarMargenMinCabecera(
-  accion: "aprobar" | "enviar",
-  compania: string,
-  proceso: ProcesoKey,
-  lista: string,
-  parametros: Solicitud["parametros"],
-  totalHallazgos: number,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  // Gestión Global y Precio Base: validar flag de la lista
-  if (proceso === "FACTOR_PRECIO" || proceso === "MAYOREOD_MASIVO") {
-    const listaConfig = await pricingRepository.getGlobalManagementConfig(compania, lista);
-    if (listaConfig?.validarPrecioBajoMargenMin && totalHallazgos > 0) {
-      return {
-        ok: false,
-        error: `No se puede ${accion} porque la lista ${lista} tiene activada la validación de precio bajo margen mínimo y hay ${totalHallazgos} artículo(s) con precio por debajo del margen.`,
-      };
-    }
-  }
-  // Descuento y Margen: verificar si hay hallazgos con flag activo por lista
-  if (proceso === "DESCUENTO_LISTA_PRECIO" || proceso === "MARGEN_UTILIDAD_MASIVO") {
-    if (totalHallazgos > 0) {
-      // Verificar si alguna lista tiene el flag activo - se hace en el procesamiento por lotes
-      // Por ahora, permitimos continuar y la validación detallada se hace al procesar
-    }
-  }
-  return { ok: true };
 }
 
 /** Ejecuta el proceso en background sin bloquear la respuesta HTTP. */

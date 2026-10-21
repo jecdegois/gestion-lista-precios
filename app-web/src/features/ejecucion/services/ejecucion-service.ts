@@ -62,7 +62,6 @@ export async function ejecutarSpPrecios(identidad: Identidad, nivelPrecio: strin
     exigirFactorConfigurado:    lista.exigirFactorConfigurado,
     validarPrecioBajoCosto:     lista.validarPrecioBajoCosto,
     excepcionesArticulos:       lista.excepcionesArticulos,
-    validarPrecioBajoMargenMin: lista.validarPrecioBajoMargenMin,
   };
 
   // Helpers para construir el EXEC
@@ -83,7 +82,7 @@ export async function ejecutarSpPrecios(identidad: Identidad, nivelPrecio: strin
     ` ${bit(input.validarPrecioBajoCosto)},` +
     ` ${bit(input.exigirFactorConfigurado)},` +
     ` ${input.excepcionesArticulos == null ? "NULL" : `'${input.excepcionesArticulos.replace(/'/g, "''")}'`},` +
-    ` ${bit(input.validarPrecioBajoMargenMin)};`
+    ` 0;`
   ).slice(0, 500);
 
   // 1 — Crear registro inicial EN_PROCESO

@@ -111,7 +111,6 @@ export type EjecucionSpPreciosInput = {
   exigirFactorConfigurado: boolean;
   /** Puede ser NULL en BD — VARCHAR(MAX), lista de articulos como string */
   excepcionesArticulos: string | null;
-  validarPrecioBajoMargenMin: boolean;
 };
 
 export type EjecucionSpPreciosResult = {
@@ -143,7 +142,8 @@ async function ejecutarSpPrecios(compania: string, input: EjecucionSpPreciosInpu
     .input("p_validar_precio_bajo_costo",      mssql.Bit,                input.validarPrecioBajoCosto ? 1 : 0)
     .input("p_exigir_factor_configurado",      mssql.Bit,                input.exigirFactorConfigurado ? 1 : 0)
     .input("p_excepciones",                    mssql.NVarChar(mssql.MAX),input.excepcionesArticulos ?? null)
-    .input("p_validar_precio_bajo_margen_min", mssql.Bit,                input.validarPrecioBajoMargenMin ? 1 : 0);
+    // El SP conserva el parámetro; la validación de margen mínimo ya no se usa, siempre va apagada.
+    .input("p_validar_precio_bajo_margen_min", mssql.Bit,                0);
 
   const result = await req.execute(sp);
   const filasAfectadas = result.rowsAffected.reduce((sum, n) => sum + n, 0);

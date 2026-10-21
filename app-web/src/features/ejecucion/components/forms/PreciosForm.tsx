@@ -125,7 +125,7 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
       ` ${bit(selectedList.validarPrecioBajoCosto)},` +
       ` ${bit(selectedList.exigirFactorConfigurado)},` +
       ` ${selectedList.excepcionesArticulos == null ? "NULL" : `'${selectedList.excepcionesArticulos.replace(/'/g, "''")}'`},` +
-      ` ${bit(selectedList.validarPrecioBajoMargenMin)};`;
+      ` 0;`;
     console.log("[PreciosForm] EXEC →", execStr);
 
     setProcessing(true);

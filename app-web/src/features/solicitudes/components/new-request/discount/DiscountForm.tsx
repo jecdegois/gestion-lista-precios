@@ -6,7 +6,7 @@ import type { ArticuloCapturaManualRow } from "@/features/solicitudes/components
 import TablaImpactoDescuentoManual from "@/features/solicitudes/components/tables/TablaImpactoDescuentoManual";
 import { useCurrentUser } from "@/shared/components/layout/PortalProviders";
 import { calcularVariacion, redondeoPreview } from "@/features/solicitudes/utils/preview";
-import { esFilaMargen, esHallazgoDeNegocio, type FilaPrecio, type FilaResultado } from "@/shared/types/domain-types";
+import { esFilaMargen, type FilaPrecio, type FilaResultado } from "@/shared/types/domain-types";
 import { simularManual } from "../../../api/solicitudes-api";
 import type { SolicitudInput } from "../../../schemas/solicitud-schema";
 import type { EntryMode, ProcessFormProps, UploadedFile } from "../../../types";
@@ -15,7 +15,6 @@ import { useArticleSearch } from "../../../hooks/useArticleSearch";
 import { useOnChange } from "../../../hooks/useOnChange";
 import { useRequestCatalog } from "../../../hooks/useRequestCatalog";
 import { useRequestSubmission } from "../../../hooks/useRequestSubmission";
-import { useMarginMinFlags } from "../../../hooks/useMarginMinFlags";
 import { useSimulationExport } from "../../../hooks/useSimulationExport";
 import EntryModeTabs from "../shared/EntryModeTabs";
 import ExcelUpload from "../shared/ExcelUpload";
@@ -73,18 +72,13 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
   const selected = search.selected;
   const preview = selected && conversion.valido && conversion.factor != null ? redondeoPreview(selected.precioActual * conversion.factor) : null;
   const canAdd = !lockInput && !!level && !!selected && !invalidFactor && factor !== "";
-  // Filas con error duro se descartan; los hallazgos de margen bloquean solo si la
-  // lista de la fila tiene VALIDAR_PRECIO_BAJO_MARGEN_MIN activo.
-  const margenMinActivo = useMarginMinFlags();
+  // Las filas con error duro se descartan.
   const { processable } = contarFilas(rows);
-  const listasBloqueadas = [...new Set((rows ?? [])
-    .filter((r) => esHallazgoDeNegocio(r) && margenMinActivo((r as FilaPrecio).listaCodigo))
-    .map((r) => (r as FilaPrecio).listaCodigo as string))];
 
   const fieldsComplete = isExcel
     ? processable > 0 && !!company
     : items.length > 0 && !!level && !levelMissing;
-  const canSubmit = simulated && fieldsComplete && processable > 0 && listasBloqueadas.length === 0 && !readOnly && !simulating;
+  const canSubmit = simulated && fieldsComplete && processable > 0 && !readOnly && !simulating;
 
   // Cualquier cambio de parámetros invalida la simulación previa.
   useOnChange(JSON.stringify([level, factor, items]), () => {
@@ -236,7 +230,7 @@ export default function DiscountForm({ readOnly, consultOnly, draft, onSubmitted
         />
       )}
 
-      {simulated && <MarginNotices rows={rows} blocked={listasBloqueadas.length > 0} listLabel={listasBloqueadas.join(", ")} />}
+      {simulated && <MarginNotices rows={rows} />}
 
       <RequestActions
         simulateLabel={isExcel ? "Precalcular impacto" : "Simular impacto"}

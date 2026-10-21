@@ -10,7 +10,6 @@ import type { ProcessFormProps, UploadedFile } from "../../../types";
 import { draftFile, draftValues, EMPTY_FILE } from "../../../utils/draft-values";
 import { useDefaultLevel, useRequestCatalog } from "../../../hooks/useRequestCatalog";
 import { useRequestSubmission } from "../../../hooks/useRequestSubmission";
-import { useMarginMinFlags } from "../../../hooks/useMarginMinFlags";
 import { useSimulationExport } from "../../../hooks/useSimulationExport";
 import ExcelUpload from "../shared/ExcelUpload";
 import ProcessFormLayout from "../shared/ProcessFormLayout";
@@ -44,11 +43,9 @@ export default function MarginForm({ readOnly, consultOnly, draft, onSubmitted, 
     },
   });
 
-  // Códigos inválidos se descartan; los hallazgos de margen bloquean solo con
-  // VALIDAR_PRECIO_BAJO_MARGEN_MIN activo en la lista base.
-  const { warnings, processable } = contarFilas(rows);
-  const blocked = useMarginMinFlags()(BASE_LIST) && warnings > 0;
-  const fieldsComplete = processable > 0 && !blocked && !!company;
+  // Los códigos inválidos se descartan.
+  const { processable } = contarFilas(rows);
+  const fieldsComplete = processable > 0 && !!company;
   const canSubmit = simulated && fieldsComplete && !readOnly;
 
   function buildRequest(): SolicitudInput {
@@ -92,7 +89,7 @@ export default function MarginForm({ readOnly, consultOnly, draft, onSubmitted, 
         }}
       />
 
-      <MarginNotices rows={rows} blocked={blocked} listLabel={BASE_LIST} />
+      <MarginNotices rows={rows} />
 
       <RequestActions
         simulateLabel="Precalcular impacto"

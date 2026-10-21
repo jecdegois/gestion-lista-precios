@@ -11,7 +11,7 @@ import type { TableLoadParams } from "@/shared/components/ui/ResponsiveDataTable
 import { PROCESOS } from "@/features/solicitudes/utils/catalog";
 import { textoResultadoAuditoria } from "@/shared/utils/events";
 import { esHallazgoDeNegocio, type FilaMargen, type FilaPrecio, type FilaResultado, type Identidad, type ProcesoKey, type Solicitud } from "@/shared/types/domain-types";
-import { getCatalogoGestionGlobal, getSolicitudDetallePaginado } from "@/features/solicitudes/api/solicitudes-api";
+import { getSolicitudDetallePaginado } from "@/features/solicitudes/api/solicitudes-api";
 import { fetchGlobalManagementPage } from "@/features/solicitudes/api/paged-api";
 import { useSimulationExport } from "@/features/solicitudes/hooks/useSimulationExport";
 
@@ -184,24 +184,6 @@ export default function RevisionModal({
   }, [solicitud.id, esGestionGlobal]);
 
 
-  // Re-lee GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN (listas con el flag activo) cada vez
-  // que se abre el modal, para bloquear si el flag se activó después de enviar la solicitud.
-  // null = consultando, "error" = falló → no se permite aprobar (falla cerrado) y se ofrece reintentar.
-  const [listasMargenMin, setListasMargenMin] = useState<Set<string> | null | "error">(null);
-  const [intentoMargen, setIntentoMargen] = useState(0);
-  useEffect(() => {
-    let cancelado = false;
-    setListasMargenMin(null);
-    getCatalogoGestionGlobal()
-      .then((res) => {
-        if (cancelado) return;
-        if (!res.ok) { setListasMargenMin("error"); return; }
-        setListasMargenMin(new Set((res.data?.listas ?? []).filter((l) => l.validarPrecioBajoMargenMin).map((l) => l.codigo.trim().toUpperCase())));
-      })
-      .catch(() => { if (!cancelado) setListasMargenMin("error"); });
-    return () => { cancelado = true; };
-  }, [solicitud.id, intentoMargen]);
-
   // Para procesos no-GG: sincronizar filas cuando llega el detalle lazy del modal.
   useEffect(() => {
     if (esGestionGlobal) return;
@@ -323,25 +305,12 @@ export default function RevisionModal({
   const puedeDecidir =
     !readOnly && currentUser.rol === "APROBADOR" && solicitud.estado === "PENDIENTE" && solicitud.solicitanteEmail !== currentUser.email;
 
-  // Bloqueo por VALIDAR_PRECIO_BAJO_MARGEN_MIN (valor VIGENTE): Gestión Global con hallazgos en
-  // su lista; Descuento por la lista de cada fila; Precio Base y Margen por MAYOREOD.
-  const margenMinActivo = (lista: string | null | undefined) =>
-    listasMargenMin instanceof Set && listasMargenMin.has(String(lista ?? "").trim().toUpperCase());
-  const listaDeFila = (f: FilaResultado) =>
-    solicitud.proceso === "DESCUENTO_LISTA_PRECIO" ? ("listaCodigo" in f && f.listaCodigo) || f.lista : "MAYOREOD";
   // Para procesos no-GG: usar hallazgos del backend si están disponibles, sino filtrar localmente
   const filasConHallazgo = esGestionGlobal
     ? []
     : backendHallazgosFilas.length > 0
       ? backendHallazgosFilas
       : filas.filter(esHallazgoDeNegocio);
-  const listasBloqueadas = esGestionGlobal
-    ? (margenMinActivo(nivelConsulta) && (totalHallazgos ?? 0) > 0 ? [nivelConsulta] : [])
-    : [...new Set(filasConHallazgo.filter((f) => margenMinActivo(listaDeFila(f))).map(listaDeFila))];
-  const bloqueadoPorMargen = listasBloqueadas.length > 0;
-  // Mientras se verifica el flag (o si la consulta falla) no se habilita Procesar.
-  const verificandoMargen = listasMargenMin === null || (esGestionGlobal && margenMinActivo(nivelConsulta) && totalHallazgos === null);
-  const errorMargen = listasMargenMin === "error";
   // Usar total de hallazgos del backend para procesos no-GG si está disponible
   const cantidadHallazgos = esGestionGlobal
     ? totalHallazgos ?? hallazgosDetalle.length
@@ -372,7 +341,7 @@ export default function RevisionModal({
     return todas;
   }
 
-  const puedeAprobar = puedeDecidir && !bloqueadoPorMargen && !verificandoMargen && !errorMargen && (solicitud.filas.length > 0 || (esGestionGlobal && articulosCargados));
+  const puedeAprobar = puedeDecidir && (solicitud.filas.length > 0 || (esGestionGlobal && articulosCargados));
   const enProceso = solicitud.estado === "EN_PROCESO";
   const puedeReintentar =
     !readOnly &&
@@ -441,15 +410,8 @@ export default function RevisionModal({
           </div>
         )}
 
-        {esGestionGlobal && bloqueadoPorMargen && (
-          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-xs text-red-800 mb-4">
-            <strong>Aprobación bloqueada — {totalHallazgos} artículo(s) con precio bajo margen mínimo</strong>:{" "}
-            la lista {nivelConsulta} tiene activada la validación de precio bajo margen mínimo.
-          </div>
-        )}
-
-        {/* Advertencias de filas con error (descartadas) y de margen; al aprobar solo se procesan
-            las válidas y, si el flag de la lista está apagado, las de hallazgo de margen. */}
+        {/* Advertencias de filas con error (descartadas) y de margen; al aprobar se procesan
+            las válidas y las de hallazgo de margen. */}
         {!esGestionGlobal && (() => {
           const filasConError = filas.filter((f) => !f.validacion.valido && !esHallazgoDeNegocio(f)).length;
           const filasConAdvertencia = filasConHallazgo.length;
@@ -466,28 +428,14 @@ export default function RevisionModal({
                 </div>
               )}
               {filasConAdvertencia > 0 && (
-                bloqueadoPorMargen ? (
-                  // Flag ON: la aprobación está bloqueada — el aprobador no puede proceder
-                  <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-xs text-red-800 flex items-start gap-2">
-                    <span className="text-red-500 shrink-0 mt-0.5">✕</span>
-                    <span>
-                      <strong>Aprobación bloqueada — {filasConAdvertencia} fila(s) con precio bajo margen mínimo</strong>:{" "}
-                      la lista {listasBloqueadas.join(", ")} tiene activada la validación de precio bajo margen mínimo.
-                      Esta solicitud <strong>no puede procesarse</strong> mientras contenga precios por debajo del margen mínimo.
-                      El solicitante debe corregir los precios y reenviar la solicitud.
-                    </span>
-                  </div>
-                ) : (
-                  // Flag OFF: advertencia informativa, el aprobador puede proceder bajo su criterio
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 flex items-start gap-2">
-                    <span className="text-amber-500 shrink-0 mt-0.5">⚠</span>
-                    <span>
-                      <strong>{filasConAdvertencia} fila(s) con advertencia de margen</strong>: el precio propuesto
-                      está por debajo del margen mínimo del artículo. Estas filas <strong>sí serán procesadas</strong> si aprueba.
-                      Revíselas en la tabla antes de autorizar.
-                    </span>
-                  </div>
-                )
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 flex items-start gap-2">
+                  <span className="text-amber-500 shrink-0 mt-0.5">⚠</span>
+                  <span>
+                    <strong>{filasConAdvertencia} fila(s) con advertencia de margen</strong>: el precio propuesto
+                    está por debajo del margen mínimo del artículo. Estas filas <strong>sí serán procesadas</strong> si aprueba.
+                    Revíselas en la tabla antes de autorizar.
+                  </span>
+                </div>
               )}
             </div>
           );
@@ -677,18 +625,12 @@ export default function RevisionModal({
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">Motivo de rechazo *</label>
               <textarea className="input" rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Obligatorio para rechazar" />
             </div>
-            {errorMargen && (
-              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 flex items-center justify-between gap-2">
-                <span>No fue posible verificar la validación de margen mínimo (VALIDAR_PRECIO_BAJO_MARGEN_MIN). No se puede procesar hasta verificarla.</span>
-                <button className="btn btn-outline shrink-0" onClick={() => setIntentoMargen((n) => n + 1)}>Reintentar</button>
-              </div>
-            )}
             <div className="flex items-center justify-end gap-2">
               <button className="btn btn-outline" disabled={motivo.trim().length === 0} onClick={() => { onRechazar(solicitud.id, motivo.trim()); onClose(); }}>
                 Rechazar
               </button>
               <button className="btn btn-destructive" disabled={!puedeAprobar} onClick={() => { onAprobar(solicitud.id); onClose(); }}>
-                <Icon name="check" className="w-3.5 h-3.5" /> {verificandoMargen ? "Verificando margen…" : "Procesar Solicitud"}
+                <Icon name="check" className="w-3.5 h-3.5" /> Procesar Solicitud
               </button>
             </div>
           </div>

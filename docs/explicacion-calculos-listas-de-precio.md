@@ -212,15 +212,9 @@ El motor clasifica cada fila (`app-web/src/features/solicitudes/utils/engine.ts:
    - Ejemplo (motor real): 100.001 con costo 70 da una fila válida.
    - Solo el proceso de Margen lo rechaza expresamente (`engine.ts:351-357`).
 
-**Bloqueo por lista:** si la lista que se consulta tiene `GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN = 1`,
-una solicitud con hallazgos **no se puede enviar**
-(`app-web/src/features/solicitudes/services/solicitudes-service.ts:55-106`).
-- Para Gestión Global, los hallazgos se cuentan con una consulta SQL.
-- Para el resto de procesos, se cuentan las filas.
-- La lista que se consulta depende del proceso (`solicitudes-service.ts:99-101`):
-  - en Descuento, la lista de cada fila;
-  - en Precio Base y en **Margen**, siempre **MAYOREOD**, aunque en Margen se haya simulado con otra lista.
-- Al aprobar, la revalidación es parcial (anexo A.3).
+**Sin bloqueo por lista:** el flag `GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN` se eliminó por pedido del cliente.
+Ya no se lee ni bloquea el envío o la aprobación. Los hallazgos de margen siguen marcando filas (se retirarán en un segundo paso).
+Al SP de ejecución se le envía siempre `0` en ese parámetro.
 
 ### 2.6 Reglas del flujo de aprobación
 
@@ -518,12 +512,6 @@ Son diferencias encontradas al leer el código. Las confirmé yo y las confirmó
    (`domain-types.ts:315-322`).
 4. Los totales salen de `#DET`, que no incluye esas filas (`pricing-repository.ts:1341-1343`, `:1494-1502`, `:1623-1629`).
    Por eso la solicitud puede terminar como `PROCESADO` sin avisar que se omitieron, incluso con cero filas aplicadas.
-
-**A.3 Al aprobar, `VALIDAR_PRECIO_BAJO_MARGEN_MIN` se revalida solo en parte.** *(Confirmado parcialmente.)*
-- **Precio Base:** sí relee el flag vigente y bloquea si el detalle guardado tiene hallazgos. No recalcula con costos o precios nuevos
-  (`solicitudes-service.ts:373-383`, `:420-429`).
-- **Gestión Global:** cuenta la fila resumen, que siempre es válida, así que nunca bloquea al aprobar.
-- **Descuento y Margen:** no hacen la comprobación (`solicitudes-service.ts:430-436`).
 
 **A.4 Precio Base valida un precio y guarda otro.** *(Confirmado.)*
 - Valida con el precio redondeado (`engine.ts:183-186`), pero persiste el capturado (`requests-repository.ts:689`, `pricing-repository.ts:1328`).

@@ -55,8 +55,6 @@ export interface GestionGlobalLista extends NivelPrecio {
   exigirFactorConfigurado: boolean;
   /** GESTION_LISTAS_PRECIOS.EXCEPCIONES_ARTICULOS — VARCHAR(MAX) nullable, lista de articulos */
   excepcionesArticulos: string | null;
-  /** GESTION_LISTAS_PRECIOS.VALIDAR_PRECIO_BAJO_MARGEN_MIN */
-  validarPrecioBajoMargenMin: boolean;
 }
 
 /** Resultado de evaluar una fila de la carga masiva de margen. */

@@ -175,7 +175,7 @@ async function upsertFactoresArticuloLista(
     throw new Error("La compañía y el usuario son obligatorios para guardar factores por artículo.");
   }
 
-  // Hallazgos de margen incluidos: el bloqueo por VALIDAR_PRECIO_BAJO_MARGEN_MIN ya se evaluó al aprobar.
+  // Hallazgos de margen incluidos.
   const filasValidas = filas.filter((fila): fila is FilaPrecio => !esFilaMargen(fila) && esFilaProcesable(fila));
   const filasOmitidas = filas.length - filasValidas.length;
   if (filasValidas.length === 0) {
@@ -457,7 +457,6 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       exigirFactorConfigurado:    false,
       validarPrecioBajoCosto:     false,
       excepcionesArticulos:       null,
-      validarPrecioBajoMargenMin: false,
     }));
   }
   const pool = await getPool(compania);
@@ -479,8 +478,7 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
               LTRIM(RTRIM(A.MONEDA_BASE)) AS monedaBase,
               ISNULL(A.EXIGIR_FACTOR_CONFIGURADO, 0)    AS exigirFactorConfigurado,
               ISNULL(A.VALIDAR_PRECIO_BAJO_COSTO, 0)    AS validarPrecioBajoCosto,
-              ISNULL(A.EXCEPCIONES_ARTICULOS, 0)        AS excepcionesArticulos,
-              ISNULL(A.VALIDAR_PRECIO_BAJO_MARGEN_MIN, 0) AS validarPrecioBajoMargenMin
+              ISNULL(A.EXCEPCIONES_ARTICULOS, 0)        AS excepcionesArticulos
          FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
         WHERE A.COMPANIA = @compania
         -- Versión más reciente primero: los consumidores buscan por código con .find y
@@ -506,7 +504,6 @@ async function listarGestionGlobal(compania: string): Promise<GestionGlobalLista
       exigirFactorConfigurado:    Boolean(r.exigirFactorConfigurado),
       validarPrecioBajoCosto:     Boolean(r.validarPrecioBajoCosto),
       excepcionesArticulos:       r.excepcionesArticulos == null ? null : String(r.excepcionesArticulos),
-      validarPrecioBajoMargenMin: Boolean(r.validarPrecioBajoMargenMin),
     };
   })
     .filter((nivel) => nivel.codigo && nivel.version)
@@ -1219,63 +1216,6 @@ async function conDetalleEnSoftland<T>(
 }
 
 /**
- * Obtiene la configuración de gestión global para una lista específica.
- * Usado para validar el flag VALIDAR_PRECIO_BAJO_MARGEN_MIN sin cargar todas las listas.
- */
-async function obtenerConfiguracionGestionGlobal(
-  compania: string,
-  lista: string,
-): Promise<GestionGlobalLista | null> {
-  if (esModoDemo()) {
-    const listas = await listarGestionGlobal(compania);
-    return listas.find((l) => l.codigo.trim().toUpperCase() === lista.trim().toUpperCase()) ?? null;
-  }
-
-  const pool = await getPool(compania);
-  const mssql = await import("mssql");
-  const q = await pool.request()
-    .input("compania", mssql.VarChar(20), compania.trim().toUpperCase())
-    .input("lista", mssql.VarChar(50), lista.trim())
-    .query(
-      `SELECT TOP (1)
-              A.NIVEL_PRECIO AS codigo,
-              A.VERSION AS version,
-              A.VARIACION_PORC AS variacionPorc,
-              LTRIM(RTRIM(A.TIPO_VARIACION)) AS tipoVariacion,
-              LTRIM(RTRIM(A.MONEDA)) AS moneda,
-              COALESCE(NULLIF(LTRIM(RTRIM(A.NIVEL_PRECIO_BASE)), ''), A.NIVEL_PRECIO) AS nivelPrecioBase,
-              ISNULL(A.VALIDAR_PRECIO_BAJO_MARGEN_MIN, 0) AS validarPrecioBajoMargenMin
-         FROM [dbo].[GESTION_LISTAS_PRECIOS] A WITH(NOLOCK)
-        WHERE A.COMPANIA = @compania
-          AND A.NIVEL_PRECIO = @lista
-        ORDER BY TRY_CONVERT(INT, A.VERSION) DESC, A.VERSION DESC;`,
-    );
-  
-  const r = q.recordset[0];
-  if (!r) return null;
-  
-  const codigo = String(r.codigo ?? "").trim();
-  return {
-    codigo,
-    nombre: codigo,
-    version: String(r.version ?? "").trim(),
-    variacionPorc: r.variacionPorc == null ? null : Number(r.variacionPorc),
-    tipoVariacion: normalizarTipoVariacion(r.tipoVariacion),
-    moneda: r.moneda == null ? null : String(r.moneda).trim() || null,
-    fechaInicio: null,
-    fechaFin: null,
-    factorMultiplicador: null,
-    horasAtras: null,
-    nivelPrecioBase: String(r.nivelPrecioBase ?? codigo).trim() || codigo,
-    monedaBase: null,
-    exigirFactorConfigurado: false,
-    validarPrecioBajoCosto: false,
-    excepcionesArticulos: null,
-    validarPrecioBajoMargenMin: Boolean(r.validarPrecioBajoMargenMin),
-  };
-}
-
-/**
  * Actualiza precios base en ARTICULO_PRECIO leyendo directamente de SOLICITUD_DETALLE.
  * Usa UPDATE con JOIN para actualizar en masa (no fila por fila).
  */
@@ -1667,7 +1607,6 @@ export const pricingRepository = {
   runMarginSp: ejecutarSpMargen,
   runListManagementSp: ejecutarSpGestionListas,
   // Funciones BATCHED para solicitudes grandes (10K-40K filas)
-  getGlobalManagementConfig: obtenerConfiguracionGestionGlobal,
   updateBasePricesBatched: actualizarPreciosBaseBatched,
   upsertArticleListFactorsBatched: upsertFactoresArticuloListaBatched,
   upsertUdfsBatched: upsertUdfsBatched,
