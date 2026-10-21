@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Portal web full-stack (Next.js) para Gestion Masiva de Precios MV26020",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "next dev",
     "postinstall": "prisma generate --schema prisma-postgres && prisma generate --schema prisma-sqlserver && prisma generate --schema prisma-softland",
@@ -36,7 +39,7 @@
   },
   "devDependencies": {
     "@types/mssql": "9.1.5",
-    "@types/node": "^20.14.10",
+    "@types/node": "^24.19.2",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "autoprefixer": "10.4.19",

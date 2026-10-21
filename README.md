@@ -79,7 +79,7 @@ En modo real, la aplicación no actualiza precios directamente. Al aprobar una s
 
 ## Requisitos
 
-- Node.js 18.18+ o 20+.
+- Node.js 24 (LTS).
 - npm.
 - Opcional para modo real: SQL Server accesible y objetos Softland configurados por compañía.
 

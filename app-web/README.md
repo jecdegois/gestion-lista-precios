@@ -4,7 +4,7 @@ Aplicación web **full-stack en Next.js (App Router)** que integra la interfaz R
 
 ## Requisitos
 
-- Node.js 18.18+ (o 20+).
+- Node.js 24 (LTS).
 - Opcional: SQL Server con los objetos por compañía (`SP_CALCULAR_MARGEN_MINIMO_ARTICULO`, `U_FACTOR_REDUCCION_MARGEN`, `ARTICULO`, `ARTICULO_PRECIO`).
 
 > En Windows, si `npm` está bloqueado por la política de ejecución de PowerShell, use `npm.cmd` en lugar de `npm`.
