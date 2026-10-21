@@ -6,9 +6,7 @@ const nextConfig = {
     return [{ source: "/usuarios/:path*", destination: "/configuracion/usuarios/:path*", permanent: true }];
   },
   // mssql es un paquete solo de servidor: se externaliza para que no entre al bundle cliente.
-  experimental: {
-    serverComponentsExternalPackages: ["mssql"],
-  },
+  serverExternalPackages: ["mssql"],
 };
 
 export default nextConfig;

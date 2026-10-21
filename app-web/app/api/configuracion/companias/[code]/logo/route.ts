@@ -4,13 +4,13 @@ import { companiesRepository } from "@/features/settings/repository/companies-re
 import { settingsService } from "@/features/settings/services/settings-service";
 import { getServerSession } from "@/server/session";
 
-type Ctx = { params: { code: string } };
+type Ctx = { params: Promise<{ code: string }> };
 
 /** Imagen del logo (cualquier sesión válida: se muestra en el header). La URL lleva `?v=` y se cachea. */
 export const GET = (req: Request, { params }: Ctx) =>
   withApiRoute(async () => {
     if (!(await getServerSession())) return apiUnauthorized("Sesión no válida");
-    const logo = await companiesRepository.getLogo(params.code);
+    const logo = await companiesRepository.getLogo((await params).code);
     if (!logo) return new Response(null, { status: 404 });
 
     return new Response(new Uint8Array(logo.bytes), {
@@ -27,10 +27,10 @@ export const POST = withAdmin<Ctx>(async (req, session, { params }) => {
   const file = (await req.formData().catch(() => null))?.get("file");
   if (!(file instanceof File)) return apiBadRequest("Seleccione una imagen");
 
-  return apiServiceResult(await settingsService.setCompanyLogo(session, params.code, file, requestContext(req)));
+  return apiServiceResult(await settingsService.setCompanyLogo(session, (await params).code, file, requestContext(req)));
 });
 
 /** Quita el logo; el header vuelve a mostrar las iniciales. */
 export const DELETE = withAdmin<Ctx>(async (req, session, { params }) =>
-  apiServiceResult(await settingsService.setCompanyLogo(session, params.code, null, requestContext(req))),
+  apiServiceResult(await settingsService.setCompanyLogo(session, (await params).code, null, requestContext(req))),
 );

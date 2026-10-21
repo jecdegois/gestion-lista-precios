@@ -15,7 +15,7 @@ export function nuevoIdProcesoSP(): string {
 
 export function nombreArchivoS3(prefijo: string, ext: string): string {
   const d = new Date();
-  const ts = d.toISOString().replace(/[-:T.]/g, "").slice(0, 14);
+  const ts = d.toISOString().replace(/\D/g, "").slice(0, 14);
   return prefijo + "-" + ts + "." + ext;
 }
 

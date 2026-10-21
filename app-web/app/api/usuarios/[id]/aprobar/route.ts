@@ -4,9 +4,9 @@ import { ApproveUserSchema } from "@/features/users/schemas/user-schema";
 import { usersService } from "@/features/users/services/users-service";
 
 /** Aprueba una solicitud de registro asignando compañías y roles. */
-export const POST = withAdmin<{ params: { id: string } }>(async (req, session, { params }) => {
+export const POST = withAdmin<{ params: Promise<{ id: string }> }>(async (req, session, { params }) => {
   const parsed = ApproveUserSchema.safeParse(await parseJsonBody(req));
   if (!parsed.success) return apiBadRequest(parsed.error.issues[0]?.message ?? "Datos inválidos");
 
-  return apiServiceResult(await usersService.approve(session, params.id, parsed.data, requestContext(req)));
+  return apiServiceResult(await usersService.approve(session, (await params).id, parsed.data, requestContext(req)));
 });
