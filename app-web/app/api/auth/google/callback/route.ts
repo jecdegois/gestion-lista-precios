@@ -16,7 +16,7 @@ const PENDING_MESSAGE = "Su cuenta está pendiente de aprobación";
 /** Vuelta del consentimiento de Google: valida, crea la sesión y redirige. */
 export const GET = withApiRoute(async (req: Request) => {
   const url = new URL(req.url);
-  const [state, nonce] = (cookies().get(GOOGLE_OAUTH_COOKIE)?.value ?? "").split(".");
+  const [state, nonce] = ((await cookies()).get(GOOGLE_OAUTH_COOKIE)?.value ?? "").split(".");
   const code = url.searchParams.get("code");
 
   const backToLogin = (key: "error" | "aviso", message: string) => {
