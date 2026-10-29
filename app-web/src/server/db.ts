@@ -1,6 +1,5 @@
 import "server-only";
 import type { ConnectionPool as MssqlConnectionPool } from "mssql";
-import { PrismaClient as SoftlandClient } from "@/generated/softland";
 import { Prisma, PrismaClient as PortalClient } from "@/generated/sqlserver";
 import { envs } from "@/config/envs";
 import { resolverCompania } from "./companies";
@@ -117,12 +116,12 @@ function urlSqlServer({ server, user, password, database }: SqlTarget, schema: s
  * Clientes Prisma cacheados por base+esquema (sobreviven al hot reload).
  * Ojo: el SQL crudo ($queryRaw) NO usa el esquema de la URL; ahí calificar con objetoPortal()/objetoCalificado().
  */
-const globalClients = globalThis as unknown as { prismaSqlServer?: Map<string, PortalClient | SoftlandClient> };
+const globalClients = globalThis as unknown as { prismaSqlServer?: Map<string, PortalClient> };
 const clients = (globalClients.prismaSqlServer ??= new Map());
 
-function cliente<T extends PortalClient | SoftlandClient>(Client: new (o: { datasourceUrl: string }) => T, target: SqlTarget, schema: string): T {
+function cliente(Client: new (o: { datasourceUrl: string }) => PortalClient, target: SqlTarget, schema: string): PortalClient {
   const key = `${target.server}/${target.database}.${schema}`;
-  let c = clients.get(key) as T | undefined;
+  let c = clients.get(key);
   if (!c) {
     c = new Client({ datasourceUrl: urlSqlServer(target, schema) });
     clients.set(key, c);
@@ -133,11 +132,6 @@ function cliente<T extends PortalClient | SoftlandClient>(Client: new (o: { data
 /** BD del portal (PORTAL_PRECIOS), esquema de la compañía. */
 export function portalDb(compania: string): PortalClient {
   return cliente(PortalClient, PORTAL, resolverCompania(compania).schema);
-}
-
-/** Softland del país de la compañía, en su esquema (NIVEL_PRECIO, VERSION_NIVEL). */
-export function softlandDb(compania: string): SoftlandClient {
-  return cliente(SoftlandClient, softlandDe(compania), resolverCompania(compania).schema);
 }
 
 /**

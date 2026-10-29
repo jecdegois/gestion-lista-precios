@@ -9,7 +9,7 @@ import {
   porcentajeUdfDemo,
   upsertUdfDemo,
 } from "./demo-catalog";
-import { getPool, portalDb, softlandDb } from "@/server/db";
+import { getPool, portalDb } from "@/server/db";
 
 /**
  * Repositorio de precios/margen por compania. Enruta cada operacion a la base
@@ -400,35 +400,18 @@ async function listarNivelesPrecio(compania: string): Promise<NivelPrecio[]> {
   if (esModoDemo()) return nivelesPrecioDemo(compania);
 
   // Niveles que tienen al menos una versión activa.
-  const db = softlandDb(compania);
-  const activos = await db.vERSION_NIVEL.findMany({ where: { ESTADO: "A" }, distinct: ["NIVEL_PRECIO"], select: { NIVEL_PRECIO: true } });
-  const niveles = await db.nIVEL_PRECIO.findMany({
-    where: { NIVEL_PRECIO: { in: activos.map((v) => v.NIVEL_PRECIO) } },
-    distinct: ["NIVEL_PRECIO"],
-    select: { NIVEL_PRECIO: true },
-    orderBy: { NIVEL_PRECIO: "asc" },
-  });
-  return niveles.map((n) => {
+  const niveles = objetoCalificado(compania, "tablaNivelPrecio");
+  const versiones = objetoCalificado(compania, "tablaVersionNivel");
+  const { recordset } = await (await getPool(compania)).request().query<{ NIVEL_PRECIO: string }>(
+    `SELECT DISTINCT N.NIVEL_PRECIO
+       FROM ${niveles} N WITH(NOLOCK)
+      WHERE EXISTS (SELECT 1 FROM ${versiones} V WITH(NOLOCK) WHERE V.NIVEL_PRECIO = N.NIVEL_PRECIO AND V.ESTADO = 'A')
+      ORDER BY N.NIVEL_PRECIO`,
+  );
+  return recordset.map((n) => {
     const codigo = n.NIVEL_PRECIO.trim();
     return { codigo, nombre: codigo };
   });
-}
-
-async function obtenerVersionActiva(compania: string, nivelPrecio: string): Promise<number> {
-  const nivel = nivelPrecio.trim();
-  if (!nivel) throw new Error("Debe indicar una lista de precio para consultar la versión activa.");
-  if (esModoDemo()) return 1;
-
-  const result = await softlandDb(compania).vERSION_NIVEL.findFirst({
-    where: { NIVEL_PRECIO: nivel, ESTADO: "A" },
-    orderBy: { VERSION: "desc" },
-    select: { VERSION: true },
-  });
-  const version = Number(result?.VERSION);
-  if (!Number.isInteger(version)) {
-    throw new Error(`No existe una versión activa para la lista '${nivel}'.`);
-  }
-  return version;
 }
 
 /** Lista y parámetros vigentes usados exclusivamente por Gestión Global. */
@@ -1593,7 +1576,6 @@ async function upsertUdfsBatched(
 
 export const pricingRepository = {
   listPriceLevels: listarNivelesPrecio,
-  activePriceVersion: obtenerVersionActiva,
   listGlobalManagement: listarGestionGlobal,
   listCatalog: listarCatalogo,
   listCatalogPage: listarCatalogoPaginado,

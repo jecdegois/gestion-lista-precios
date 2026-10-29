@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "postinstall": "prisma generate --schema prisma-postgres && prisma generate --schema prisma-sqlserver && prisma generate --schema prisma-softland",
+    "postinstall": "prisma generate --schema prisma-postgres && prisma generate --schema prisma-sqlserver",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -18,7 +18,6 @@
     "db:studio": "prisma studio --schema prisma-postgres",
     "sqlserver:pull": "prisma db pull --schema prisma-sqlserver",
     "sqlserver:generate": "prisma generate --schema prisma-sqlserver",
-    "softland:generate": "prisma generate --schema prisma-softland",
     "sqlserver:studio": "prisma studio --schema prisma-sqlserver",
     "seed": "node --env-file=.env prisma-postgres/seed.cjs"
   },
