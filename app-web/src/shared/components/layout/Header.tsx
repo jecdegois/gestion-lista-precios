@@ -8,14 +8,14 @@ import { roleLabel } from "@/shared/utils/format";
 import { setActiveCompany, signOut } from "@/features/auth/api/auth-api";
 import type { Identidad } from "@/shared/types/domain-types";
 import { notify } from "@/shared/notifications/notify";
+import { puedeEjecutar } from "@/features/ejecucion/permissions";
 
 type NavItem = { key: string; label: string; href: string; visible: (user: Identidad) => boolean };
 
 const NAV_ITEMS: NavItem[] = [
   { key: "nueva", label: "Nueva Solicitud", href: "/solicitudes/nueva", visible: (u) => u.rol !== "AUDITOR" && u.rol !== "SIN_PERMISO" },
   { key: "bandeja", label: "Bandeja de Aprobación", href: "/solicitudes/bandeja", visible: (u) => u.rol !== "SIN_PERMISO" },
-  // TODO: cuando el cliente defina el rol EJECUTOR, agregar aquí: u.rol === "EJECUTOR"
-  { key: "ejecucion", label: "Ejecución", href: "/ejecucion", visible: (u) => u.rol === "APROBADOR" || !!u.isAdmin },
+  { key: "ejecucion", label: "Ejecución", href: "/ejecucion", visible: puedeEjecutar },
   { key: "auditoria", label: "Auditoría", href: "/auditoria", visible: (u) => u.rol !== "SIN_PERMISO" },
   { key: "settings", label: "Configuración", href: "/configuracion", visible: (u) => !!u.isAdmin },
 ];

@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import { getIdentidad, requireAuth } from "@/server/session";
+import { puedeEjecutar } from "@/features/ejecucion/permissions";
 
 /**
  * Guard de acceso para el módulo de Ejecución.
  *
- * Por ahora solo APROBADOR (y admin) puede acceder.
- * TODO: cuando el cliente defina el rol EJECUTOR, agregar aquí la condición.
+ * La regla vive en `puedeEjecutar` (también la aplican el menú y el service).
  */
 export default async function EjecucionLayout({
   children,
@@ -15,10 +15,7 @@ export default async function EjecucionLayout({
 
   const user = getIdentidad(session);
 
-  // TODO: ampliar cuando exista rol EJECUTOR → user.rol === "EJECUTOR"
-  const puedeVerEjecucion = user.rol === "APROBADOR" || !!user.isAdmin;
-
-  if (!puedeVerEjecucion) redirect("/");
+  if (!puedeEjecutar(user)) redirect("/");
 
   return (
     <>

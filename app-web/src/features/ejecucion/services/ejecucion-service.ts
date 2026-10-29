@@ -2,6 +2,9 @@ import type { Identidad, EjecucionKey, EstadoEjecucion } from "@/shared/types/do
 import { resolverCompania } from "@/server/companies";
 import { pricingRepository } from "@/features/solicitudes/repository/pricing-repository";
 import { ejecucionRepository, type EjecucionSpPreciosInput } from "../repository/ejecucion-repository";
+import { puedeEjecutar } from "../permissions";
+
+const SIN_PERMISO = { ok: false as const, error: "No tiene permiso para operar el módulo de Ejecución." };
 
 export async function crearEjecucion(identidad: Identidad, input: {
   tipo: EjecucionKey;
@@ -9,6 +12,7 @@ export async function crearEjecucion(identidad: Identidad, input: {
   spNombre: string;
   observaciones?: string | null;
 }) {
+  if (!puedeEjecutar(identidad)) return SIN_PERMISO;
   return { ok: true as const, ejecucion: await ejecucionRepository.crear(identidad.compania!, identidad.email, identidad.nombre, input) };
 }
 
@@ -21,10 +25,12 @@ export async function actualizarEjecucion(identidad: Identidad, id: string, inpu
   codigoError?: string | null;
   mensajeError?: string | null;
 }) {
+  if (!puedeEjecutar(identidad)) return SIN_PERMISO;
   return { ok: true as const, ejecucion: await ejecucionRepository.actualizar(identidad.compania!, id, input) };
 }
 
 export async function listarEjecuciones(identidad: Identidad, tipo: EjecucionKey) {
+  if (!puedeEjecutar(identidad)) return SIN_PERMISO;
   return { ok: true as const, ejecuciones: await ejecucionRepository.listar(identidad.compania!, tipo) };
 }
 
@@ -38,6 +44,7 @@ export async function listarEjecuciones(identidad: Identidad, tipo: EjecucionKey
  * se cierra con estado ERROR antes de retornar. Nunca lanza al caller.
  */
 export async function ejecutarSpPrecios(identidad: Identidad, nivelPrecio: string, version: number) {
+  if (!puedeEjecutar(identidad)) return SIN_PERMISO;
   const compania = identidad.compania!;
   const schema   = resolverCompania(compania).schema;
 
