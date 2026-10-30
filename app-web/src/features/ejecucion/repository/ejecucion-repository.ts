@@ -137,13 +137,7 @@ async function ejecutarSpPrecios(compania: string, input: EjecucionSpPreciosInpu
     .input("p_nivel_precio_base",          mssql.VarChar(50),    input.nivelPrecioBase)
     .input("p_moneda_base",                mssql.VarChar(1),     input.monedaBase ?? null)
     .input("p_factor_multiplicador",       mssql.Decimal(28, 8), input.factorMultiplicador)
-    .input("p_version",                    mssql.Int,            input.version)
-    .input("p_usuario_ult_modif",              mssql.VarChar(50),        input.usuarioSolicitante ?? "")
-    .input("p_validar_precio_bajo_costo",      mssql.Bit,                input.validarPrecioBajoCosto ? 1 : 0)
-    .input("p_exigir_factor_configurado",      mssql.Bit,                input.exigirFactorConfigurado ? 1 : 0)
-    .input("p_excepciones",                    mssql.NVarChar(mssql.MAX),input.excepcionesArticulos ?? null)
-    // El SP conserva el parámetro; la validación de margen mínimo ya no se usa, siempre va apagada.
-    .input("p_validar_precio_bajo_margen_min", mssql.Bit,                0);
+    .input("p_version",                    mssql.Int,            input.version);
 
   const result = await req.execute(sp);
   const filasAfectadas = result.rowsAffected.reduce((sum, n) => sum + n, 0);

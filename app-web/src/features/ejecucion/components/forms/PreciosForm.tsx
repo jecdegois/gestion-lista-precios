@@ -110,7 +110,6 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
     const schema = (user.compania ?? "FEBECA").trim().toUpperCase();
     const q  = (v: string) => `'${v.replace(/'/g, "''")}'`;
     const qn = (v: string | null | undefined) => v ? q(v) : "NULL";
-    const bit = (v: boolean) => v ? "1" : "0";
     const execStr =
       `EXEC [${schema}].[SP_GESTION_LISTAS_PRECIOS_FULL]` +
       ` ${q(selectedList.codigo)},` +
@@ -120,12 +119,7 @@ export default function PreciosForm({ onExecutionLogChange }: { onExecutionLogCh
       ` ${q(selectedList.nivelPrecioBase)},` +
       ` ${qn(selectedList.monedaBase)},` +
       ` ${selectedList.factorMultiplicador!.toFixed(8)},` +
-      ` ${Number(selectedList.version)},` +
-      ` ${q(user.nombre)},` +           // @p_usuario_ult_modif
-      ` ${bit(selectedList.validarPrecioBajoCosto)},` +
-      ` ${bit(selectedList.exigirFactorConfigurado)},` +
-      ` ${selectedList.excepcionesArticulos == null ? "NULL" : `'${selectedList.excepcionesArticulos.replace(/'/g, "''")}'`},` +
-      ` 0;`;
+      ` ${Number(selectedList.version)};`;
     console.log("[PreciosForm] EXEC →", execStr);
 
     setProcessing(true);

@@ -74,7 +74,6 @@ export async function ejecutarSpPrecios(identidad: Identidad, nivelPrecio: strin
   // Helpers para construir el EXEC
   const q  = (v: string) => `'${v.replace(/'/g, "''")}'`;
   const qn = (v: string | null | undefined) => (v ? q(v) : "NULL");
-  const bit = (v: boolean) => (v ? "1" : "0");
   const execStr = (
     `EXEC [${schema}].[SP_GESTION_LISTAS_PRECIOS_FULL]` +
     ` ${q(input.nivelPrecio)},` +
@@ -84,13 +83,8 @@ export async function ejecutarSpPrecios(identidad: Identidad, nivelPrecio: strin
     ` ${q(input.nivelPrecioBase)},` +
     ` ${qn(input.monedaBase)},` +
     ` ${input.factorMultiplicador.toFixed(8)},` +
-    ` ${input.version},` +
-    ` ${q(input.usuarioSolicitante ?? "")},` +
-    ` ${bit(input.validarPrecioBajoCosto)},` +
-    ` ${bit(input.exigirFactorConfigurado)},` +
-    ` ${input.excepcionesArticulos == null ? "NULL" : `'${input.excepcionesArticulos.replace(/'/g, "''")}'`},` +
-    ` 0;`
-  ).slice(0, 500);
+    ` ${input.version};`
+  );
 
   // 1 — Crear registro inicial EN_PROCESO
   const logInicio = await ejecucionRepository.crear(compania, identidad.email, identidad.nombre, {
