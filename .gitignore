@@ -64,6 +64,7 @@ Product-Definition/mockups/.versions/
 
 .claude/
 ./postgres/
+.codex/
 
 # Volcados de error de Git Bash
 *.stackdump
