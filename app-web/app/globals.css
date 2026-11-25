@@ -4,8 +4,8 @@
 
 :root { color-scheme: light; --accent: #18181b; --accent-fg: #fff; }
 
-body { background: #f8f9fb; color: #0a0a0a; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-.mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+body { background: #f8f9fb; color: #0a0a0a; font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif; }
+.mono { font-family: var(--font-jetbrains-mono), ui-monospace, monospace; }
 
 /* ===== Combobox (patrón anti-regresión) ===== */
 .combo-parent, .fp, .fp-r1, .fp-r2 { overflow: visible; }

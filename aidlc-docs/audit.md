@@ -561,73 +561,7 @@ essa es la tabla udf asi se llama y todo"
 **AI Response**: "Se implementó el modo real sin datos demo visibles, el modo solo lectura configurable y guardas server-side antes de cualquier conexión o mutación. Se agregó resolución de identidad mediante SELECT de USUARIO y USUARIO_AMBITO; no se ejecutaron consultas, pruebas ni builds desde el agente."
 **Context**: Construcción - modo real FEBECA, lectura exclusiva y eliminación del login demo en DEMO_MODE=false
 
----
 
-## Interacción - Inicio de aplicación en modo real
-**Timestamp**: 2026-09-10T00:00:00Z
-**User Input**: "OK YA LEVANTA LA APP APUNTANDO A LA BD YA NO EN EL DEMO"
-**AI Response**: "Se reinició el proceso Next.js para recargar .env.local. La aplicación quedó levantada en http://localhost:3000 con DEMO_MODE=false y READ_ONLY_MODE=true. No se ejecutó ninguna consulta SQL desde el agente."
-**Context**: Ejecución local de la aplicación contra configuración SQL Server real en modo solo lectura
-
----
-
-## Diagnóstico - Login real sin conexión al Portal
-**Timestamp**: 2026-09-10T00:00:00Z
-**User Input**: "NO INICIA SESION rmoreno@febeca.com QUE PASA Y ESTA EN LA BD"
-**AI Response**: "El usuario aparece en el script local como activo, con compañía FEBECA y rol OPERADOR. Sin embargo, el log de Next.js muestra ConnectionError contra localhost:1433 antes de ejecutar el SELECT de identidad; el problema es la configuración/conectividad del servidor SQL, no la búsqueda del correo. No se ejecutó SQL desde el agente."
-**Context**: Diagnóstico de autenticación real y conexión del Portal
-
----
-
-## Configuración - Credenciales del Portal real
-**Timestamp**: 2026-09-10T00:00:00Z
-**User Input**: "PORTAL_SCHEMA=PORTAL_PRECIOS  
-PORTAL_DB_SERVER=10.57.129.254  
-PORTAL_DB_NAME=SOFTLANDQA  
-PORTAL_DB_USER=INT0000413  
-PORTAL_DB_PASSWORD=***REMOVED***  
-AJUSTA EL ENV. LOCAL"
-**AI Response**: "Se actualizaron las variables PORTAL_* en app-web/.env.local y se reinició Next.js para recargar el archivo. DEMO_MODE=false y READ_ONLY_MODE=true se conservaron. No se ejecutó SQL desde el agente."
-**Context**: Configuración de conexión real al Portal
-
----
-
-## Ajuste - Consulta exclusiva del Portal
-**Timestamp**: 2026-09-10T00:00:00Z
-**User Input**: "Identificación corporativa
-La identidad se consulta en SQL Server. Esta pantalla no crea ni modifica datos.
-
-Correo corporativo
-rmoreno@febeca.com
-Compañía
-FEBECA
-No fue posible consultar la identidad en el Portal. Verifique la configuración de SQL Server.
-Continuar
-Modo real y solo lectura
-
-Solo se consultan USUARIO y USUARIO_AMBITO. Las solicitudes, auditoría, secuencias, UDF y ejecuciones permanecen bloqueadas
-
-DEBOO SOLO ACCEDER AL PROTAL VER LOS DATOS DE CONSULTA"
-**AI Response**: "El log confirmó Login failed for user 'INT0000413'. Se activó PORTAL_ONLY_MODE=true, se evitó cargar NuevaSolicitud y Softland después del login, y se escapó el carácter '$' de la contraseña en .env.local. La aplicación continúa en DEMO_MODE=false y READ_ONLY_MODE=true; no se ejecutó SQL desde el agente."
-**Context**: Diagnóstico de credenciales Portal y aislamiento de consultas Portal
-
----
-
-## Configuración - Nueva contraseña Portal
-**Timestamp**: 2026-09-10T00:00:00Z
-**User Input**: "PRUEBA CON ESTA CONTRASEÑA ***REMOVED***"
-**AI Response**: "Se actualizó PORTAL_DB_PASSWORD en app-web/.env.local como ***REMOVED*** para preservar literalmente el carácter '$', y se reinició Next.js. No se ejecutó SQL desde el agente."
-**Context**: Prueba de credenciales de conexión del Portal en modo exclusivo y solo lectura
-
----
-
-## Diagnóstico - Aplicación no inicia tras cambio de contraseña
-**Timestamp**: 2026-09-10T00:00:00Z
-**User Input**: "NO LEVANTO LA APP"
-**AI Response**: "Se revisaron los procesos y se reinició Next.js varias veces sin ejecutar SQL. El proceso gestionado aparece activo, pero la salida y la comprobación local del puerto no confirmaron que el servidor web esté escuchando; se dejó un arranque en segundo plano para la aplicación."
-**Context**: Diagnóstico de arranque local posterior a cambio de configuración del Portal
-
----
 
 ## Resolución - Arranque de Next.js
 **Timestamp**: 2026-09-10T00:00:00Z

@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { NotificationHost } from "@/shared/notifications/notify";
 import "./globals.css";
+
+// next/font descarga las fuentes en el build y las sirve desde la app: sin CDN de terceros en runtime (SRI).
+const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
+const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], display: "swap", variable: "--font-jetbrains-mono" });
 
 export const metadata: Metadata = {
   title: "Gestion Masiva de Precios - MV26020",
@@ -9,14 +14,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="es" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body>
         {children}
         <NotificationHost />
